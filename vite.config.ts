@@ -3,7 +3,16 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+/**
+ * GitHub Pages serves the app from /<repo>/, every other host from /.
+ * BASE_PATH is set by the deploy workflow; local dev and root-served hosts
+ * need nothing. The PWA scope has to match, or the service worker refuses
+ * to control the page.
+ */
+const base = process.env.BASE_PATH ?? '/'
+
 export default defineConfig({
+  base,
   plugins: [
     react(),
     tailwindcss(),
@@ -20,8 +29,8 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         lang: 'te',
-        start_url: '/',
-        scope: '/',
+        start_url: base,
+        scope: base,
         categories: ['utilities', 'navigation'],
         icons: [
           {
