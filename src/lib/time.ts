@@ -45,13 +45,6 @@ export function formatClock(ts: number): string {
 }
 
 /**
- * Compact 12-hour time for the crate grid, e.g. .
- *
- * A slot cell is about 55 px wide on a small phone and "10:11 pm" clips in
- * it. Dropping to a single-letter suffix keeps the am/pm distinction — 4 am
- * and 4 pm are very different tides — while fitting the box.
- */
-/**
  * Compact 12-hour time for the crate grid, e.g. `10:11p`.
  *
  * A slot cell is about 55 px wide on a small phone and "10:11 pm" clips in

@@ -184,17 +184,29 @@ export function freeingSoon(
   )
 }
 
+/**
+ * Age every slot: expire 4-hour holds, raise and clear the 6-hour overstay
+ * flag.
+ *
+ * Returns the SAME array when nothing moved. This runs once a second, and
+ * a fresh array every tick would invalidate every box-derived render and
+ * force the persist layer to rewrite the whole store — on the low-end
+ * phones this targets, that is the difference between smooth and janky.
+ */
 export function applyTick(
   boxes: ColdBox[],
   now: number,
 ): { boxes: ColdBox[]; expiredHolds: number } {
   let expiredHolds = 0
-  const next = boxes.map((box) => ({
-    ...box,
-    slots: box.slots.map((slot) => {
+  let moved = false
+
+  const next = boxes.map((box) => {
+    let boxMoved = false
+    const slots = box.slots.map((slot) => {
       if (slot.status === 'reserved' && slot.reservedAt !== null) {
         if (now - slot.reservedAt >= HOLD_MS) {
           expiredHolds += 1
+          boxMoved = true
           return emptySlot(slot.index)
         }
       }
@@ -204,16 +216,23 @@ export function applyTick(
       ) {
         const late = now - slot.depositedAt >= OVERSTAY_MS
         if (late && slot.status !== 'overstay') {
+          boxMoved = true
           return { ...slot, status: 'overstay' as const }
         }
         if (!late && slot.status === 'overstay') {
+          boxMoved = true
           return { ...slot, status: 'occupied' as const }
         }
       }
       return slot
-    }),
-  }))
-  return { boxes: next, expiredHolds }
+    })
+
+    if (!boxMoved) return box
+    moved = true
+    return { ...box, slots }
+  })
+
+  return { boxes: moved ? next : boxes, expiredHolds }
 }
 
 export function maxEmpty(boxes: ColdBox[]): number {

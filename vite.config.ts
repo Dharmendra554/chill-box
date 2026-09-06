@@ -11,10 +11,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Fish Cold Storage Booking',
+        name: 'Chill-Box · Harbour cold storage',
         short_name: 'చిల్ బాక్స్',
         description:
-          'Community solar chill-box booking for Nizampatnam Harbour fishermen.',
+          'Community solar chill-box booking for Andhra Pradesh fishing harbours.',
         theme_color: '#FAF7F0',
         background_color: '#FAF7F0',
         display: 'standalone',

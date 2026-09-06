@@ -1,6 +1,6 @@
 import { HARBOUR_IDS } from './harbours'
 import { DAY_MS, HOLD_MS, HOUR_MS, MINUTE_MS, startOfLocalDay } from '../lib/time'
-import { emptySlot } from '../store/selectors'
+import { emptySlot, QUOTA } from '../store/selectors'
 import { SPECIES } from '../types'
 import type { BoxId, ColdBox, HarbourId, LedgerEntry, Slot, Species } from '../types'
 
@@ -111,19 +111,33 @@ function nizampatnamBoxes(now: number): ColdBox[] {
   ]
 }
 
-/** The other harbours get plausible, deterministic mid-tide occupancy. */
+/**
+ * The other harbours get plausible, deterministic mid-tide occupancy.
+ *
+ * `held` is counted across all three boxes, not per box, because that is how
+ * the real 2-crate cap works — seeded data that broke its own rule would
+ * show a boat hoarding three crates in the harbour list.
+ */
 function seededBoxes(harbourId: HarbourId, now: number, fleet: number): ColdBox[] {
   const rand = mulberry32(SEEDS[harbourId])
+  const held = new Map<string, number>()
+  const roster = Array.from({ length: fleet }, (_, n) => String(n + 1).padStart(2, '0'))
 
   return BOX_IDS.map((id) => {
-    const used = 2 + Math.floor(rand() * 7)
     const slots: Slot[] = []
+    const used = 2 + Math.floor(rand() * 7)
+
     for (let i = 0; i < used; i += 1) {
-      const boatId = String(1 + Math.floor(rand() * fleet)).padStart(2, '0')
+      const eligible = roster.filter((boat) => (held.get(boat) ?? 0) < QUOTA)
+      if (eligible.length === 0) break
+
+      const boatId = eligible[Math.floor(rand() * eligible.length)]
+      held.set(boatId, (held.get(boatId) ?? 0) + 1)
+
       const hoursAgo = rand() * 6.5
       const species = SPECIES[Math.floor(rand() * SPECIES.length)]
       slots.push(
-        stored(i, boatId, now - hoursAgo * HOUR_MS, 5, species, hoursAgo > 6),
+        stored(i, boatId, Math.round(now - hoursAgo * HOUR_MS), 5, species, hoursAgo > 6),
       )
     }
     return { id, slots: fill(slots) }
@@ -153,9 +167,9 @@ export function createMockLedger(harbourId: HarbourId, now: number): LedgerEntry
     const trips = 24 + Math.floor(rand() * 18)
     for (let n = 0; n < trips; n += 1) {
       // Boats land from before dawn through mid-afternoon, peaking early.
-      const depositedAt = dayStart + (3.5 + rand() * rand() * 11) * HOUR_MS
+      const depositedAt = Math.round(dayStart + (3.5 + rand() * rand() * 11) * HOUR_MS)
       const heldHours = 1.5 + rand() * 6
-      const releasedAt = depositedAt + heldHours * HOUR_MS
+      const releasedAt = Math.round(depositedAt + heldHours * HOUR_MS)
       if (releasedAt > now) continue
       out.push({
         id: `${harbourId}-${day}-${n}`,

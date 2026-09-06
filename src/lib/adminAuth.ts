@@ -1,7 +1,7 @@
 import type { AuditEntry } from '../types'
 
 /**
- * Admin access control and the tamper-evident audit trail.
+ * Admin access control and the action log.
  *
  * WHAT A GOVERNMENT PORTAL ACTUALLY DOES, AND WHAT WE CAN HONESTLY COPY
  * --------------------------------------------------------------------
@@ -20,17 +20,24 @@ import type { AuditEntry } from '../types'
  *   copied  · lockout with exponential backoff after failed attempts
  *   copied  · idle session expiry, re-authentication required after it
  *   copied  · explicit confirmation on destructive actions
- *   copied  · hash-chained audit log: every admin action records who, what,
- *             when, and a SHA-256 over the previous entry, so deleting or
- *             editing history is detectable
+ *   partly  · hash-chained action log: every admin action records who, what,
+ *             when, and a SHA-256 over the previous entry
  *   NOT copied · server-side authorisation. Anyone who can open developer
  *             tools can edit this device's own local state.
  *
- * Calling that last point "unbreakable" would be false. It is a lock on a
- * shared phone, plus an audit trail that makes tampering visible — which
- * is the honest ceiling for an offline-first client. Moving `verify` and
- * `appendAudit` behind an API route is the single change that turns this
- * into real enforcement; nothing else in the app has to move.
+ * BE PRECISE ABOUT THE LOG. The chain catches accidental corruption, a
+ * truncated write, and a casual edit of one row. It does NOT stop a
+ * deliberate tamperer: the hash function is public and unkeyed, so anyone
+ * who can edit local storage can delete a row and recompute every hash
+ * after it, and `verifyAudit` would report the result as intact. An HMAC
+ * would not help either, because the key would ship in the same bundle.
+ * Only a log the client cannot write — one held by a server — is actually
+ * tamper-proof.
+ *
+ * So: this is a lock on a shared phone and a receipt for honest mistakes,
+ * not a defence against a motivated attacker. Moving `verifyPin` and
+ * `appendAudit` behind an API route is the single change that turns it into
+ * real enforcement; nothing else in the app has to move.
  */
 
 /** PBKDF2 parameters. Salt and hash are public by design — the PIN is not. */
@@ -62,7 +69,14 @@ function fromHex(hex: string): ArrayBuffer {
   return Uint8Array.from(hex.match(/../g)?.map((byte) => parseInt(byte, 16)) ?? []).buffer
 }
 
-/** Length-independent comparison, so timing never leaks the prefix. */
+/**
+ * Compares every character regardless of where the first difference is, so
+ * the loop's duration does not reveal how much of the guess was right.
+ *
+ * Not constant-time in the cryptographic sense — a JS engine gives no such
+ * guarantee — but the value being compared is a PBKDF2 digest, not the PIN,
+ * so there is no prefix worth learning. The lockout is the real defence.
+ */
 function timingSafeEqual(a: string, b: string): boolean {
   let diff = a.length ^ b.length
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
@@ -104,9 +118,9 @@ function canonical(entry: Omit<AuditEntry, 'hash'>): string {
 }
 
 /**
- * Append one action, chaining it to the tip of the log. Changing or
- * removing any earlier entry breaks every hash after it, which
- * `verifyAudit` reports.
+ * Append one action, chaining it to the tip of the log. Editing or removing
+ * an earlier entry breaks every hash after it — unless the editor also
+ * re-chains, which nothing here can prevent. See the file header.
  */
 export async function appendAudit(
   log: AuditEntry[],

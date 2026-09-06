@@ -9,7 +9,7 @@ import {
   seedPending,
 } from '../data/boats'
 import { DEFAULT_HARBOUR_ID, harbour } from '../data/harbours'
-import { MOCK_CLEARED_TODAY, seedAllBoxes, seedAllLedgers } from '../data/mock'
+import { seedAllBoxes, seedAllLedgers } from '../data/mock'
 import { t } from '../i18n/dictionary'
 import { ADMIN_IDLE_MS, appendAudit, lockoutMs, verifyPin, type PinResult } from '../lib/adminAuth'
 import { HOUR_MS } from '../lib/time'
@@ -42,11 +42,67 @@ const STORAGE_KEY = 'ap-chill-box'
 const STORAGE_VERSION = 4
 
 /**
- * localStorage throws outright in private mode and when the quota is full,
- * and a dockside phone hits both. Persistence is a convenience here, never
- * a dependency: if the disk refuses, the app runs from memory for the
- * session rather than showing a white screen.
+ * Storage that cannot hurt us. Two hazards, both real on a dock phone.
+ *
+ * 1. `localStorage` THROWS in private mode and when the quota is full.
+ *    Persistence is a convenience, never a dependency — but a failed write
+ *    must be *announced*, because silently losing a booking is worse than
+ *    erroring. `setStorageErrorHandler` is how the UI hears about it.
+ *
+ * 2. The clock ticks once a second, and zustand's persist middleware
+ *    serialises the entire store on every `set`. Unthrottled that is a
+ *    multi-megabyte `JSON.stringify` plus a synchronous write every second:
+ *    gigabytes of flash writes an hour and visible jank on exactly the
+ *    low-end Android this is built for. Writes are therefore coalesced, and
+ *    flushed on the events that mean "there may be no later".
  */
+
+/** Coalesce persist writes to at most one per this interval. */
+const WRITE_EVERY_MS = 5_000
+
+/**
+ * Newest ledger rows to keep on the device.
+ *
+ * The ledger only ever grows, and the persisted store shares a ~5 MB
+ * browser quota. Four months of a busy harbour is well inside the cap and
+ * covers every report the console offers; older rows are dropped rather
+ * than allowed to fill the quota and start failing writes silently.
+ */
+const LEDGER_LIMIT = 4_000
+
+function capLedger(rows: LedgerEntry[]): LedgerEntry[] {
+  return rows.length > LEDGER_LIMIT ? rows.slice(-LEDGER_LIMIT) : rows
+}
+
+let pendingWrite: { key: string; value: string } | null = null
+let writeTimer: ReturnType<typeof setTimeout> | null = null
+let onStorageError: (() => void) | null = null
+
+/** Let the app show a warning when the disk refuses a write. */
+export function setStorageErrorHandler(fn: () => void): void {
+  onStorageError = fn
+}
+
+function commitWrite(): void {
+  writeTimer = null
+  const write = pendingWrite
+  pendingWrite = null
+  if (!write) return
+  try {
+    localStorage.setItem(write.key, write.value)
+  } catch {
+    onStorageError?.()
+  }
+}
+
+/** Write immediately — for `pagehide`, where there is no next timer tick. */
+export function flushStorage(): void {
+  if (writeTimer !== null) {
+    clearTimeout(writeTimer)
+    commitWrite()
+  }
+}
+
 const safeStorage: Storage = {
   get length() {
     try {
@@ -70,11 +126,8 @@ const safeStorage: Storage = {
     }
   },
   setItem: (key, value) => {
-    try {
-      localStorage.setItem(key, value)
-    } catch {
-      /* full or blocked — this session simply is not persisted */
-    }
+    pendingWrite = { key, value }
+    if (writeTimer === null) writeTimer = setTimeout(commitWrite, WRITE_EVERY_MS)
   },
   removeItem: (key) => {
     try {
@@ -135,7 +188,6 @@ export interface DockState {
   boats: Boat[]
   boxesByHarbour: Record<HarbourId, ColdBox[]>
   ledger: LedgerEntry[]
-  clearedOnTimeToday: number
 
   // ui
   toast: ToastMessage | null
@@ -150,7 +202,7 @@ export interface DockState {
   dismissToast: () => void
 
   register: (input: RegistrationInput) => RegistrationResult
-  signInAs: (boatId: string) => void
+  signInAs: (boatId: string, last4: string) => boolean
   signOut: () => void
 
   reserve: (boxId: BoxId, crates: 1 | 2, species: Species) => boolean
@@ -181,8 +233,7 @@ function seed(now: number) {
   return {
     boats: [...seedBoats(), ...seedPending(now)],
     boxesByHarbour: seedAllBoxes(now),
-    ledger: seedAllLedgers(now),
-    clearedOnTimeToday: MOCK_CLEARED_TODAY,
+    ledger: capLedger(seedAllLedgers(now)),
     toast: null,
     now,
   }
@@ -201,9 +252,8 @@ export function releaseSlots(
   boatId: string,
   now: number,
   onlyBoxId?: BoxId,
-): { boxes: ColdBox[]; entries: LedgerEntry[]; onTime: number } {
+): { boxes: ColdBox[]; entries: LedgerEntry[] } {
   const entries: LedgerEntry[] = []
-  let onTime = 0
 
   const next = boxes.map((box) => {
     if (onlyBoxId && box.id !== onlyBoxId) return box
@@ -241,11 +291,10 @@ export function releaseSlots(
       releasedAt: now,
       overstay: late,
     })
-    if (!late) onTime += crates
     return { ...box, slots }
   })
 
-  return { boxes: next, entries, onTime }
+  return { boxes: next, entries }
 }
 
 export const useDockStore = create<DockState>()(
@@ -255,6 +304,20 @@ export const useDockStore = create<DockState>()(
       const putBoxes = (boxes: ColdBox[], extra: Partial<DockState> = {}) => {
         const { harbourId, boxesByHarbour } = get()
         set({ boxesByHarbour: { ...boxesByHarbour, [harbourId]: boxes }, ...extra })
+      }
+
+      /**
+       * The signed-in boat, but only if it is approved right now.
+       *
+       * Every action that moves a crate goes through this. An admin can
+       * block a boat while its owner has a sheet open, and without a single
+       * gate here the blocked boat could still deposit and release — which
+       * would contradict both the admin and the banner on their own screen.
+       */
+      const activeBoatId = (): string | null => {
+        const { boats, harbourId, myBoatId } = get()
+        const me = boats.find((b) => b.harbourId === harbourId && b.id === myBoatId)
+        return me?.status === 'active' ? me.id : null
       }
 
       return {
@@ -287,23 +350,29 @@ export const useDockStore = create<DockState>()(
 
         tick: (now) => {
           const prev = get()
-          const boxes = prev.boxesByHarbour[prev.harbourId]
-          const result = applyTick(boxes, now)
           const patch: Partial<DockState> = { now }
 
-          if (result.expiredHolds > 0 && prev.myBoatId) {
-            const had = slotsForBoat(boxes, prev.myBoatId).some(
-              (s) => s.status === 'reserved',
-            )
-            const still = slotsForBoat(result.boxes, prev.myBoatId).some(
-              (s) => s.status === 'reserved',
-            )
-            if (had && !still) patch.toast = toast('warn', t(prev.lang, 'holdExpired'))
+          // Every harbour ages, not just the one on screen. Otherwise a hold
+          // at the harbour you switched away from never expires and keeps
+          // blocking a slot in this device's copy.
+          let changed = false
+          const next: Record<string, ColdBox[]> = {}
+          for (const [id, boxes] of Object.entries(prev.boxesByHarbour)) {
+            const result = applyTick(boxes, now)
+            next[id] = result.boxes
+            if (result.boxes !== boxes) changed = true
+
+            if (result.expiredHolds > 0 && prev.myBoatId && id === prev.harbourId) {
+              const had = slotsForBoat(boxes, prev.myBoatId).some((s) => s.status === 'reserved')
+              const still = slotsForBoat(result.boxes, prev.myBoatId).some(
+                (s) => s.status === 'reserved',
+              )
+              if (had && !still) patch.toast = toast('warn', t(prev.lang, 'holdExpired'))
+            }
           }
-          patch.boxesByHarbour = {
-            ...prev.boxesByHarbour,
-            [prev.harbourId]: result.boxes,
-          }
+          // Only replace the map when something actually moved, so a quiet
+          // second does not invalidate every box-derived render.
+          if (changed) patch.boxesByHarbour = next as Record<HarbourId, ColdBox[]>
 
           // Idle auto-lock, the way a portal session expires.
           if (prev.adminUnlocked && now - prev.adminTouchedAt > ADMIN_IDLE_MS) {
@@ -341,7 +410,22 @@ export const useDockStore = create<DockState>()(
           return { ok: true, id }
         },
 
-        signInAs: (boatId) => set({ myBoatId: boatId, tab: 'dock', toast: null }),
+        /**
+         * Claim an existing boat by proving you know its registered number.
+         *
+         * Without this the roster is a one-tap "become anyone" list, and on
+         * a shared dock phone that means releasing another skipper's crates.
+         * Four digits is not authentication — a client-only app cannot do
+         * authentication — but it stops casual impersonation, which is the
+         * threat that actually exists here.
+         */
+        signInAs: (boatId, last4) => {
+          const { boats, harbourId } = get()
+          const boat = boats.find((b) => b.harbourId === harbourId && b.id === boatId)
+          if (!boat || boat.mobile.slice(-4) !== last4.trim()) return false
+          set({ myBoatId: boatId, tab: 'dock', toast: null })
+          return true
+        },
 
         signOut: () => set({ myBoatId: null, adminUnlocked: false, tab: 'dock' }),
 
@@ -400,8 +484,9 @@ export const useDockStore = create<DockState>()(
         },
 
         cancelHold: () => {
-          const { boxesByHarbour, harbourId, myBoatId } = get()
+          const myBoatId = activeBoatId()
           if (!myBoatId) return
+          const { boxesByHarbour, harbourId } = get()
           putBoxes(
             boxesByHarbour[harbourId].map((box) => ({
               ...box,
@@ -415,8 +500,9 @@ export const useDockStore = create<DockState>()(
         },
 
         deposit: (plannedHours) => {
-          const { boxesByHarbour, harbourId, myBoatId } = get()
+          const myBoatId = activeBoatId()
           if (!myBoatId) return false
+          const { boxesByHarbour, harbourId } = get()
           const boxes = boxesByHarbour[harbourId]
 
           // The hold may have expired between opening the sheet and tapping.
@@ -446,9 +532,9 @@ export const useDockStore = create<DockState>()(
         },
 
         release: () => {
-          const { boxesByHarbour, harbourId, myBoatId, ledger, clearedOnTimeToday } =
-            get()
+          const myBoatId = activeBoatId()
           if (!myBoatId) return
+          const { boxesByHarbour, harbourId, ledger } = get()
           const result = releaseSlots(
             boxesByHarbour[harbourId],
             harbourId,
@@ -456,10 +542,7 @@ export const useDockStore = create<DockState>()(
             Date.now(),
           )
           if (result.entries.length === 0) return
-          putBoxes(result.boxes, {
-            ledger: [...ledger, ...result.entries],
-            clearedOnTimeToday: clearedOnTimeToday + result.onTime,
-          })
+          putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
         },
 
         unlockAdmin: async (pin) => {
@@ -524,7 +607,7 @@ export const useDockStore = create<DockState>()(
             boxId,
           )
           if (result.entries.length === 0) return
-          putBoxes(result.boxes, { ledger: [...ledger, ...result.entries] })
+          putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
           void get().record(
             'slot.forceRelease',
             `#${boatId}`,
@@ -538,6 +621,9 @@ export const useDockStore = create<DockState>()(
             harbourId: DEFAULT_HARBOUR_ID,
             myBoatId: DEFAULT_BOAT_ID,
             adminUnlocked: false,
+            audit: [],
+            adminFailures: 0,
+            adminLockedUntil: 0,
             tab: 'dock',
           })
         },
@@ -555,7 +641,6 @@ export const useDockStore = create<DockState>()(
         boats: s.boats,
         boxesByHarbour: s.boxesByHarbour,
         ledger: s.ledger,
-        clearedOnTimeToday: s.clearedOnTimeToday,
         audit: s.audit,
         adminFailures: s.adminFailures,
         adminLockedUntil: s.adminLockedUntil,

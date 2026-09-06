@@ -13,9 +13,11 @@ import { waveBand } from './lib/marine'
 import { speakCapacity, stopSpeech } from './lib/speech'
 import { boatState } from './store/selectors'
 import {
+  flushStorage,
   selectBoxes,
   selectHarbour,
   selectMyBoat,
+  setStorageErrorHandler,
   useDockStore,
 } from './store/useDockStore'
 
@@ -59,6 +61,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.lang = lang
     document.documentElement.dataset.theme = theme
+    // The browser chrome follows the in-app toggle, not the OS setting —
+    // otherwise a phone in system-dark shows a dark status bar above a
+    // daylight-themed app.
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', theme === 'day' ? '#FAF7F0' : '#101a2b')
   }, [lang, theme])
 
   // `#admin` is the only route in the app. Watching hashchange keeps the
@@ -75,6 +83,20 @@ export default function App() {
   useEffect(() => {
     if (late) vibrate([120, 60, 120, 60, 200])
   }, [late])
+
+  // Persist writes are coalesced, so a phone closed between them would lose
+  // the last few seconds. Flush when the page is hidden — the only moment
+  // mobile browsers reliably give before they freeze or kill a tab.
+  useEffect(() => {
+    const flush = () => flushStorage()
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', flush)
+    setStorageErrorHandler(() => notify('error', t('storageFull')))
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', flush)
+    }
+  }, [notify, t])
 
   useEffect(() => () => stopSpeech(), [])
 

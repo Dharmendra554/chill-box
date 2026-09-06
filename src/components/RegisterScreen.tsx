@@ -33,10 +33,10 @@ export function RegisterScreen() {
   const allBoats = useDockStore((s) => s.boats)
   const setHarbour = useDockStore((s) => s.setHarbour)
   const register = useDockStore((s) => s.register)
-  const signInAs = useDockStore((s) => s.signInAs)
 
   const [form, setForm] = useState({ boatName: '', owner: '', mobile: '' })
   const [error, setError] = useState<RegistrationError | null>(null)
+  const [claiming, setClaiming] = useState<string | null>(null)
 
   const boats = boatsAt(allBoats, harbourId)
   const update = (key: keyof typeof form) => (value: string) => {
@@ -128,13 +128,21 @@ export function RegisterScreen() {
 
       <section className="flex flex-col gap-2">
         <h3 className="text-xl">{t('regExisting')}</h3>
+        {claiming ? (
+          <ClaimBoat
+            boatId={claiming}
+            label={boatName(boats.find((b) => b.id === claiming)!, lang)}
+            onClose={() => setClaiming(null)}
+          />
+        ) : null}
+
         <ul className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {boats.map((boat) => (
             <li key={boat.id}>
               <button
                 type="button"
                 className="btn btn-block flex-col gap-0.5 text-base"
-                onClick={() => signInAs(boat.id)}
+                onClick={() => setClaiming(boat.id)}
               >
                 <BoatIcon size={20} />
                 <span className="w-full truncate">{boatName(boat, lang)}</span>
@@ -168,5 +176,63 @@ function Field({
         {...rest}
       />
     </label>
+  )
+}
+
+/**
+ * Confirms the person tapping a boat actually owns it, using the last four
+ * digits of the number the society registered. See `signInAs` for why four
+ * digits is the right amount of friction here.
+ */
+function ClaimBoat({
+  boatId,
+  label,
+  onClose,
+}: {
+  boatId: string
+  label: string
+  onClose: () => void
+}) {
+  const t = useT()
+  const signInAs = useDockStore((s) => s.signInAs)
+  const [digits, setDigits] = useState('')
+  const [wrong, setWrong] = useState(false)
+
+  return (
+    <form
+      className="card flex flex-col gap-2 border-sea p-3"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!signInAs(boatId, digits)) setWrong(true)
+      }}
+    >
+      <h4 className="text-lg">{t('claimTitle', label)}</h4>
+      <p className="text-sm font-bold text-ink-2">{t('claimBody')}</p>
+      <input
+        className="field tabular"
+        inputMode="numeric"
+        autoComplete="off"
+        maxLength={4}
+        value={digits}
+        aria-label={t('claimTitle', label)}
+        onChange={(event) => {
+          setDigits(event.target.value.replace(/\D/g, ''))
+          setWrong(false)
+        }}
+      />
+      {wrong ? (
+        <p className="border-3 border-rule bg-full px-3 py-2 font-extrabold text-full-ink" role="alert">
+          {t('claimWrong')}
+        </p>
+      ) : null}
+      <div className="grid grid-cols-2 gap-2">
+        <button type="submit" className="btn btn-primary" disabled={digits.length < 4}>
+          {t('claimGo')}
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>
+          {t('cancel')}
+        </button>
+      </div>
+    </form>
   )
 }

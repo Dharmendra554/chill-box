@@ -9,7 +9,6 @@ import type { BoxId, Lang } from '../types'
  */
 const S = {
   appName: { te: 'చిల్-బాక్స్', en: 'Chill-Box' },
-  harbour: { te: 'నిజాంపట్నం హార్బర్', en: 'Nizampatnam Harbour' },
 
   tabDock: { te: 'బుకింగ్', en: 'Book' },
   tabHarbour: { te: 'హార్బర్', en: 'Harbour' },
@@ -31,6 +30,10 @@ const S = {
   regOwner: { te: 'యజమాని పేరు', en: 'Owner name' },
   regMobile: { te: 'మొబైల్ నంబర్', en: 'Mobile number' },
   regSubmit: { te: 'నమోదు చేయి', en: 'Register' },
+  claimTitle: { te: '{0} — మీ నంబర్ చివరి 4 అంకెలు', en: '{0} — last 4 digits of your mobile' },
+  claimBody: { te: 'ఇది మీ బోటు అని నిర్ధారించడానికి.', en: 'Just to confirm this boat is yours.' },
+  claimWrong: { te: 'నంబర్ సరిపోలలేదు', en: 'That does not match' },
+  claimGo: { te: 'కొనసాగించు', en: 'Continue' },
   regExisting: { te: 'ఇప్పటికే నమోదైన బోటు', en: 'Already registered boat' },
   errBoatName: { te: 'బోటు పేరు రాయండి', en: 'Enter the boat name' },
   errOwner: { te: 'యజమాని పేరు రాయండి', en: 'Enter the owner name' },
@@ -151,6 +154,7 @@ const S = {
   navSeamarks: { te: 'సముద్ర గుర్తులు', en: 'Sea marks' },
   boxAway: { te: '{0} దూరం', en: '{0} away' },
   offlineTitle: { te: 'నెట్ లేదు', en: 'No signal' },
+  storageFull: { te: 'ఫోన్ మెమరీ నిండింది — కొత్త మార్పులు సేవ్ కావట్లేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'Phone storage is full — changes are not being saved. Tell someone at the box.' },
   staleNever: { te: 'ఈ సంఖ్యలు ఈ ఫోన్‌లోనివి మాత్రమే. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from this phone only. Check again at the box.' },
   staleBody: { te: 'ఈ సంఖ్యలు {0} నాటివి. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from {0}. Check again at the box.' },
   errNotApproved: { te: 'అడ్మిన్ ఆమోదం వచ్చాకే బుక్ చేయగలరు.', en: 'You can book once the admin approves your boat.' },

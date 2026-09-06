@@ -55,10 +55,19 @@ export function SeaMap({
   useEffect(() => {
     if (!host.current || map.current) return
 
-    const instance = L.map(host.current, { attributionControl: true }).setView(
-      [harbour.lat, harbour.lon],
-      15,
-    )
+    // On a touch screen the chart sits mid-page, so one-finger drag must
+    // scroll the PAGE, not pan the map — otherwise a thumb landing on the
+    // chart traps the scroll and the box list below becomes unreachable.
+    // Pinch-zoom and the +/- buttons still work, and panning is not the
+    // point here: the three boxes are framed for you.
+    const touch = window.matchMedia('(pointer: coarse)').matches
+    const instance = L.map(host.current, {
+      attributionControl: true,
+      dragging: !touch,
+      scrollWheelZoom: !touch,
+      touchZoom: true,
+
+    }).setView([harbour.lat, harbour.lon], 15)
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
@@ -140,7 +149,7 @@ export function SeaMap({
         permanent: true,
         direction: 'top',
         className: 'sea-box',
-        offset: [0, -22],
+        offset: [0, -30],
       })
       if (onPick && !marker.full) pin.on('click', () => onPick(marker.id))
     }
@@ -149,7 +158,11 @@ export function SeaMap({
 
     if (fix && routeTo) {
       const legs = routeLegs(fix, harbour, routeTo)
-      L.polyline(legs, { color: 'var(--c-sea)', weight: 5, dashArray: '10 8' }).addTo(group)
+      L.polyline(legs, {
+        color: cssVar('--c-sea', '#1c6ea4'),
+        weight: 6,
+        dashArray: '10 8',
+      }).addTo(group)
       instance.fitBounds(L.latLngBounds(legs).pad(0.3))
       instance.fire('zoomend')
       return
@@ -181,31 +194,50 @@ export function SeaMap({
   )
 }
 
-/* Markers are inline HTML in the app's own slab language rather than the
-   default bitmap pins, so the chart matches every other surface. */
+/*
+ * Markers are inline HTML in the app's own slab language rather than the
+ * default bitmap pins, so the chart matches every other surface.
+ *
+ * Colours are resolved to concrete values instead of being passed through
+ * as `var(--c-…)`. Leaflet puts some of them into SVG presentation
+ * attributes, where custom-property support is inconsistent on the older
+ * Android WebViews this must run on — and a route line that silently fails
+ * to draw is the worst possible bug in a navigation feature.
+ */
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+}
 
+/**
+ * Box pins are deliberately oversized. From 8 km out this is how a skipper
+ * picks a box — one-handed, wet screen, glare — so the target is 56 px and
+ * the free-crate count is large enough to read at arm's length.
+ */
 function boxPin({ free, full }: BoxMarker, selected: boolean): L.DivIcon {
-  const bg = full ? 'var(--c-full)' : 'var(--c-free)'
+  const bg = full ? cssVar('--c-full', '#c0392b') : cssVar('--c-free', '#1f7a4d')
+  const ink = cssVar('--c-ink', '#111111')
   return L.divIcon({
     className: '',
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
+    iconSize: [56, 56],
+    iconAnchor: [28, 28],
     html:
-      `<span style="display:grid;place-items:center;width:40px;height:40px;` +
-      `border:${selected ? 5 : 3}px solid var(--c-ink);background:${bg};` +
-      `color:#fff;font-weight:800;font-size:16px;line-height:1">${full ? '×' : free}</span>`,
+      `<span style="display:grid;place-items:center;width:56px;height:56px;` +
+      `border:${selected ? 6 : 4}px solid ${ink};background:${bg};` +
+      `color:#fff;font-weight:800;font-size:24px;line-height:1">${full ? '×' : free}</span>`,
   })
 }
 
 function boatPin(): L.DivIcon {
   return L.divIcon({
     className: '',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
     html:
-      `<span style="display:grid;place-items:center;width:28px;height:28px;` +
-      `border:3px solid var(--c-ink);background:var(--c-sea);color:#fff;` +
-      `font-weight:800;font-size:14px;line-height:1">&#9650;</span>`,
+      `<span style="display:grid;place-items:center;width:34px;height:34px;` +
+      `border:4px solid ${cssVar('--c-ink', '#111111')};` +
+      `background:${cssVar('--c-sea', '#1c6ea4')};color:#fff;` +
+      `font-weight:800;font-size:16px;line-height:1">&#9650;</span>`,
   })
 }
 
@@ -214,6 +246,9 @@ function dot(): L.DivIcon {
     className: '',
     iconSize: [12, 12],
     iconAnchor: [6, 6],
-    html: `<span style="display:block;width:12px;height:12px;border:3px solid var(--c-ink);background:var(--c-paper)"></span>`,
+    html:
+      `<span style="display:block;width:12px;height:12px;` +
+      `border:3px solid ${cssVar('--c-ink', '#111111')};` +
+      `background:${cssVar('--c-paper', '#ffffff')}"></span>`,
   })
 }

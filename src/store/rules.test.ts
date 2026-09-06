@@ -13,10 +13,12 @@ import {
   emptyCount,
   emptySlot,
   occupancyRows,
+  QUOTA,
   remainingQuota,
+  slotsForBoat,
   suggestedBoxId,
 } from './selectors'
-import { releaseSlots } from './useDockStore'
+import { releaseSlots, selectBoxes, useDockStore } from './useDockStore'
 
 /**
  * These cover the harbour rules a judge will try to break: the hold clock,
@@ -132,13 +134,12 @@ describe('release', () => {
     expect(result.entries).toHaveLength(1)
     expect(result.entries[0]).toMatchObject({ crates: 2, boxId: 'box1', overstay: false })
     expect(result.entries[0].depositedAt).toBe(NOW - 2 * HOUR_MS)
-    expect(result.onTime).toBe(2)
     expect(emptyCount(result.boxes[0])).toBe(10)
     // Another boat's crate is untouched.
     expect(result.boxes[1].slots[0].boatId).toBe('09')
   })
 
-  it('marks the row as an overstay and earns no on-time credit', () => {
+  it('marks the row as an overstay in the ledger', () => {
     const boxes = [
       box('box1', [
         { index: 0, status: 'overstay', boatId: '11', depositedAt: NOW - 7 * HOUR_MS },
@@ -146,7 +147,6 @@ describe('release', () => {
     ]
     const result = releaseSlots(boxes, H, '11', NOW)
     expect(result.entries[0].overstay).toBe(true)
-    expect(result.onTime).toBe(0)
   })
 
   it('touches only the named box when the admin overrides one', () => {
@@ -406,5 +406,96 @@ describe('utilisation over a part-elapsed month', () => {
   it('hides the month-on-month trend while the month is still running', () => {
     const inSeptember = Date.parse('2026-09-06T10:00:00+05:30')
     expect(monthInsight([], '2026-09', '2026-08', inSeptember).cratesDelta).toBeNull()
+  })
+})
+
+describe('seeded demo data obeys the rules it advertises', () => {
+  it('never seeds a boat over the 2-crate cap, at any harbour', () => {
+    for (const id of ['vizag', 'kakinada', 'nizampatnam'] as const) {
+      const boxes = createMockBoxes(id, NOW)
+      const held = new Map<string, number>()
+      for (const box of boxes) {
+        for (const slot of box.slots) {
+          if (slot.boatId) held.set(slot.boatId, (held.get(slot.boatId) ?? 0) + 1)
+        }
+      }
+      for (const [boatId, crates] of held) {
+        expect(crates, `${id} #${boatId}`).toBeLessThanOrEqual(QUOTA)
+      }
+    }
+  })
+
+  it('uses whole-millisecond timestamps', () => {
+    for (const slot of createMockBoxes('vizag', NOW).flatMap((b) => b.slots)) {
+      if (slot.depositedAt !== null) expect(Number.isInteger(slot.depositedAt)).toBe(true)
+    }
+  })
+})
+
+describe('a tick that changes nothing changes nothing', () => {
+  it('returns the identical array so renders and writes are not invalidated', () => {
+    const boxes = [
+      box('box1', [
+        { index: 0, status: 'occupied', boatId: '04', depositedAt: NOW - HOUR_MS },
+      ]),
+    ]
+    const result = applyTick(boxes, NOW)
+    expect(result.boxes).toBe(boxes)
+    expect(result.expiredHolds).toBe(0)
+  })
+
+  it('returns a new array only for the box that actually moved', () => {
+    const boxes = [
+      box('box1', [{ index: 0, status: 'reserved', boatId: '07', reservedAt: NOW - HOLD_MS }]),
+      box('box2', [{ index: 0, status: 'occupied', boatId: '09', depositedAt: NOW }]),
+    ]
+    const result = applyTick(boxes, NOW)
+    expect(result.boxes).not.toBe(boxes)
+    expect(result.boxes[1]).toBe(boxes[1])
+  })
+})
+
+describe('claiming an existing boat', () => {
+  const fresh = () => {
+    useDockStore.getState().resetDemo()
+    useDockStore.getState().signOut()
+  }
+
+  it('refuses the wrong last-four digits and grants the right ones', () => {
+    fresh()
+    // Ramu #04 at Nizampatnam is seeded with 9848012004.
+    expect(useDockStore.getState().signInAs('04', '0000')).toBe(false)
+    expect(useDockStore.getState().myBoatId).toBeNull()
+
+    expect(useDockStore.getState().signInAs('04', '2004')).toBe(true)
+    expect(useDockStore.getState().myBoatId).toBe('04')
+  })
+
+  it('refuses a boat that does not exist at this harbour', () => {
+    fresh()
+    expect(useDockStore.getState().signInAs('99', '2004')).toBe(false)
+  })
+})
+
+describe('a blocked boat cannot move crates', () => {
+  it('refuses reserve, deposit, cancel and release once blocked', () => {
+    const store = useDockStore.getState()
+    store.resetDemo()
+    useDockStore.getState().signInAs('04', '2004')
+
+    expect(useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(true)
+
+    // The admin blocks the boat while its owner has the sheet open.
+    useDockStore.getState().setBoatStatus('04', 'blocked')
+
+    expect(useDockStore.getState().deposit(4)).toBe(false)
+    expect(useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(false)
+
+    const held = () =>
+      slotsForBoat(selectBoxes(useDockStore.getState()), '04').length
+    const before = held()
+    useDockStore.getState().cancelHold()
+    useDockStore.getState().release()
+    expect(held()).toBe(before)
   })
 })
