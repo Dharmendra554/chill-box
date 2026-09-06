@@ -50,17 +50,25 @@ export function ChoiceSheet<V extends string | number>({
       <div className="flex flex-col gap-3 p-4">
         <h2 className="text-2xl">{title}</h2>
         {body ? <p className="text-base font-bold text-ink-2">{body}</p> : null}
+        {/*
+          Wraps instead of insisting on three columns.
+          At 320 px, three columns left each button about 40 px of content
+          box, and the Telugu label "గంటల్లో" — three clusters including a
+          below-base conjunct and the two-part ో matra — is an unbreakable
+          ~45 px run. It painted over its own border and into its neighbour,
+          on the one sheet where a skipper promises the collection hour the
+          whole harbour plans around. `auto-fit` drops to two columns on a
+          narrow phone and keeps three where they fit.
+        */}
         <div
           className="grid gap-3"
-          style={{
-            gridTemplateColumns: `repeat(${Math.min(options.length, 3)}, minmax(0, 1fr))`,
-          }}
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(7rem, 1fr))' }}
         >
           {options.map((option) => (
             <button
               key={String(option.value)}
               type="button"
-              className="btn btn-lg btn-primary flex-col gap-0.5"
+              className="btn btn-lg btn-primary min-w-0 flex-col gap-0.5 px-2"
               disabled={busy}
               onClick={async () => {
                 if (busy) return

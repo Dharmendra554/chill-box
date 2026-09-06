@@ -4,7 +4,7 @@ import { formatClockShort } from '../lib/time'
 import { cx, STATUS_LABEL, STATUS_STYLE } from '../lib/ui'
 import { emptyCount, isFull, usedCount } from '../store/selectors'
 import type { ColdBox, Slot } from '../types'
-import { IceIcon } from '../icons/marine'
+import { IceIcon, TideClockIcon } from '../icons/marine'
 import { SPECIES_ICON } from '../icons/species'
 
 /**
@@ -154,8 +154,22 @@ function SlotCell({ t, slot, now }: { t: T; slot: Slot; now: number }) {
         slot.boatId ? `#${slot.boatId} · ${t(STATUS_LABEL[slot.status])}` : t(STATUS_LABEL.empty)
       }
     >
+      {/*
+        A mark that is not a colour. The four statuses were separated by fill
+        alone for a sighted skipper — the status word lives in `aria-label`
+        and `title`, and neither renders on a dock phone in sunlight. A hold
+        now carries a clock, an overdue crate carries `!`, a stored crate
+        carries its species, and an empty cell is a dot in a dashed border.
+        Four shapes, readable with the colour taken away.
+      */}
       <span className="flex items-center gap-0.5 font-display text-sm leading-none font-extrabold">
-        {Tag ? <Tag size={13} /> : null}
+        {slot.status === 'overstay' ? (
+          <span aria-hidden>!</span>
+        ) : slot.status === 'reserved' ? (
+          <TideClockIcon size={13} />
+        ) : Tag ? (
+          <Tag size={13} />
+        ) : null}
         {slot.boatId ? `#${slot.boatId}` : '·'}
       </span>
       {out !== null ? (

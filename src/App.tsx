@@ -143,7 +143,11 @@ export default function App() {
     }
     // Always Telugu, whatever the screen language is set to. And the voice
     // carries the same staleness warning the banner does — see speakCapacity.
-    const outcome = speakCapacity(boxes, reach === 'connected', () => setSpeaking(false))
+    // In local-only mode the figures ARE this phone's own and cannot be
+    // stale, so `reach` — which then tracks the weather poll — must not
+    // decide. A warning that fires when nothing is wrong stops being read.
+    const fresh = !syncEnabled || reach === 'connected'
+    const outcome = speakCapacity(boxes, fresh, () => setSpeaking(false))
     if (outcome === 'unsupported') {
       notify('warn', t('voiceNone'))
       return
@@ -161,7 +165,21 @@ export default function App() {
   }, [boxes, notify, reach, speaking, t])
 
   const inAdmin = tab === 'admin'
-  const band = marine.reading ? waveBand(marine.reading.waveHeight) : null
+  /**
+   * The sea state, and only while we can stand behind it.
+   *
+   * `useMarine` keeps the last good reading when a fetch fails, which is
+   * right for the strip — an old figure with its time on it beats no figure.
+   * It is NOT right for the landing-safety card: a six-hour-old "calm" over
+   * a squall is the one number a skipper might come in on. So a stale
+   * reading only keeps its band if that band is `rough`, which is the
+   * conservative direction; anything else becomes unknown.
+   */
+  const band = !marine.reading
+    ? null
+    : marine.error && waveBand(marine.reading.waveHeight) !== 'rough'
+      ? null
+      : waveBand(marine.reading.waveHeight)
 
   return (
     <div className="min-h-dvh bg-paper text-ink">
@@ -191,12 +209,19 @@ export default function App() {
       ) : reach !== 'stale' ? (
         <WaveStrip t={t} reading={marine.reading} error={marine.error} />
       ) : (
-        <OfflineBanner t={t} since={reachedAt} />
+        // Local-only mode has no shared copy to be behind, and `reachedAt` is
+        // then the weather poll — dating the box figures to it said something
+        // true about the wrong thing. `staleNever` is the honest line there.
+        <OfflineBanner t={t} since={syncEnabled ? reachedAt : null} />
       )}
 
       <main className="mx-auto max-w-6xl px-3 py-4 pb-28">
+        {/* The admin fallback is not `null`: on 2G the console's chunk takes
+            seconds, and the tab bar is hidden in admin — so the harbour
+            master got a blank page with no way back and no sign that
+            anything was happening. */}
         {inAdmin ? (
-          <Suspense fallback={null}>
+          <Suspense fallback={<p className="card p-4 font-bold">{t('loadingTitle')}</p>}>
             <AdminScreen />
           </Suspense>
         ) : !boat ? (

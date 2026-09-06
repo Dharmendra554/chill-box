@@ -133,15 +133,24 @@ export interface Occupancy {
   plannedOutAt: number | null
   species: Species | null
   slotIndexes: number[]
+  /** The crates in this row the harbour may take back — see forceReleasable. */
+  overdueIndexes: number[]
 }
 
 /**
  * May the harbour take this crate back over its owner's head?
  *
- * Only once the harbour has given up on it — a stored crate past its
- * overstay hour, which `applyTick` marks from `depositedAt`. That is exactly
- * the condition the database rule derives, from the same timestamp and the
- * same constant, so the button on screen and the write it performs agree.
+ * Only the crates the harbour has given up on — those past their overstay
+ * hour, which `applyTick` marks from `depositedAt`. That is exactly the
+ * condition the database rule derives, from the same timestamp and the same
+ * constant, so the button on screen and the write it performs agree.
+ *
+ * PER SLOT, never per row. A row aggregates every crate a boat holds in one
+ * box, and asking `row.status === 'overstay'` was true when ANY of them was
+ * overdue — so a boat with a crate from 04:00 and another from 09:00 offered
+ * a live button at 10:00, the rules refused the younger crate, and the whole
+ * force release failed. `overdueIndexes` is the answer to the question the
+ * rules will actually be asked.
  *
  * They did not agree before. The admin console offered Force release on
  * every stored crate, and the rule refused it for any boat a skipper had
@@ -151,7 +160,7 @@ export interface Occupancy {
  * is not to offer the tap until the harbour is entitled to it.
  */
 export function forceReleasable(row: Occupancy): boolean {
-  return row.status === 'overstay'
+  return row.overdueIndexes.length > 0
 }
 
 /**
@@ -171,7 +180,10 @@ export function occupancyRows(boxes: ColdBox[]): Occupancy[] {
         row.crates += 1
         row.slotIndexes.push(slot.index)
         if (since && since < row.since) row.since = since
-        if (slot.status === 'overstay') row.status = 'overstay'
+        if (slot.status === 'overstay') {
+          row.status = 'overstay'
+          row.overdueIndexes.push(slot.index)
+        }
         row.species ??= slot.species
         if (
           slot.plannedOutAt !== null &&
@@ -189,6 +201,7 @@ export function occupancyRows(boxes: ColdBox[]): Occupancy[] {
           plannedOutAt: slot.plannedOutAt,
           species: slot.species,
           slotIndexes: [slot.index],
+          overdueIndexes: slot.status === 'overstay' ? [slot.index] : [],
         })
       }
     }

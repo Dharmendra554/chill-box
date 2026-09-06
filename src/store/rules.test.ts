@@ -13,6 +13,7 @@ import {
   emptyCount,
   emptySlot,
   holdRemainingMs,
+  forceReleasable,
   occupancyRows,
   QUOTA,
   remainingQuota,
@@ -588,5 +589,54 @@ describe('an admin decision has to survive', () => {
     useDockStore.setState({ myBoatId: pending.id })
     await useDockStore.getState().rejectBoat(pending.id)
     expect(useDockStore.getState().myBoatId).toBeNull()
+  })
+})
+
+describe('what the harbour may take back', () => {
+  /** One box holding two of this boat's crates, deposited at different times. */
+  const mixedBox = (): ColdBox => ({
+    id: 'box1',
+    slots: Array.from({ length: 10 }, (_, index) => ({
+      index,
+      status: index === 0 ? ('overstay' as const) : index === 1 ? ('occupied' as const) : ('empty' as const),
+      boatId: index < 2 ? '11' : null,
+      species: index < 2 ? ('prawn' as const) : null,
+      reservedAt: null,
+      depositedAt: index === 0 ? NOW - 7 * HOUR_MS : index === 1 ? NOW - HOUR_MS : null,
+      plannedOutAt: null,
+    })),
+  })
+
+  it('offers force release for the overdue crate only, never the whole row', () => {
+    // The console aggregates every crate a boat holds in one box into a
+    // single row. Asking `row.status === 'overstay'` was true when ANY crate
+    // was overdue, so the button appeared for both — and the rules refuse a
+    // crate that is still in time, failing the whole force release. A crate
+    // of rotting prawn stayed in the box because a fresh crate shared a row.
+    const [row] = occupancyRows([mixedBox()])
+    expect(row.crates).toBe(2)
+    expect(row.slotIndexes).toEqual([0, 1])
+    expect(row.overdueIndexes).toEqual([0])
+    expect(forceReleasable(row)).toBe(true)
+  })
+
+  it('offers nothing while every crate is still in time', () => {
+    const box = mixedBox()
+    box.slots[0] = { ...box.slots[0], status: 'occupied', depositedAt: NOW - HOUR_MS }
+    const [row] = occupancyRows([box])
+    expect(row.overdueIndexes).toEqual([])
+    expect(forceReleasable(row)).toBe(false)
+  })
+
+  it('frees only the crates it was pointed at', () => {
+    // releaseSlots is shared by the skipper's own release and the admin
+    // override, so the index filter has to bite in both.
+    const result = releaseSlots([mixedBox()], 'nizampatnam', '11', NOW, 'box1', [0])
+    expect(result.entries).toHaveLength(1)
+    expect(result.entries[0].crates).toBe(1)
+    expect(result.entries[0].overstay).toBe(true)
+    expect(result.boxes[0].slots[0].status).toBe('empty')
+    // The crate that is still in time is untouched.
+    expect(result.boxes[0].slots[1].status).toBe('occupied')
   })
 })

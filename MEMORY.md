@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the seventh hostile audit round (two auditors), pushed.
+**Last updated:** 7 Sept 2026, after the eighth hostile audit round (two auditors), pushed.
 
 ---
 
@@ -27,12 +27,26 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 74 tests · `tsc` clean · `oxlint` zero warnings · build clean.
-Entry bundle **95 kB gzipped**, plus 12 kB of CSS and 2 kB of workbox — the
-honest first-paint figure is **~110 kB**, and quoting only the JS number was
-a round-7 finding. Map, Firebase and the admin console are separate lazy
-chunks. (§14 claimed the admin console already was; it was a static import
-until round 7.)
+**All green:** 78 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+
+**First paint, measured, all of it:**
+
+| | |
+| --- | --- |
+| Entry JS | 96 kB gz |
+| CSS | 12 kB gz |
+| Service worker + workbox runtime, first visit | 9 kB gz |
+| **Google Fonts** — three families; Noto Sans Telugu alone is 124 kB | **265 kB** |
+| **Total before the app can answer "is there room"** | **~382 kB** |
+
+Round 7 called ~110 kB "the honest first-paint figure". It was not: it
+counted only our own code and left out the fonts, which are **2.7× the JS
+entry**. Do not quote a first-paint number that stops at the bundle. The
+fonts are the largest single cost in the app and are not yet fixed —
+self-host and subset them to the glyphs `dictionary.ts` actually uses.
+
+Map, Firebase and the admin console are separate lazy chunks, verified in
+`dist/`.
 
 **Pushed and deployed.** `240bcd9` is on `main` and the Deploy workflow runs
 typecheck, tests, lint and build before publishing.
@@ -74,18 +88,22 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Seven hostile audit rounds were run and acted on
+### Eight hostile audit rounds were run and acted on
 
-Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5, and round 7's pair — 3.5
-(rules/sync/store) and 4.5 (UI/honesty/performance).** Every round found real
-defects with all four gates green, and in six of the seven the *previous
-round's fixes* caused the next round's defects. Details in §9–§13 and §16; the
-prompting recipe is in `AGENTS.md` §5.
+Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, round 7's pair — **3.5**
+(rules/sync/store) and **4.5** (UI/honesty/performance) — and round 8's
+**3.5 / 3.5**. Every round found real defects with all four gates green, and
+in seven of the eight the *previous round's fixes* caused the next round's
+defects. Details in §9–§13, §16 and §17; the recipe is in `AGENTS.md` §5.
 
-Round 7 split the review in two by concern, which was worth it — the two
-auditors found disjoint sets and then converged on the same root cause.
+Splitting the review in two by concern is worth it: the auditors find
+disjoint sets and then converge on the same root cause.
 
-**Assume the eighth will find something too.** That has been true seven times.
+**Assume the ninth will find something too.** That has been true eight times,
+and the score has not yet gone up — every round the fixes are real and every
+round they open a new seam. The lesson is not "audit harder", it is **make
+each round smaller**: round 8's two worst findings were both created by round
+7, which changed twenty things at once.
 
 ---
 
@@ -107,6 +125,11 @@ Verified in two browser instances against the real database, not by reasoning:
 - **Reset demo** resets this harbour's shared crates, so the demo script still
   works with sync on. It does not reset the roster, the ledger (append-only by
   rule) or the other two harbours' shared copies.
+  **With one caveat that was missing here:** it is a multi-path `update`, and
+  Firebase applies those atomically. One slot held by a boat a skipper has
+  claimed, inside its 6 h window, refuses all thirty — so once a real skipper
+  is holding a crate the button stops working and says so. During judging,
+  reset before anyone signs in, not after.
 
 Six defects were found and fixed doing this — see §9.
 
@@ -202,10 +225,11 @@ the list and it is deliberately its own round.
   class `useClock` documents fixing for holds.
 - `monthInsight`'s "days elapsed" derives from the device timezone, so the
   admin utilisation figure is quietly device-dependent outside IST.
-- The three Google Fonts families, including Noto Sans Telugu at four
-  weights, are fetched from a third-party origin and are **not** counted in
-  any bundle figure we quote. Plausibly larger than the whole JS entry on a
-  first visit. Self-host and subset before believing the ~110 kB number.
+- **The webfonts: 265 kB, measured**, from a third-party origin — Noto Sans
+  Telugu's Telugu subset alone is 124 kB, larger than the entire JS entry.
+  Round 7 hedged this as "plausibly larger than the whole JS entry"; it is
+  2.7× larger. This is the biggest first-paint cost in the app. Self-host,
+  subset to the glyphs `dictionary.ts` uses, and cut to two weights.
 - `SeaMap` tile handling flaps — `tileload` clears the offline banner, so a
   partial failure blinks it on and off.
 - `flushStorage` runs on `visibilitychange` for *show* as well as hide.
@@ -459,13 +483,12 @@ after the first load.
 
 **At 10× users (200 boats per harbour), what actually bites, in order:**
 
-1. **Write contention, not payload.** Booking is one transaction over the whole
-   `boxes` node, so writes to a harbour serialise. Firebase retries a losing
-   transaction, and at high concurrency retries multiply. Twenty boats sharing
-   30 slots is comfortable; two hundred boats racing the same 30 slots is a
-   thundering herd — and the real resource, 30 crates, ran out long before the
-   database did. **Per-slot compare-and-set writes fix both this and the
-   security gap.** One change, two problems; it is the top of the list.
+1. **The ledger feed, by a distance.** 223 kB to every phone on every cold
+   start; see the measured table below. This paragraph used to rank write
+   contention first and describe booking as "one transaction over the whole
+   `boxes` node" — the pre-rewrite design, superseded by `0fbf511` and
+   described as done in §15 of this same file. Per-slot writes removed that
+   contention; a reader of §14 alone was told the opposite.
 2. **The Spark plan's 100 simultaneous connections.** 200 phones with the app
    open exceeds it. That is a plan limit, not a code one — but it is the first
    hard wall, and it arrives before anything in this repo does.
@@ -516,9 +539,10 @@ NOT done in round 7 — it is a change to the subscription lifecycle, which is
 the exact seam five of six rounds broke, so it gets its own round and its own
 audit.
 
-**Size:** ~7 800 lines of source, 860 of tests. The two biggest files are
-`useDockStore.ts` (1 120) and `harbourSync.ts` (815); both are approaching the
-point where they should be split by concern rather than left to grow.
+**Size:** 8 572 lines of source, 1 292 of tests. The two biggest files are
+`useDockStore.ts` (1 224) and `harbourSync.ts` (1 119); both are past the
+point where they should be split by concern rather than left to grow. (These
+numbers drift every round. Re-count them; do not copy them forward.)
 
 ---
 
@@ -588,7 +612,7 @@ every document describing it untouched.**
 | **Force release could never work against a claimed boat.** The rule cleared a crate only when its stored status was `overstay`, and nothing ever writes that: `applyTick` raises the flag on each phone's own copy, and the watcher overwrites it from the wire on the next snapshot | A skipper claims a boat, stores a crate, loses the phone. Six hours later the crate is flagged, the harbour master taps Force release, and the write is refused. That crate — with a catch rotting in it — is unclearable by **every phone in the harbour, the harbour master included**, for the life of the deployment. Every rehearsal passed because every seeded boat is unbound. The rule now derives the overstay from `depositedAt`, the same timestamp the screen counts from |
 | The Force release button was offered on every stored crate | A dead button whose failure only ever appears in production. `forceReleasable` now gates it, and the row says why when it is not offered |
 | **Registration was bricked under the published rules and blamed the network** | `claimBoat` wrote `uid` unconditionally; rules predating that field refuse the unknown child, a bare catch ate the throw, and a new skipper on full bars was told "No signal. Nothing was saved". It falls back to registering unbound now — `claimForThisDevice` already did, and the fix had been generalised to one call site and not the other |
-| **A two-crate deposit reported success when one crate committed** | `mutateOwnSlots` returned ok on `some`. The skipper walks away believing both crates are stored; the second sits on a four-hour hold with fish in it and is handed to the next boat. Verbatim the round-3 defect, reintroduced by per-slot writes through a different door. `settle` now refuses to call a partial change a success, and release writes one ledger row per crate **actually freed** — the ledger is what the society bills off and no rule can delete a row |
+| **A two-crate deposit reported success when one crate committed** | `mutateOwnSlots` returned ok on `some`. The skipper walks away believing both crates are stored; the second sits on a four-hour hold with fish in it and is handed to the next boat. Verbatim the round-3 defect, reintroduced by per-slot writes through a different door. `settle` now refuses to call a partial change a success. **The ledger half of this claim was false and round 8 caught it — see §17**  |
 | **Twenty seconds of every cold start showed fabricated capacity** | `reach === 'checking'` rendered the wave strip, so the boxes showed the last snapshot or, on a fresh install, `mock.ts`'s hand-tuned demo occupancy — pixel-identical to live data, undated. It fails in the dangerous direction: crates that do not exist, not "0 free". A third banner state now says the numbers are still coming |
 | **The spoken readout never carried the staleness warning** | The one channel a non-reading skipper has, and the whole staleness contract was on-screen text. He taps the speaker on a frozen snapshot and hears a flat, confident "four crates" |
 | **The rules file's 49-line header was byte-identical to its pre-rewrite version** | It denied protections that now exist and claimed a ten-slot shape rule that had been deleted — in the file the README tells an operator to read before publishing. Rewritten from the rules underneath it |
@@ -619,3 +643,44 @@ costume:** verify the side of the system the user experiences. Round 5
 counted rows instead of running the query. Round 6 measured the wrong side of
 the ledger feed. Round 7 verified force-release against a roster where every
 boat was unbound, which is the only case where it works.
+
+---
+
+## 17. Eighth review — two auditors, 3.5 and 3.5, both DO NOT SHIP → fixed
+
+The round that proved the standing lesson twice over: **two of the worst
+findings were created by round 7's own fixes**, and one of them was a money
+bug written by the commit whose message promised the opposite.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **The claim-your-boat form did nothing on a wrong PIN.** `if (!signInAs(...))` — `signInAs` is `async`, so `!Promise` is always false and `setWrong(true)` was unreachable. The "that does not match" panel could never render | A returning skipper — the only path an existing boat ever takes, and step 1 of the demo script — mistypes one digit at 4 a.m. and gets a button that does nothing, with no reason, for ever. Eight rounds walked past it because every rehearsal typed the right digits, and `oxlint` has no `no-misused-promises` rule |
+| **The ledger over-billed on a partial release.** `entries.slice(0, freed.changed)` — `changed` counts SLOTS, `entries` is one row PER BOX carrying an aggregated crate count. Releasing two crates and winning one wrote a single row saying `crates: 2` | The society bills off that row and no rule can ever delete it, so a fisherman was charged for a crate still sitting in the box. Written by round 7, under a comment that said "one row per crate ACTUALLY freed, never per crate we aimed at". Rows are now built inside `releaseRemote` from the slots that actually came out |
+| **`Promise.all` threw away committed slots.** A rules refusal *rejects*; `Promise.all` discards the siblings that already committed and jumps to the catch | A crate came out of the box with no ledger row, no audit row, and the harbour master was told "the harbour record refused that". `settle` fixed partial-reported-as-success; this was the mirror — partial reported as total failure, losing the billing record. `Promise.allSettled` now |
+| **Force release was still offered where the rules refuse it.** `forceReleasable` asked a per-slot question of an aggregated row: any overdue crate lit the button for every crate in that box | A boat with a crate from 04:00 and another from 09:00 showed one live button at 10:00; the rules refused the younger crate and the whole action failed. Now `overdueIndexes`, and the admin write is aimed only at the crates the rules will accept |
+| **`writeNewBoat` could not tell a dead link from a refusal** | A registration that timed out on 2G fell through to the unbound retry and landed on the reconnect — registering a boat *any* phone in the harbour can move crates for, permanently and silently, because a `uid` can only be written while absent and nothing ever tries again. `reasonFor` now gates the fallback |
+| **`geo.status` was computed, documented, and read by nothing** | The safety card could not tell "no position yet" from "no position ever", so a skipper in breakers read "still working out where you are" for ever and waited for a fix that was never coming. On the one screen that exists for a boat in trouble |
+| **A stale wave height rendered as a confident current reading** | `error` was consulted only when there was NO reading, so once one landed every later failure was invisible: a six-hour-old "calm · 0.6 m", undated, driving the landing-safety advice. It now carries its time, and a stale reading only keeps its band if that band is `rough` — the conservative direction |
+| **The map overlay was rebuilt every second**, because an inline `onPick` was in the redraw effect's dependencies while the parent re-renders at 1 Hz | It defeated the memoisation put there for exactly this, and a rebuild landing between thumb-down and thumb-up destroyed the marker — roughly one tap in ten silently lost. Round 7 fixed dead pins in the source and left them dead on the device |
+| `letter-spacing` survived in `.btn` — more Telugu than the sixteen sites round 7 fixed | |
+| The toast's "only a real tap dismisses" guard read state React had already cleared, so every nudge dismissed the message | |
+| `ChoiceSheet`'s three columns still overflowed at 320 px — ~40 px of content box for an unbreakable ~45 px Telugu cluster | On the sheet where a skipper promises the collection hour the whole harbour plans around |
+| Block/unblock wrote the audit row before the write resolved and left the optimistic change on screen | The roster said "blocked" while the shared copy said active, and the audit chain asserted it |
+| Admin console's `Suspense fallback={null}` | A blank page with no tab bar on 2G, then a crash screen if the chunk failed |
+| Four README lines describing code that no longer exists — three of them created by round 7 | |
+| The rules header claimed absolutely that "a client cannot empty the harbour", contradicted thirty lines later by "a boat nobody has claimed is open to anyone" | In the shipped demo state no boat is claimed, so the absolute sentence is false exactly when it matters |
+| `$slot`'s index check lived only in `.validate`, which does not run for a child-path write | `boxes/box1/47/status` was accepted. Same class as round 7's `$box` fix, one level down. Both checks are in `.write` now, which IS evaluated at every ancestor |
+| A slot could be written `occupied` with no `boatId` — invisible to the harbour list and the console, permanently unbookable | |
+
+**And three tests that could not fail**, two of them asserting on a local
+guard they never got past, one asserting a row count where the defect was in
+the row's contents. The stub modelled a rules refusal as a lost race, which
+is the one branch Firebase does not take — so the `Promise.all` bug was
+untestable by construction. Every fix above now has a test that fails
+without it; the two ledger ones were mutation-checked.
+
+**What is still open and deliberately not done here:** the 223 kB ledger feed
+(§14), self-hosting the fonts (§5), and the demo/live toggle. Each is a
+change to a different subsystem and each gets its own round — piling fixes
+together is demonstrably how this codebase generates the next round's
+defects, and round 8 is the second consecutive proof.

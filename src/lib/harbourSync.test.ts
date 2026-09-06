@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boxesFromWire, boxesToWire, expireHolds, pruneWire } from './harbourSync'
+import { boxesFromWire, expireHolds, pruneWire, slotPaths } from './harbourSync'
 import { HOLD_MS } from './time'
 import type { ColdBox } from '../types'
 
@@ -50,16 +50,34 @@ describe('pruneWire', () => {
   })
 })
 
+/**
+ * The wire shape as the app actually writes it.
+ *
+ * Through `slotPaths`, which is what `seedHarbour` and `resetRemoteBoxes`
+ * send, rather than through a to-wire helper that existed only for this
+ * test. The round trip is only worth asserting between the real writer and
+ * the real reader.
+ */
+function wireOf(boxes: ReturnType<typeof box>[]): Record<string, Record<string, unknown>> {
+  const wire: Record<string, Record<string, unknown>> = {}
+  for (const [path, slot] of Object.entries(slotPaths(boxes))) {
+    const [boxId, index] = path.split('/')
+    wire[boxId] ??= {}
+    wire[boxId][index] = slot
+  }
+  return wire
+}
+
 describe('boxes wire round trip', () => {
   it('survives a full round trip unchanged', () => {
     const before = [box('box1', [0, 3]), box('box2'), box('box3', [9])]
-    expect(boxesFromWire(boxesToWire(before))).toEqual(before)
+    expect(boxesFromWire(wireOf(before) as never)).toEqual(before)
   })
 
   it('reads back the arrays Firebase turns numeric keys into', () => {
     // Firebase stores {0: …, 1: …} as an array. Anything indexing the wire
     // shape has to cope, or a whole box silently reads back empty.
-    const wire = boxesToWire([box('box1', [2]), box('box2'), box('box3')])
+    const wire = wireOf([box('box1', [2]), box('box2'), box('box3')])
     const asArrays = Object.fromEntries(
       Object.entries(wire).map(([id, slots]) => [id, Object.values(slots)]),
     )

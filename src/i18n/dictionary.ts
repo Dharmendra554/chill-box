@@ -129,6 +129,7 @@ const S = {
   // — Safety ——————————————————————————————————————
   safetyTitle: { te: 'ల్యాండింగ్ భద్రత', en: 'Landing safety' },
   safetyRough: { te: 'అలలు ప్రమాదకరంగా ఉన్నాయి. ల్యాండింగ్ ఆలస్యం చేయండి.', en: 'Breakers are dangerous. Delay your landing.' },
+  safetyUnknown: { te: 'అలల సమాచారం ఇప్పుడు రావట్లేదు. మీ కళ్లతో చూసి నిర్ణయించండి.', en: 'No current swell reading. Judge the sea with your own eyes.' },
   safetyStepWait: { te: 'ముఖద్వారం వద్ద ఆగి, అలల వరుస చూడండి — పెద్ద అల తర్వాత లోపలికి రండి.', en: 'Hold off the mouth, watch the wave sets, and come in behind a big one.' },
   safetyStepLife: { te: 'లైఫ్ జాకెట్లు వేసుకోండి. డెక్ మీద ఉన్నవన్నీ కట్టేయండి.', en: 'Life jackets on. Lash everything loose on deck.' },
   safetyStepCall: { te: 'ఇబ్బంది ఉంటే వెంటనే ఫోన్ చేయండి — ఆలస్యం చేయకండి.', en: 'In trouble, call straight away — do not wait it out.' },
@@ -145,6 +146,7 @@ const S = {
   lastFix: { te: 'ఈ చోటు {0} చూసినది', en: 'This position was taken {0}' },
   fixStale: { te: 'ఈ లొకేషన్ {0} నాటిది — కదిలి ఉంటే మళ్లీ చూడండి', en: 'This position is {0} old — check again if you have moved' },
   noFix: { te: 'మీరు ఎక్కడ ఉన్నారో ఇంకా చూస్తోంది', en: 'Still working out where you are' },
+  noFixEver: { te: 'ఈ ఫోన్ మీ చోటు చెప్పలేకపోతోంది. ఫోన్‌లో ఉన్న నంబర్లకు కాల్ చేసి మీరు ఎక్కడ ఉన్నారో చెప్పండి.', en: 'This phone cannot tell where you are. Call the numbers above and say your position yourself.' },
   contactsSaved: { te: 'నంబర్ల ఫైల్ డౌన్‌లోడ్ అయింది — తెరిచి సేవ్ చేయండి', en: 'Contacts file downloaded — open it to save' },
 
 
@@ -212,7 +214,7 @@ const S = {
   unblock: { te: 'తిరిగి ఇవ్వు', en: 'Restore' },
   adminLive: { te: 'ప్రస్తుత వాడకం', en: 'Live usage' },
   adminForceRelease: { te: 'బలవంతంగా ఖాళీ', en: 'Force release' },
-  adminForceWait: { te: 'ఆలస్యం అయ్యాకే ఖాళీ చేయగలరు', en: 'Can be cleared once it is overdue' },
+  adminForceWait: { te: 'పెట్టి 6 గంటలు దాటాకే ఖాళీ చేయగలరు', en: 'Can be cleared 6 h after it was stored' },
   adminMonth: { te: 'నెల', en: 'Month' },
   adminTrips: { te: 'ట్రిప్‌లు', en: 'Trips' },
   adminCrates: { te: 'క్రేట్లు', en: 'Crates' },

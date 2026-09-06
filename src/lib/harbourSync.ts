@@ -1,5 +1,5 @@
 import { LEDGER_LIMIT, QUOTA } from '../store/selectors'
-import { HOLD_MS } from './time'
+import { HOLD_MS, OVERSTAY_MS } from './time'
 import type { Boat, BoxId, ColdBox, HarbourId, LedgerEntry, Slot, Species } from '../types'
 
 /**
@@ -239,12 +239,6 @@ export function boxesFromWire(wire: WireBoxes): ColdBox[] {
     id,
     slots: Array.from({ length: 10 }, (_, i) => fromWire(wire?.[id]?.[i], i)),
   }))
-}
-
-export function boxesToWire(boxes: ColdBox[]): WireBoxes {
-  return Object.fromEntries(
-    boxes.map((box) => [box.id, Object.fromEntries(box.slots.map((s) => [s.index, toWire(s)]))]),
-  )
 }
 
 /**
@@ -503,15 +497,18 @@ export async function claimBoat(harbourId: HarbourId, boat: Boat): Promise<strin
     const id = String(n).padStart(2, '0')
 
     // Bind the boat to this device as it is created: whoever registers a boat
-    // owns it, with no separate claiming step to lose. If that is refused,
-    // register without the binding rather than failing — see writeNewBoat.
+    // owns it, with no separate claiming step to lose. Only a genuine rules
+    // refusal — an older published rules file that does not know the `uid`
+    // field — falls back to registering unbound. A dead link fails the
+    // registration instead, so the skipper retries with their binding intact
+    // rather than silently owning a boat anyone can move crates for.
     let outcome = await writeNewBoat(a, harbourId, id, boat, a.uid)
     if (outcome === 'refused' && a.uid) {
       outcome = await writeNewBoat(a, harbourId, id, boat, null)
     }
 
     if (outcome === 'won') return id
-    if (outcome === 'refused') return null
+    if (outcome !== 'taken') return null
   }
   return null
 }
@@ -537,7 +534,7 @@ async function writeNewBoat(
   id: string,
   boat: Boat,
   bind: string | null,
-): Promise<'won' | 'taken' | 'refused'> {
+): Promise<'won' | 'taken' | 'refused' | 'offline'> {
   const wire = toWireBoat({ ...boat, id })
   try {
     const result = await a.runTransaction(
@@ -545,8 +542,15 @@ async function writeNewBoat(
       (current: WireBoat | null) => (current ? undefined : bind ? { ...wire, uid: bind } : wire),
     )
     return result.committed ? 'won' : 'taken'
-  } catch {
-    return 'refused'
+  } catch (error) {
+    // A timeout is not a refusal. Treating every throw as "the rules said
+    // no" made a dropped socket fall through to the unbound retry, which
+    // then landed on the reconnect — registering a boat that ANY phone in
+    // the harbour can move crates for, permanently and silently, because a
+    // `uid` can only be written while it is absent and nothing ever tries
+    // again. Only a genuine permission denial may cost a skipper their
+    // binding.
+    return reasonFor(error) === 'refused' ? 'refused' : 'offline'
   }
 }
 
@@ -705,7 +709,7 @@ export async function resetRemoteBoxes(
 }
 
 /** `{ 'box1/0': slot, 'box1/1': slot, … }` — one entry per slot. */
-function slotPaths(boxes: ColdBox[]): Record<string, WireSlot> {
+export function slotPaths(boxes: ColdBox[]): Record<string, WireSlot> {
   const paths: Record<string, WireSlot> = {}
   for (const box of boxes) {
     for (const slot of box.slots) paths[`${box.id}/${slot.index}`] = toWire(slot)
@@ -809,17 +813,54 @@ function ownSlots(
   boatId: string,
   statuses: Slot['status'][],
   onlyBoxId?: BoxId,
-): Array<{ boxId: BoxId; index: number; slot: WireSlot }> {
-  const found: Array<{ boxId: BoxId; index: number; slot: WireSlot }> = []
+  onlyIndexes?: number[],
+): Freed[] {
+  const found: Freed[] = []
   for (const boxId of BOX_IDS) {
     if (onlyBoxId && boxId !== onlyBoxId) continue
     for (const [index, slot] of Object.entries(wire[boxId] ?? {})) {
+      if (onlyIndexes && !onlyIndexes.includes(Number(index))) continue
       if (slot && slot.boatId === boatId && statuses.includes(slot.status)) {
         found.push({ boxId, index: Number(index), slot })
       }
     }
   }
   return found
+}
+
+/**
+ * The ledger rows a release earned — one per box, from the crates that
+ * actually came out of it.
+ *
+ * `overstay` is derived from the timestamp rather than read from the wire,
+ * because the wire never carries the `overstay` status: it is raised on each
+ * phone's own copy by `applyTick`. The rules use the same timestamp and the
+ * same constant, so the row, the screen and the database agree.
+ */
+function rowsFor(freed: Freed[], now: number): Omit<LedgerEntry, 'id' | 'harbourId'>[] {
+  const rows = new Map<BoxId, Omit<LedgerEntry, 'id' | 'harbourId'>>()
+  for (const { boxId, slot } of freed) {
+    const depositedAt = slot.depositedAt ?? now
+    const late = slot.status === 'overstay' || depositedAt + OVERSTAY_MS <= now
+    const row = rows.get(boxId)
+    if (!row) {
+      rows.set(boxId, {
+        boatId: slot.boatId ?? '',
+        boxId,
+        crates: 1,
+        species: slot.species ?? null,
+        depositedAt,
+        releasedAt: now,
+        overstay: late,
+      })
+      continue
+    }
+    row.crates += 1
+    row.species ??= slot.species ?? null
+    if (depositedAt < row.depositedAt) row.depositedAt = depositedAt
+    if (late) row.overstay = true
+  }
+  return [...rows.values()]
 }
 
 /**
@@ -952,8 +993,8 @@ export async function cancelRemote(
 export async function releaseRemote(
   harbourId: HarbourId,
   boatId: string,
-  entries: Omit<LedgerEntry, 'id' | 'harbourId'>[],
   onlyBoxId?: BoxId,
+  onlyIndexes?: number[],
 ): Promise<RemoteResult> {
   const freed = await mutateOwnSlots(
     harbourId,
@@ -961,22 +1002,27 @@ export async function releaseRemote(
     ['occupied', 'overstay'],
     () => ({ status: 'empty' }),
     onlyBoxId,
+    onlyIndexes,
   )
   if (!freed.ok) return freed
-  if (freed.changed === 0) return { ok: false, error: 'stale' }
+  if (freed.freed.length === 0) return { ok: false, error: 'stale' }
 
   const a = await api()
   if (!a) return { ok: true } // slots are free; the row is the lesser loss
 
   try {
-    // One row per crate ACTUALLY freed, never per crate we aimed at. The
-    // ledger is what the society bills off and it can never be corrected —
-    // rows are append-only by rule — so over-reporting a release is charging
-    // a fisherman for a crate that is still sitting in the box.
+    // The rows are built HERE, from the slots that actually came out, rather
+    // than handed in from what the caller hoped would happen. They used to
+    // arrive precomputed and be trimmed with `slice(0, changed)` — but those
+    // entries are one row PER BOX carrying an aggregated crate count, while
+    // `changed` counts SLOTS. Two units, one array: releasing two crates and
+    // winning one wrote a single row saying `crates: 2`. The ledger is what
+    // the society bills off and no rule can ever delete a row, so that
+    // charged a fisherman for a crate still sitting in the box.
     await Promise.all(
-      entries
-        .slice(0, freed.changed)
-        .map((entry) => a.set(a.push(a.ref(a.db, `harbours/${harbourId}/ledger`)), entry)),
+      rowsFor(freed.freed, serverNow()).map((row) =>
+        a.set(a.push(a.ref(a.db, `harbours/${harbourId}/ledger`)), row),
+      ),
     )
   } catch {
     // Same judgement as above: the crate is already free, which is what the
@@ -989,8 +1035,16 @@ export async function releaseRemote(
   return settle(freed)
 }
 
-/** How many of this boat's slots moved, out of how many were aimed at. */
-type SlotChange = { ok: true; changed: number; total: number } | { ok: false; error: BookingError }
+/**
+ * Which of this boat's slots moved, out of how many were aimed at.
+ *
+ * The slots themselves, not a count: a release has to write one ledger row
+ * per crate that ACTUALLY came out, and a count cannot say which box those
+ * crates were in. Counting instead of correlating billed a fisherman for two
+ * crates when one was still in the box.
+ */
+type Freed = { boxId: BoxId; index: number; slot: WireSlot }
+type SlotChange = { ok: true; freed: Freed[]; total: number } | { ok: false; error: BookingError }
 
 /**
  * Rewrite every slot this boat owns in the given statuses.
@@ -1007,6 +1061,7 @@ async function mutateOwnSlots(
   statuses: Slot['status'][],
   change: (slot: WireSlot) => WireSlot,
   onlyBoxId?: BoxId,
+  onlyIndexes?: number[],
 ): Promise<SlotChange> {
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
@@ -1015,20 +1070,28 @@ async function mutateOwnSlots(
     const wire = await readBoxes(a, harbourId)
     if (!wire) return { ok: false, error: 'stale' }
 
-    const mine = ownSlots(wire, boatId, statuses, onlyBoxId)
+    const mine = ownSlots(wire, boatId, statuses, onlyBoxId, onlyIndexes)
     // Nothing to change is not a dead link. The hold ran out, or another
     // phone got there first — saying "no signal" on full bars is a lie.
     if (mine.length === 0) return { ok: false, error: 'stale' }
 
+    // allSettled, NOT all. A security-rule refusal REJECTS the transaction
+    // promise, and `Promise.all` would throw away the siblings that had
+    // already committed on the server — so a crate came out of the box, no
+    // ledger row was written for it, no audit row either, and the harbour
+    // master was told the record had refused the whole thing. Every write
+    // that lands has to be accounted for, whatever its neighbours did.
+    //
     // Each re-checks ownership inside its own transaction, so a crate
     // released from another phone while this ran is skipped rather than
     // resurrected.
-    const done = await Promise.all(
+    const done = await Promise.allSettled(
       mine.map(({ boxId, index }) =>
         changeOwnSlot(a, harbourId, boxId, index, boatId, statuses, change),
       ),
     )
-    return { ok: true, changed: done.filter(Boolean).length, total: mine.length }
+    const freed = mine.filter((_, i) => done[i].status === 'fulfilled' && done[i].value)
+    return { ok: true, freed, total: mine.length }
   } catch (error) {
     return { ok: false, error: reasonFor(error) }
   }
@@ -1051,6 +1114,6 @@ async function mutateOwnSlots(
  */
 function settle(result: SlotChange): RemoteResult {
   if (!result.ok) return result
-  if (result.changed === 0) return { ok: false, error: 'stale' }
-  return result.changed === result.total ? { ok: true } : { ok: false, error: 'partial' }
+  if (result.freed.length === 0) return { ok: false, error: 'stale' }
+  return result.freed.length === result.total ? { ok: true } : { ok: false, error: 'partial' }
 }

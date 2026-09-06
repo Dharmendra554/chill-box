@@ -320,7 +320,8 @@ export interface DockState {
   approveBoat: (id: string) => Promise<void>
   rejectBoat: (id: string) => Promise<void>
   setBoatStatus: (id: string, status: Boat['status']) => Promise<boolean>
-  adminRelease: (boatId: string, boxId: BoxId) => Promise<void>
+  /** `indexes` are the crates the harbour may take back — see forceReleasable. */
+  adminRelease: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<void>
   publishHarbour: () => Promise<void>
   record: (action: string, target: string, detail?: string) => Promise<void>
 
@@ -366,6 +367,7 @@ export function releaseSlots(
   boatId: string,
   now: number,
   onlyBoxId?: BoxId,
+  onlyIndexes?: number[],
 ): { boxes: ColdBox[]; entries: LedgerEntry[] } {
   const entries: LedgerEntry[] = []
 
@@ -380,7 +382,8 @@ export function releaseSlots(
     const slots = box.slots.map((slot) => {
       const mine =
         slot.boatId === boatId &&
-        (slot.status === 'occupied' || slot.status === 'overstay')
+        (slot.status === 'occupied' || slot.status === 'overstay') &&
+        (!onlyIndexes || onlyIndexes.includes(slot.index))
       if (!mine) return slot
 
       crates += 1
@@ -790,15 +793,11 @@ export const useDockStore = create<DockState>()(
           if (result.entries.length === 0) return
           if (syncEnabled) {
             if (!requireLink()) return
-            // The ledger rows are computed from what we can see, then the
-            // shared copy frees the slots and appends them together.
-            reportFailure(
-              await releaseRemote(
-                harbourId,
-                myBoatId,
-                result.entries.map(({ id: _id, harbourId: _h, ...row }) => row),
-              ),
-            )
+            // No rows are passed in: the shared path writes one row per crate
+            // it actually freed, which is not knowable from here. Handing it
+            // rows built from this phone's view billed a fisherman for crates
+            // that never came out of the box.
+            reportFailure(await releaseRemote(harbourId, myBoatId))
             return
           }
           putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
@@ -890,18 +889,38 @@ export const useDockStore = create<DockState>()(
           const boat = updated.find((b) => b.harbourId === harbourId && b.id === id)
           if (!syncEnabled || !boat) return true
           const result = await putBoat(harbourId, boat)
-          reportFailure(result)
+          if (!result.ok) {
+            // Put the roster back. Leaving the optimistic change on screen
+            // told the harbour master a boat was blocked while the shared
+            // copy still said active — so the "blocked" skipper went on
+            // booking, and nothing on the admin's screen disagreed.
+            const was = boats.find((b) => b.harbourId === harbourId && b.id === id)?.status
+            if (was) {
+              set({
+                boats: get().boats.map((b) =>
+                  b.harbourId === harbourId && b.id === id ? { ...b, status: was } : b,
+                ),
+              })
+            }
+            reportFailure(result)
+          }
           return result.ok
         },
 
-        adminRelease: async (boatId, boxId) => {
+        adminRelease: async (boatId, boxId, indexes) => {
           const { boxesByHarbour, harbourId, ledger } = get()
+          // Only the crates the harbour has actually given up on. A box row
+          // in the console aggregates every crate a boat holds there, so a
+          // boat with one overdue crate and one stored an hour ago showed a
+          // single live Force release button — and the rules rightly refused
+          // the fresh crate, failing the whole action.
           const result = releaseSlots(
             boxesByHarbour[harbourId],
             harbourId,
             boatId,
             serverNow(),
             boxId,
+            indexes,
           )
           if (result.entries.length === 0) return
 
@@ -922,12 +941,7 @@ export const useDockStore = create<DockState>()(
 
           if (syncEnabled) {
             if (!requireLink()) return
-            const outcome = await releaseRemote(
-              harbourId,
-              boatId,
-              result.entries.map(({ id: _id, harbourId: _h, ...row }) => row),
-              boxId,
-            )
+            const outcome = await releaseRemote(harbourId, boatId, boxId, indexes)
             reportFailure(outcome)
             if (outcome.ok) logIt()
             return

@@ -31,7 +31,16 @@ const NATIONAL = [
   { key: 'emDisaster', number: '1077' },
 ] as const
 
-export function SafetyCard({ band, fix }: { band: WaveBand | null; fix: GeoFix | null }) {
+export function SafetyCard({
+  band,
+  fix,
+  locating,
+}: {
+  band: WaveBand | null
+  fix: GeoFix | null
+  /** Whether a position may still arrive. False once we know none will. */
+  locating: boolean
+}) {
   const t = useT()
   const harbour = useDockStore(selectHarbour)
   const notify = useDockStore((s) => s.notify)
@@ -58,7 +67,13 @@ export function SafetyCard({ band, fix }: { band: WaveBand | null; fix: GeoFix |
         {t('safetyTitle')}
       </h2>
 
-      <p className="font-bold">{t(rough ? 'safetyRough' : 'safetyCalm')}</p>
+      {/* Three states, not two. `band === null` means we do not know — the
+          swell fetch has failed and the last figure is too old to stand
+          behind — and telling a skipper the sea is calm on that basis is the
+          most expensive lie this app could tell. */}
+      <p className="font-bold">
+        {t(rough ? 'safetyRough' : band === null ? 'safetyUnknown' : 'safetyCalm')}
+      </p>
 
       {rough ? (
         <ol className="flex list-decimal flex-col gap-1.5 pl-5 font-bold">
@@ -97,7 +112,7 @@ export function SafetyCard({ band, fix }: { band: WaveBand | null; fix: GeoFix |
         {t('saveNumbers')}
       </button>
 
-      <ShareLocation fix={fix} />
+      <ShareLocation fix={fix} locating={locating} />
     </section>
   )
 }
@@ -108,13 +123,23 @@ export function SafetyCard({ band, fix }: { band: WaveBand | null; fix: GeoFix |
  * crackly VHF — and hand it to the phone's own share sheet, which reaches
  * whatever they already use to reach the shore.
  */
-function ShareLocation({ fix }: { fix: GeoFix | null }) {
+function ShareLocation({ fix, locating }: { fix: GeoFix | null; locating: boolean }) {
   const t = useT()
   const now = useNow()
   const lang = useDockStore((s) => s.lang)
   const harbour = useDockStore(selectHarbour)
 
-  if (!fix) return <p className="text-sm font-bold text-ink-2">{t('noFix')}</p>
+  // "Still working out where you are" is only true while a position may
+  // still arrive. It used to be shown for ever, including when the phone had
+  // already refused — so a skipper in breakers, on the one screen that
+  // exists for a boat in trouble, waited for a position that was never
+  // coming instead of reading it off a plotter or saying plainly that he
+  // did not have one. The hook knows within twelve seconds; nobody asked it.
+  if (!fix) {
+    return (
+      <p className="text-sm font-bold text-ink-2">{t(locating ? 'noFix' : 'noFixEver')}</p>
+    )
+  }
 
   // A position is only useful if you know how old it is. Under a shed roof
   // a fix can be an hour stale, and in a distress call that is the

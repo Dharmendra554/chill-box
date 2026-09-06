@@ -101,7 +101,11 @@ textarea {
     font-weight: 800;
     font-size: 1.1rem;
     line-height: 1.15;
-    letter-spacing: 0.005em;
+    /* No letter-spacing. `.btn` carries more Telugu than anything else in
+       the app — every action, every emergency number, every sheet option —
+       and tracking detaches a matra from the consonant it belongs to. See
+       AGENTS.md §4. Sixteen other sites were fixed and this one, the
+       largest, was missed. */
     text-align: center;
     cursor: pointer;
     transition:

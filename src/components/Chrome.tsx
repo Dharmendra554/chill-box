@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { HARBOURS } from '../data/harbours'
 import type { T } from '../i18n/dictionary'
 import { waveBand } from '../lib/marine'
@@ -147,14 +147,21 @@ export function WaveStrip({
       <WaveIcon size={18} />
       {t(band === 'calm' ? 'waveCalm' : band === 'moderate' ? 'waveModerate' : 'waveRough')}
       <span className="tabular">{reading.waveHeight.toFixed(1)} m</span>
+      {/* `error` was consulted only when there was NO reading, so once one
+          had landed every later failure was invisible and a six-hour-old
+          "calm · 0.6 m" sat here undated for the rest of the night. Every
+          other figure in this app carries its age; the one that decides
+          whether a boat comes in did not. */}
       <span className="ml-auto truncate font-bold">
-        {t(
-          band === 'calm'
-            ? 'waveCalmHint'
-            : band === 'moderate'
-              ? 'waveModerateHint'
-              : 'waveRoughHint',
-        )}
+        {error
+          ? t('staleBody', formatClock(reading.fetchedAt))
+          : t(
+              band === 'calm'
+                ? 'waveCalmHint'
+                : band === 'moderate'
+                  ? 'waveModerateHint'
+                  : 'waveRoughHint',
+            )}
       </span>
     </p>
   )
@@ -257,6 +264,12 @@ export function Toast({
   // an effect, which would cost a second render on every message.
   const [drag, setDrag] = useState<{ id: number; from: number; dx: number } | null>(null)
   const dx = drag && drag.id === toast?.id ? drag.dx : 0
+  // Whether the finger moved. A ref, not the drag state: React flushes the
+  // `pointerup` update before dispatching the `click`, so by the time the
+  // click handler runs the offset has already been cleared and a guard that
+  // read it saw zero every time — every nudge dismissed the message, which
+  // for a refusal is often the only record that a booking did not happen.
+  const swiped = useRef(false)
 
   if (!toast) return null
 
@@ -282,17 +295,22 @@ export function Toast({
         transition: drag ? undefined : 'transform 150ms, opacity 150ms',
       }}
       onPointerDown={(e) => {
+        swiped.current = false
         setDrag({ id: toast.id, from: e.clientX, dx: 0 })
         e.currentTarget.setPointerCapture(e.pointerId)
       }}
       onPointerMove={(e) => {
-        setDrag((d) => (d ? { ...d, dx: e.clientX - d.from } : null))
+        setDrag((d) => {
+          if (!d) return null
+          if (Math.abs(e.clientX - d.from) > 4) swiped.current = true
+          return { ...d, dx: e.clientX - d.from }
+        })
       }}
       onPointerUp={settle}
       onPointerCancel={settle}
       onClick={() => {
         // A drag ends in a click too, so only a real tap dismisses.
-        if (Math.abs(dx) < 4) onDismiss()
+        if (!swiped.current) onDismiss()
       }}
     >
       {toast.text}

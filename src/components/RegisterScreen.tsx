@@ -217,13 +217,26 @@ function ClaimBoat({
   const signInAs = useDockStore((s) => s.signInAs)
   const [digits, setDigits] = useState('')
   const [wrong, setWrong] = useState(false)
+  const [checking, setChecking] = useState(false)
 
   return (
     <form
       className="card flex flex-col gap-2 border-sea p-3"
-      onSubmit={(event) => {
+      // AWAITED. `signInAs` is async, so `!signInAs(...)` was `!Promise` —
+      // always false — and the "that does not match" panel below could never
+      // render. One transposed digit at 4 a.m. produced a button that did
+      // nothing at all, with no reason, on the only path an already-
+      // registered skipper ever takes. Every rehearsal typed the right
+      // digits, which is why seven audit rounds walked past it.
+      onSubmit={async (event) => {
         event.preventDefault()
-        if (!signInAs(boatId, digits)) setWrong(true)
+        if (checking) return
+        setChecking(true)
+        try {
+          if (!(await signInAs(boatId, digits))) setWrong(true)
+        } finally {
+          setChecking(false)
+        }
       }}
     >
       <h4 className="text-lg">{t('claimTitle', label)}</h4>
@@ -246,7 +259,11 @@ function ClaimBoat({
         </p>
       ) : null}
       <div className="grid grid-cols-2 gap-2">
-        <button type="submit" className="btn btn-primary" disabled={digits.length < 4}>
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={digits.length < 4 || checking}
+        >
           {t('claimGo')}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onClose}>

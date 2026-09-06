@@ -264,7 +264,7 @@ function Console() {
                 <ConfirmButton
                   className="btn h-11 min-h-11 px-3 text-sm btn-warn"
                   label={t('adminForceRelease')}
-                  onConfirm={() => adminRelease(row.boatId, row.boxId)}
+                  onConfirm={() => adminRelease(row.boatId, row.boxId, row.overdueIndexes)}
                 />
               ) : (
                 // A true sentence rather than a button that the database
@@ -421,10 +421,20 @@ function Console() {
                     'btn h-11 min-h-11 px-3 text-sm',
                     boat.status === 'blocked' ? 'btn-primary' : 'btn-ghost',
                   )}
-                  onClick={() => {
+                  // Awaited, and logged only if it landed. The log records
+                  // what happened, not what was attempted — the same rule
+                  // already applied to approve, reject and force release,
+                  // and missed here. A refused write left the hash-chained
+                  // audit trail asserting a block the database never made,
+                  // while the blocked skipper went on booking.
+                  onClick={async () => {
                     const next = boat.status === 'blocked' ? 'active' : 'blocked'
-                    setBoatStatus(boat.id, next)
-                    void record(`boat.${next === 'blocked' ? 'block' : 'unblock'}`, `#${boat.id}`)
+                    if (await setBoatStatus(boat.id, next)) {
+                      void record(
+                        `boat.${next === 'blocked' ? 'block' : 'unblock'}`,
+                        `#${boat.id}`,
+                      )
+                    }
                   }}
                 >
                   {t(boat.status === 'blocked' ? 'unblock' : 'block')}

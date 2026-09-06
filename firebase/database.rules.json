@@ -1,4 +1,11 @@
-// Chill-Box security rules. Paste into Firebase console -> Realtime Database -> Rules.
+// Chill-Box security rules. Deploy them, do not paste them:
+//
+//   npx -y firebase-tools deploy --only database --project chill-box-e5d6b
+//
+// firebase.json at the repo root points at this file. Hand-pasting is how
+// the published rules came to sit a commit behind the client, refusing a
+// field the client had started writing and bricking registration while the
+// app blamed the network. See MEMORY.md §16.
 //
 // No skipper ever logs in - the app signs each phone in anonymously behind
 // the scenes - so these rules are the only thing standing between a public
@@ -17,8 +24,15 @@
 //     cannot move a crate held by someone else's boat
 //   * because permission is per slot, there is no write anywhere that
 //     touches more than one crate without being checked against that crate's
-//     owner. A client cannot empty the harbour, and cannot delete or
-//     overwrite another boat's slot
+//     owner. A client cannot delete or overwrite a slot held by a boat that
+//     belongs to another phone — one write at a time or in bulk
+//
+// THE LIMIT OF THAT, STATED HERE AND NOT THIRTY LINES DOWN: the check is
+// per crate, so it protects a crate whose boat someone has CLAIMED. A boat
+// no device has claimed is open to anyone, and in the shipped demo roster
+// no boat is claimed — so a signed-in client can still empty a harbour of
+// unclaimed boats, one slot at a time. That is the price of a demo that
+// works from a cold start, and it shrinks to nothing as skippers sign in.
 //   * a boat's binding to a phone (`uid`) is set once and can never be
 //     reassigned, dropped, or set to anyone else's identity
 //   * a slot must always be a well-formed slot: a known status, a box name
@@ -101,13 +115,19 @@
               //
               // 14400000 is HOLD_MS and 21600000 is OVERSTAY_MS, both from
               // src/lib/time.ts. They must match.
-              ".write": "auth != null && $box.matches(/^box[1-3]$/) && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.hasChild('reservedAt') && data.child('reservedAt').val() + 14400000 <= now) || (data.child('status').val() === 'occupied' && data.hasChild('depositedAt') && data.child('depositedAt').val() + 21600000 <= now))",
+              ".write": "auth != null && $box.matches(/^box[1-3]$/) && $slot.matches(/^[0-9]$/) && (!newData.exists() || newData.child('status').val() === 'empty' || newData.hasChild('boatId')) && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.hasChild('reservedAt') && data.child('reservedAt').val() + 14400000 <= now) || (data.child('status').val() === 'occupied' && data.hasChild('depositedAt') && data.child('depositedAt').val() + 21600000 <= now))",
               // A typo, or a client inventing 'box9' or slot 47, is refused
-              // rather than quietly stored. The box name is checked in the
-              // .write above, not in a .validate on $box: permission is
-              // granted here, and Firebase evaluates validate rules on the
-              // node written and its children — never on its ancestors. A
-              // .validate one level up would never run at all.
+              // rather than quietly stored — and so is a crate with no boat
+              // on it, which the reader skips and the console cannot show,
+              // leaving a slot permanently full and invisible.
+              //
+              // All three checks live in the .write above, not only here.
+              // Firebase evaluates validate rules on the node written and
+              // its children, NEVER on its ancestors, so writing
+              // `boxes/box1/47/status` directly would skip a .validate at
+              // this level entirely. A .write, by contrast, is evaluated at
+              // every ancestor of the write. The duplication below is for a
+              // whole-slot write and is deliberate.
               ".validate": "$slot.matches(/^[0-9]$/) && newData.hasChildren(['status'])",
               "status": {
                 ".validate": "newData.isString() && (newData.val() === 'empty' || newData.val() === 'reserved' || newData.val() === 'occupied' || newData.val() === 'overstay')"

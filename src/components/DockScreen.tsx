@@ -156,6 +156,8 @@ export function DockScreen({
           onPick={(id) => {
             // Same rule as the box cards: book it if this boat can, and
             // otherwise open who is inside. Never a tap that does nothing.
+            // Identity does not matter here — SeaMap reads this through a
+            // ref so the overlay is not rebuilt every second.
             const box = boxes.find((b) => b.id === id)
             if (canBook && box && emptyCount(box) > 0) setBookingFor(id)
             else setDetailsFor(id)
@@ -207,7 +209,10 @@ export function DockScreen({
         ))}
       </section>
 
-      <SafetyCard band={band} fix={geo.fix} />
+      {/* `geo.status` was computed, documented and read by nothing at all —
+          so the safety card could never tell "no position yet" from "no
+          position ever". */}
+      <SafetyCard band={band} fix={geo.fix} locating={geo.status !== 'unavailable'} />
 
       <DemoTools
         simulating={simulated !== null}

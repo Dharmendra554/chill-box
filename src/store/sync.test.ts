@@ -41,7 +41,15 @@ const writes: string[] = []
 /** Leaf values by full path — `harbours/nizampatnam/boxes/box1/0`. */
 const db: Record<string, unknown> = {}
 
-/** Slot paths the "rules" refuse, so a half-committed write can be forced. */
+/**
+ * Slot paths the "rules" refuse, so a half-committed write can be forced.
+ *
+ * A refusal REJECTS the transaction promise — it does not resolve with
+ * `committed: false`, which is what a lost race looks like. Modelling a
+ * refusal as a lost race meant the tests only ever exercised the branch
+ * Firebase does not take, and the branch it does take threw away every
+ * sibling write that had already committed.
+ */
 const refuse = new Set<string>()
 
 /** Whether writing a boat that carries a `uid` throws, as old rules do. */
@@ -84,9 +92,12 @@ vi.mock('firebase/database', () => ({
   push: (r: { path: string }) => ({ path: `${r.path}/gen${Object.keys(db).length}` }),
   runTransaction: async (r: { path: string }, fn: (current: unknown) => unknown) => {
     writes.push(`txn ${r.path}`)
+    if (refuse.has(r.path)) {
+      throw Object.assign(new Error('permission_denied'), { code: 'PERMISSION_DENIED' })
+    }
     const current = readPath(r.path)
     const next = fn(current)
-    if (next === undefined || refuse.has(r.path)) {
+    if (next === undefined) {
       return { committed: false, snapshot: { val: () => current } }
     }
     if (rejectUid && (next as { uid?: string })?.uid !== undefined) {
@@ -99,6 +110,7 @@ vi.mock('firebase/database', () => ({
 
 let useDockStore: typeof Store
 let sync: typeof SyncModule
+let seed: (now: number) => object
 
 /** A published harbour with the roster in place, ready to book against. */
 async function publishedHarbour() {
@@ -106,7 +118,10 @@ async function publishedHarbour() {
   refuse.clear()
   rejectUid = false
   writes.length = 0
-  useDockStore.setState({ syncLive: true, toast: null })
+  // A clean local store too: `publishHarbour` publishes this phone's boxes,
+  // so a crate left behind by an earlier test would be seeded into the
+  // "fresh" harbour and count against the boat's cap.
+  useDockStore.setState({ ...seed(Date.now()), syncLive: true, toast: null })
   useDockStore.getState().setLang('en')
   await useDockStore.getState().publishHarbour()
 }
@@ -115,13 +130,49 @@ beforeAll(async () => {
   vi.stubEnv('VITE_FIREBASE_API_KEY', 'test-key')
   vi.stubEnv('VITE_FIREBASE_DATABASE_URL', 'https://example.firebaseio.test')
   vi.resetModules()
-  useDockStore = (await import('./useDockStore')).useDockStore
+  const mod = await import('./useDockStore')
+  useDockStore = mod.useDockStore
+  seed = mod.seed
   sync = await import('../lib/harbourSync')
 })
 
 beforeEach(() => {
   useDockStore.setState({ toast: null })
 })
+
+/**
+ * Put a crate for boat 04 into THIS phone's view, as the watcher would.
+ *
+ * Without it the store's own guards ("you are not holding anything") return
+ * before the network is ever reached, so a test aimed at a sync refusal was
+ * silently asserting on a local guard instead — two tests here passed no
+ * matter what the code under them did.
+ */
+function holdLocally(status: 'reserved' | 'occupied') {
+  const { boxesByHarbour, harbourId } = useDockStore.getState()
+  const now = Date.now()
+  const boxes = boxesByHarbour[harbourId].map((box) =>
+    box.id !== 'box3'
+      ? box
+      : {
+          ...box,
+          slots: box.slots.map((slot) =>
+            slot.index !== 0
+              ? slot
+              : {
+                  ...slot,
+                  status,
+                  boatId: '04',
+                  species: 'prawn' as const,
+                  reservedAt: status === 'reserved' ? now : null,
+                  depositedAt: status === 'occupied' ? now : null,
+                  plannedOutAt: null,
+                },
+          ),
+        },
+  )
+  useDockStore.setState({ boxesByHarbour: { ...boxesByHarbour, [harbourId]: boxes } })
+}
 
 describe('a shared harbour that has not proven itself live', () => {
   it('refuses to book, and says so without claiming the hold expired', async () => {
@@ -136,8 +187,16 @@ describe('a shared harbour that has not proven itself live', () => {
   })
 
   it('refuses to deposit rather than reporting a success that never happened', async () => {
-    useDockStore.setState({ syncLive: false })
+    await publishedHarbour()
+    await useDockStore.getState().signInAs('04', '2004')
+    holdLocally('reserved')
+    useDockStore.setState({ syncLive: false, toast: null })
+
     expect(await useDockStore.getState().deposit(4)).toBe(false)
+    // The link guard, not the "you hold nothing" guard: this test used to
+    // pass because boat 04 holds nothing in the seeded harbour, so it never
+    // reached the network check it is named for.
+    expect(useDockStore.getState().toast?.text).toMatch(/No signal/i)
   })
 
   it('refuses a release without saying the hold expired', async () => {
@@ -146,12 +205,16 @@ describe('a shared harbour that has not proven itself live', () => {
     // succeeded that their 4-hour hold had ended.
     await publishedHarbour()
     await useDockStore.getState().signInAs('04', '2004')
+    holdLocally('occupied')
     useDockStore.setState({ toast: null })
 
+    // This phone believes it holds a crate; the shared copy has nothing for
+    // this boat, so the release finds nothing to change.
     await useDockStore.getState().release()
 
     const text = useDockStore.getState().toast?.text ?? ''
     expect(text).not.toMatch(/hold ended/i)
+    expect(text).toMatch(/nothing left to change/i)
   })
 
   it('publishes the roster before the boxes that name it', async () => {
@@ -193,9 +256,7 @@ describe('a shared harbour that has not proven itself live', () => {
     expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toEqual({
       ok: true,
     })
-    await sync.releaseRemote('nizampatnam', '04', [
-      { boatId: '04', boxId: 'box3', crates: 1, species: 'prawn', depositedAt: 1, releasedAt: 2, overstay: false },
-    ])
+    await sync.releaseRemote('nizampatnam', '04')
 
     const boxWrites = writes.filter((w) => w.includes('/boxes'))
     // Proof the booking path actually ran, not just the seed: without this
@@ -243,10 +304,11 @@ describe('a write that only half lands', () => {
     })
   })
 
-  it('writes one ledger row per crate actually freed, never per crate attempted', async () => {
-    // The ledger is what the society bills off and no rule can ever delete a
-    // row, so an over-reported release charges a fisherman for a crate still
-    // sitting in the box.
+  it('bills the crates that actually came out, not the ones aimed at', async () => {
+    // The row's `crates` count is the whole point: the ledger is what the
+    // society bills off and no rule can ever delete a row. Releasing two and
+    // winning one used to write ONE row saying `crates: 2`, because the
+    // trimming counted slots while the rows counted boxes.
     await publishedHarbour()
     await sync.reserveRemote('nizampatnam', 'box3', '04', 2, 'prawn')
     await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)
@@ -258,23 +320,46 @@ describe('a write that only half lands', () => {
     )
     expect(stored.length).toBe(2)
     refuse.add(stored[1])
-    writes.length = 0
 
-    const row = {
-      boatId: '04',
-      boxId: 'box3' as const,
-      crates: 1,
-      species: 'prawn' as const,
-      depositedAt: 1,
-      releasedAt: 2,
-      overstay: false,
-    }
-    expect(await sync.releaseRemote('nizampatnam', '04', [row, row])).toEqual({
+    expect(await sync.releaseRemote('nizampatnam', '04')).toEqual({
       ok: false,
       error: 'partial',
     })
 
-    expect(writes.filter((w) => w.includes('/ledger/')).length).toBe(1)
+    const rows = Object.keys(db)
+      .filter((path) => path.startsWith('harbours/nizampatnam/ledger/gen'))
+      .map((path) => db[path] as { crates: number; boxId: string })
+    expect(rows.map((r) => r.crates)).toEqual([1])
+    expect(rows[0].boxId).toBe('box3')
+  })
+
+  it('still bills a crate whose sibling write was refused outright', async () => {
+    // A rules refusal REJECTS. `Promise.all` discarded the sibling that had
+    // already committed on the server, so a crate came out of the box with
+    // no ledger row and no audit row, and the harbour master was told the
+    // record had refused the whole thing.
+    await publishedHarbour()
+    await sync.reserveRemote('nizampatnam', 'box1', '04', 1, 'prawn')
+    await sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'crab')
+    await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)
+
+    const stored = Object.keys(db).filter(
+      (path) =>
+        /harbours\/nizampatnam\/boxes\/box[13]\//.test(path) &&
+        (db[path] as { boatId?: string })?.boatId === '04',
+    )
+    expect(stored.length).toBe(2)
+    refuse.add(stored[1])
+
+    const outcome = await sync.releaseRemote('nizampatnam', '04')
+    expect(outcome).toEqual({ ok: false, error: 'partial' })
+
+    // The crate that DID come out is billed, in its own box.
+    const rows = Object.keys(db)
+      .filter((path) => path.startsWith('harbours/nizampatnam/ledger/gen'))
+      .map((path) => db[path] as { crates: number; boxId: string })
+    expect(rows.length).toBe(1)
+    expect(rows[0].crates).toBe(1)
   })
 })
 

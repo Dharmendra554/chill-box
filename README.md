@@ -158,8 +158,18 @@ boxes. Free Spark plan, no card. Setup:
 2. **Authentication → Sign-in method → Anonymous → Enable.** Do this *before*
    step 3. The rules require a signed-in writer, and anonymous sign-in is off
    by default — without it every booking in the harbour is refused.
-3. Paste `firebase/database.rules.json` into the database's **Rules** tab.
-   These are what constrain the public web config — read the header comment.
+3. Deploy the rules — they are what constrain the public web config, and the
+   header comment in the file says exactly what they do and do not stop:
+
+   ```bash
+   npx -y firebase-tools login --no-localhost
+   npx -y firebase-tools deploy --only database --project <your-project-id>
+   ```
+
+   `firebase.json` at the repo root points at `firebase/database.rules.json`.
+   Deploy after **every** change to that file: a client that has started
+   writing a field the published rules do not know about fails, and fails in
+   a way that looks like a dead network.
 4. Copy the web app config into `.env.local` (see `.env.example`), and add the
    same three as repository secrets — the deploy workflow reads them by those
    names.
@@ -234,9 +244,15 @@ phones will disagree, and the app says so rather than pretending.
 
 Either way, the harbour's *policy* is the client's word — the cap, the
 approval queue, the hold length. What the database now enforces on its own is
-who owns a crate: the rules refuse a write to a slot held by someone else's
-boat, and there is no path that writes more than one crate without being
-checked against that crate's owner. Policy enforcement needs a server-held
+who owns a crate: the rules refuse a write to a slot held by a boat bound to
+another phone, and there is no path that writes more than one crate without
+being checked against that crate's owner.
+
+**The limit of that**, stated here rather than implied away: the check is per
+crate, so it protects a crate whose boat someone has claimed. In the seeded
+demo roster nobody has, which is what keeps the app usable from a cold start
+— and until skippers sign in, a signed-in client could still empty a harbour
+of unclaimed boats one slot at a time. Policy enforcement needs a server-held
 identity, which needs a paid plan; crate ownership did not, and has been done.
 
 ## Free, no-account services
@@ -265,8 +281,12 @@ The skipper is never asked whether they have signal — the app works it out:
   confidently wrong "2 free" is worse than an honest "possibly stale".
 - Nothing blocks on the network. Bearing, distance, ETA and every harbour rule
   are local maths.
-- The map and the database client are lazy chunks — the booking flow ships in
-  ~93 kB gzipped — and
+- The map, the database client and the admin console are lazy chunks. The
+  entry bundle is **94 kB gzipped**; with CSS and the service worker a first
+  paint is **~109 kB of our own code**. The webfonts are another **265 kB**
+  on a cold visit — Noto Sans Telugu alone is 124 kB — which is the largest
+  single cost in the app and is not yet fixed. Quoting the JS figure alone
+  would be the dishonest number, so both are here. And
   tiles are cached first-hit, so a route drawn once redraws with no signal.
 - Browser storage is wrapped: private mode and a full quota both throw, and the
   app falls back to memory rather than white-screening — and *says so*, once,
@@ -283,7 +303,7 @@ The skipper is never asked whether they have signal — the app works it out:
 | Device clock jumps backwards | A future timestamp never reads as an elapsed hold or an overstay |
 | Promised collection lands on the overstay line | The picker offers 2/4/5 h only — never a time that flags on arrival |
 | Box fills between opening the sheet and tapping | Crate buttons are bounded by the box's real free count, and the commit re-checks |
-| **No GPS at all** | A card says so and points at the box list; **booking never needs a fix** |
+| **No position at all** | Distance, route and compass simply do not appear — no jargon, no prompt to fix anything. **Booking never needs a position**: the map and the named box list are equal paths in. The safety card says plainly that the phone cannot find you, rather than "still looking" for ever |
 | Map tiles unreachable | Compass, bearing and ETA carry on, with a notice on the chart |
 | Pins overlap when zoomed out | The idle chart frames the harbour, not the boat, so the three pins stay tappable |
 | No Telugu voice on the phone | Speaks Telugu words in Latin script through an Indian voice, so the readout stays Telugu instead of switching language or going silent |
@@ -302,10 +322,10 @@ The skipper is never asked whether they have signal — the app works it out:
 - Times are 12-hour with am/pm, the way the dock reads a clock.
 - Hand-drawn SVG marine and species icons, not emoji: emoji render differently
   on every Android build in the harbour and cannot be recoloured for contrast.
-- Night theme for pre-dawn landings; a full-width **Read free space** button
-  with a speaker icon, because the skippers who need a spoken readout most are
-  the least likely to hunt for a hidden control. It always speaks Telugu,
-  whatever the screen language is set to.
+- Night theme for pre-dawn landings; a speaker button in the top bar, which
+  every screen shares, so the spoken readout is reachable without scrolling
+  to wherever the boxes are. It always speaks Telugu, whatever the screen
+  language is set to, and it says first if the figures are not current.
 - Mobile numbers are visible only in the admin console, never on the public
   roster.
 

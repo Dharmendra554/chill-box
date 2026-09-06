@@ -57,10 +57,19 @@ export function SeaMap({
   // under the user's hand. Assigned in an effect, not during render.
   const fixRef = useRef(fix)
   const harbourRef = useRef(harbour)
+  // `onPick` is here for the same reason. The parent renders once a second
+  // (it shows a countdown), so an inline handler is a new identity every
+  // second — and with it in the redraw effect's dependencies the whole
+  // overlay was torn down and rebuilt at 1 Hz. That defeated the memoised
+  // `markers` put there to prevent exactly this, and a rebuild landing
+  // between a thumb going down and coming up destroyed the marker before
+  // the click could fire, so roughly one tap in ten was silently lost.
+  const pickRef = useRef(onPick)
   useEffect(() => {
     fixRef.current = fix
     harbourRef.current = harbour
-  }, [fix, harbour])
+    pickRef.current = onPick
+  }, [fix, harbour, onPick])
 
   // Create once. Everything after this is a layer update.
   useEffect(() => {
@@ -162,7 +171,7 @@ export function SeaMap({
       // silently ignored the tap taught a skipper the app was broken. The
       // caller decides what the tap means — book it, or show who is inside —
       // exactly as the box cards already do.
-      if (onPick) pin.on('click', () => onPick(marker.id))
+      pin.on('click', () => pickRef.current?.(marker.id))
     }
 
     if (fix) L.marker([fix.lat, fix.lon], { icon: boatPin() }).addTo(group)
@@ -182,7 +191,7 @@ export function SeaMap({
     // offshore would zoom out until all three pins sat on the same pixel and
     // none of them could be tapped. Distance to each box is on its card, and
     // the boat and its route take over the view once one is booked.
-  }, [harbour, fix, boxes, selectedId, routeTo, landmarkLabel, onPick])
+  }, [harbour, fix, boxes, selectedId, routeTo, landmarkLabel])
 
   // Frame the view only when WHAT is being framed changes — the harbour, or
   // which box the route runs to. Refitting on every redraw would snap a
