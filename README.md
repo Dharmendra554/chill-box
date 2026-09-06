@@ -17,7 +17,7 @@ npm run dev
 ```
 
 ```bash
-npm test        # 39 rule, edge-case, analytics and security tests
+npm test        # 46 rule, edge-case, analytics and security tests
 npm run build   # typecheck, bundle, generate service worker
 npm run lint    # zero warnings
 ```
@@ -98,7 +98,9 @@ needed is the moment nobody goes looking:
 Boat name, owner name and mobile number. The admin approves once; after that
 the phone remembers the boat forever. A pending boat can watch every box but
 cannot book. No password anywhere in the skipper's product — on this dock a
-shared secret is painted on a hull within a week.
+shared secret is painted on a hull within a week. Claiming a boat that is
+already on the roster needs the last four digits of its registered number, so
+the list is not a one-tap "become anyone".
 
 ## Admin console
 
@@ -116,15 +118,32 @@ Excel on Windows. It copies the controls a government portal uses:
 - **lockout with exponential backoff** after three wrong attempts, to 15 min
 - **idle auto-lock** after 5 minutes
 - **two-tap confirmation** on every irreversible action
-- a **hash-chained audit log**: every admin action records who, what, when and
-  a SHA-256 over the previous entry, so an edited or deleted record shows as a
-  broken link instead of vanishing. The console verifies the chain live.
+- a **hash-chained action log**: every admin action records who, what, when and
+  a SHA-256 over the previous entry, and the console verifies the chain live.
+  This catches accidental corruption and a casual edit. It does **not** stop a
+  determined tamperer, who can delete a row and recompute every hash after it —
+  an unkeyed chain cannot, and an HMAC would not help because the key would
+  ship in the same bundle. Only a server-held log is tamper-proof.
 
 **What it is not:** enforcement. Authorisation runs on the client, so anyone
 with developer tools can edit this device's own state. Real enforcement needs a
 server — moving `verifyPin` and `appendAudit` behind an API route is the only
 change required. Claiming client-side security is unbreakable would be false,
 so we don't.
+
+## What this cannot do yet
+
+**There is no server, so there is no shared truth.** Each phone keeps its own
+copy of the harbour and they never merge. Two skippers on two phones can each
+believe they hold the same slot; the commit-time re-check that refuses a race
+only protects one device. Everything else here — the quota, the hold clock, the
+overstay flag, the reports — is correct on the device you are holding.
+
+That is the honest cost of the brief's "no paid database" rule, and it is the
+first thing to fix for real use: one table and a websocket behind `reserve` and
+`release` would make the guarantee real without changing a single rule. Until
+then the booking code you show at the box, not the app, is what settles a
+dispute.
 
 ## Free, no-account services
 
@@ -181,7 +200,8 @@ The skipper is never asked whether they have signal — the app works it out:
 
 - Warm near-white ground, near-black ink, 3 px borders. In direct sun the
   border survives when fills and shadows wash out.
-- 60–72 px tap targets, one primary action per screen, bottom tab bar.
+- 60–72 px targets for every primary action, 44 px for top-bar utilities, one
+  primary action per screen, bottom tab bar.
 - Every status is colour **and** shape **and** text — never colour alone.
 - Times are 12-hour with am/pm, the way the dock reads a clock.
 - Hand-drawn SVG marine and species icons, not emoji: emoji render differently
