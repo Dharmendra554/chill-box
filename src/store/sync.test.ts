@@ -36,6 +36,9 @@ vi.mock('firebase/database', () => ({
   set: async (r: { path: string }) => {
     writes.push(`set ${r.path}`)
   },
+  update: async (r: { path: string }, values: Record<string, unknown>) => {
+    for (const key of Object.keys(values)) writes.push(`update ${r.path}/${key}`)
+  },
   push: (r: { path: string }) => ({ path: `${r.path}/generated` }),
   runTransaction: async (r: { path: string }) => {
     writes.push(`txn ${r.path}`)
@@ -95,7 +98,7 @@ describe('a shared harbour that has not proven itself live', () => {
     await useDockStore.getState().publishHarbour()
 
     const firstBoat = writes.findIndex((w) => w.includes('/boats/'))
-    const firstBoxes = writes.findIndex((w) => w.endsWith('/boxes'))
+    const firstBoxes = writes.findIndex((w) => w.includes('/boxes/box'))
     expect(firstBoat).toBeGreaterThanOrEqual(0)
     expect(firstBoxes).toBeGreaterThanOrEqual(0)
     expect(firstBoat).toBeLessThan(firstBoxes)
@@ -112,6 +115,28 @@ describe('a shared harbour that has not proven itself live', () => {
     expect(ledgerWrites.length).toBeGreaterThan(0)
     expect(ledgerWrites.every((w) => !w.includes('generated'))).toBe(true)
     expect(new Set(ledgerWrites).size).toBe(ledgerWrites.length)
+  })
+
+  it('never writes the whole boxes node — permission is granted per slot', async () => {
+    // The security property the rules depend on. A write addressed at the
+    // boxes node cannot be checked against a slot's owner, which is how a
+    // signed-in client could once overwrite another boat's crate or empty the
+    // harbour outright. Every write must name one slot.
+    writes.length = 0
+    useDockStore.setState({ syncLive: true })
+    useDockStore.getState().setLang('en')
+    useDockStore.getState().resetDemo()
+    await useDockStore.getState().publishHarbour()
+    await useDockStore.getState().reserve('box3', 1, 'prawn')
+    await useDockStore.getState().deposit(4)
+    await useDockStore.getState().release()
+
+    const boxWrites = writes.filter((w) => w.includes('/boxes'))
+    expect(boxWrites.length).toBeGreaterThan(0)
+    for (const write of boxWrites) {
+      // …/boxes/box1/7 — a box and a slot, never the bare node.
+      expect(write).toMatch(/\/boxes\/box[1-3]\/\d+$/)
+    }
   })
 
   it('never writes the boxes locally when the harbour is shared', async () => {

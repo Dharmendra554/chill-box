@@ -420,13 +420,51 @@ export async function putBoat(harbourId: HarbourId, boat: Boat): Promise<RemoteR
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
   try {
-    await a.set(a.ref(a.db, `harbours/${harbourId}/boats/${boat.id}`), toWireBoat(boat))
+    // `update`, not `set`: the boat also carries the `uid` of the device that
+    // claimed it, this phone does not know it, and replacing the object would
+    // drop it — unclaiming the boat and handing its crates to anyone.
+    await a.update(a.ref(a.db, `harbours/${harbourId}/boats/${boat.id}`), toWireBoat(boat))
     return { ok: true }
   } catch (error) {
     // Approving or blocking a boat that never reaches the database leaves
     // this phone believing something the harbour does not. Reported, not
     // dropped as an unhandled rejection.
     return { ok: false, error: reasonFor(error) }
+  }
+}
+
+/**
+ * Bind a boat to this device, first claim wins.
+ *
+ * This is what makes the slot rules mean anything: until a boat carries a
+ * `uid`, the database will let anyone move its crates, because it cannot tell
+ * who should. Once it is bound, only this phone can — and the binding can
+ * never be reassigned, by rule.
+ *
+ * Returns false when another device already holds the boat. The last four
+ * digits are readable by anyone, so they identify a boat rather than
+ * authenticate one; this is the check that actually bites.
+ */
+export async function claimForThisDevice(
+  harbourId: HarbourId,
+  boatId: string,
+): Promise<'mine' | 'taken' | 'unbound'> {
+  const a = await api()
+  if (!a?.uid) return 'unbound'
+
+  const ref = a.ref(a.db, `harbours/${harbourId}/boats/${boatId}/uid`)
+  try {
+    const held = await a.get(ref)
+    if (held.exists()) return held.val() === a.uid ? 'mine' : 'taken'
+
+    const result = await a.runTransaction(ref, (current: string | null) => current ?? a.uid)
+    return result.snapshot.val() === a.uid ? 'mine' : 'taken'
+  } catch {
+    // The write was refused — most likely rules that predate this field. The
+    // boat stays unbound, which is exactly how the harbour behaved before
+    // device binding existed: no worse, and never a locked-out skipper
+    // because a rules paste has not happened yet.
+    return 'unbound'
   }
 }
 
@@ -456,7 +494,10 @@ export async function claimBoat(harbourId: HarbourId, boat: Boat): Promise<strin
     try {
       const result = await a.runTransaction(
         a.ref(a.db, `harbours/${harbourId}/boats/${id}`),
-        (current: WireBoat | null) => (current ? undefined : toWireBoat({ ...boat, id })),
+        // Bound to this device as it is created: whoever registers a boat
+        // owns it, with no separate claiming step to lose.
+        (current: WireBoat | null) =>
+          current ? undefined : { ...toWireBoat({ ...boat, id }), uid: a.uid ?? undefined },
       )
       if (result.committed) return id
     } catch {
@@ -485,6 +526,8 @@ interface WireBoat {
   mobileLast4: string
   status: Boat['status']
   registeredAt: number
+  /** The device that holds this boat. Absent means nobody has claimed it. */
+  uid?: string
 }
 
 function toWireBoat(boat: Boat): WireBoat {
@@ -556,10 +599,12 @@ export async function seedHarbour(
   const skipped = boats.length - usable.length
 
   try {
-    await a.runTransaction(
-      a.ref(a.db, `harbours/${harbourId}/boxes`),
-      (current: WireBoxes | null) => current ?? boxesToWire(boxes),
-    )
+    // Only if the harbour has never been published. Permission is per slot
+    // now, so this is a multi-path update rather than a write of the node —
+    // and it must still yield to a live harbour rather than flatten it.
+    if (!(await readBoxes(a, harbourId))) {
+      await a.update(a.ref(a.db, `harbours/${harbourId}/boxes`), slotPaths(boxes))
+    }
   } catch {
     // The roster is in; the boxes are not. Counting the boats as refused was
     // exactly the total failure the line above promised not to report — the
@@ -603,7 +648,10 @@ export async function resetRemoteBoxes(
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
   try {
-    await a.set(a.ref(a.db, `harbours/${harbourId}/boxes`), boxesToWire(boxes))
+    // A multi-path update, not a write of the whole node: permission is
+    // granted per slot now, so each path is checked on its own. Firebase
+    // applies them together, so the harbour never renders half-reset.
+    await a.update(a.ref(a.db, `harbours/${harbourId}/boxes`), slotPaths(boxes))
     return { ok: true }
   } catch (error) {
     // Refused when the roster has not been published yet — the seeded crates
@@ -613,16 +661,126 @@ export async function resetRemoteBoxes(
   }
 }
 
-/* -- Writes ------------------------------------------------------------ */
+/** `{ 'box1/0': slot, 'box1/1': slot, … }` — one entry per slot. */
+function slotPaths(boxes: ColdBox[]): Record<string, WireSlot> {
+  const paths: Record<string, WireSlot> = {}
+  for (const box of boxes) {
+    for (const slot of box.slots) paths[`${box.id}/${slot.index}`] = toWire(slot)
+  }
+  return paths
+}
+
+/* -- Writes: one slot at a time ---------------------------------------- */
+
+/**
+ * WHY EVERY WRITE BELOW TOUCHES A SINGLE SLOT
+ * -------------------------------------------
+ * Booking used to run one transaction over the harbour's whole `boxes` node.
+ * That was atomic and correct against honest racers, but it forced the
+ * database rules to grant write permission at the node — and a rule that can
+ * write the node can write *every* slot in it. A signed-in client could
+ * overwrite another boat's crate, or empty the harbour in one valid request,
+ * and no rule could tell the difference.
+ *
+ * Each crate is now claimed with a transaction on its own slot. That moves the
+ * race from the client into the server: two phones aiming at the same slot,
+ * the second one's transaction re-runs against the committed first and aborts.
+ * And because the write names one slot, the rules can finally ask the only
+ * question that matters — *is this your boat?*
+ *
+ * WHAT IT COSTS
+ * -------------
+ * Two crates are two writes, so a booking can half-succeed. `reserveRemote`
+ * hands back what it won if it cannot win them all. The 2-crate cap is still
+ * counted on the client, because no rule can count across three boxes — that
+ * was true of the old design too, and the README says so.
+ */
+
+/** Read the harbour's boxes once, to choose which slots to aim at. */
+async function readBoxes(a: Api, harbourId: HarbourId): Promise<WireBoxes | null> {
+  const snap = await a.get(a.ref(a.db, `harbours/${harbourId}/boxes`))
+  return snap.exists() ? (snap.val() as WireBoxes) : null
+}
+
+/** Is this slot free right now — empty, or a hold that has run out? */
+function claimable(slot: WireSlot | undefined, now: number): boolean {
+  if (!slot || slot.status === 'empty') return true
+  return slot.status === 'reserved' && (slot.reservedAt ?? now) + HOLD_MS <= now
+}
+
+/**
+ * Claim one slot, or lose it to whoever got there first.
+ *
+ * The transaction is the whole race: Firebase re-runs this body against fresh
+ * data until it commits, so `claimable` is evaluated against what the server
+ * actually holds at commit time, not what this phone last saw.
+ */
+async function claimSlot(
+  a: Api,
+  harbourId: HarbourId,
+  boxId: BoxId,
+  index: number,
+  boatId: string,
+  species: Species,
+): Promise<boolean> {
+  const result = await a.runTransaction(
+    a.ref(a.db, `harbours/${harbourId}/boxes/${boxId}/${index}`),
+    (current: WireSlot | null) => {
+      const now = serverNow()
+      if (!claimable(current ?? undefined, now)) return undefined // lost it
+      return { status: 'reserved' as const, boatId, species, reservedAt: now }
+    },
+  )
+  return result.committed
+}
+
+/**
+ * Change one slot this boat already holds.
+ *
+ * Guarded inside the transaction as well as outside it: another phone may
+ * have released or force-released the crate since we read it.
+ */
+async function changeOwnSlot(
+  a: Api,
+  harbourId: HarbourId,
+  boxId: BoxId,
+  index: number,
+  boatId: string,
+  statuses: Slot['status'][],
+  change: (slot: WireSlot) => WireSlot,
+): Promise<boolean> {
+  const result = await a.runTransaction(
+    a.ref(a.db, `harbours/${harbourId}/boxes/${boxId}/${index}`),
+    (current: WireSlot | null) => {
+      if (!current || current.boatId !== boatId) return undefined
+      if (!statuses.includes(current.status)) return undefined
+      return pruneWire(change(current))
+    },
+  )
+  return result.committed
+}
+
+/** Every slot in the harbour this boat holds in one of these statuses. */
+function ownSlots(
+  wire: WireBoxes,
+  boatId: string,
+  statuses: Slot['status'][],
+  onlyBoxId?: BoxId,
+): Array<{ boxId: BoxId; index: number; slot: WireSlot }> {
+  const found: Array<{ boxId: BoxId; index: number; slot: WireSlot }> = []
+  for (const boxId of BOX_IDS) {
+    if (onlyBoxId && boxId !== onlyBoxId) continue
+    for (const [index, slot] of Object.entries(wire[boxId] ?? {})) {
+      if (slot && slot.boatId === boatId && statuses.includes(slot.status)) {
+        found.push({ boxId, index: Number(index), slot })
+      }
+    }
+  }
+  return found
+}
 
 /**
  * Take `crates` slots in one box, or fail with a reason.
- *
- * Every rule the harbour cares about happens inside the transaction: stale
- * holds expire, the cap is counted across all three boxes, capacity is
- * re-checked against what the server currently holds, and the slots are
- * claimed in the same commit. A genuine race therefore ends with exactly
- * one winner.
  */
 export async function reserveRemote(
   harbourId: HarbourId,
@@ -634,47 +792,50 @@ export async function reserveRemote(
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
 
-  let refusal: BookingError | null = null
-
   try {
-    const result = await a.runTransaction(
-      a.ref(a.db, `harbours/${harbourId}/boxes`),
-      (current: WireBoxes | null) => {
-        // `undefined` aborts a Firebase transaction; returning `null` asks it
-        // to DELETE the node. Nothing is seeded yet, so there is nothing to
-        // book against — abort, and never risk proposing a wipe.
-        if (!current) {
-          refusal = 'unseeded'
-          return undefined
-        }
-        refusal = null
-        const now = serverNow()
-        expireHolds(current, now)
+    const wire = await readBoxes(a, harbourId)
+    // Nothing published yet: there is no harbour to book against, and saying
+    // "no signal" to someone on full bars would be the wrong reason.
+    if (!wire) return { ok: false, error: 'unseeded' }
 
-        const boxes = boxesFromWire(current)
-        const held = boxes.reduce(
-          (n, box) =>
-            n + box.slots.filter((s) => s.boatId === boatId && s.status !== 'empty').length,
-          0,
-        )
-        if (held + crates > QUOTA) {
-          refusal = 'quota'
-          return undefined // abort
-        }
+    const now = serverNow()
 
-        const free = boxes.find((b) => b.id === boxId)?.slots.filter((s) => s.status === 'empty')
-        if (!free || free.length < crates) {
-          refusal = 'boxFull'
-          return undefined // abort
-        }
-
-        for (const slot of free.slice(0, crates)) {
-          current[boxId][slot.index] = { status: 'reserved', boatId, species, reservedAt: now }
-        }
-        return current
-      },
+    // The cap, counted across all three boxes. Still a client-side rule: no
+    // database rule can count a boat's crates in boxes it is not writing to.
+    const held = BOX_IDS.reduce(
+      (n, id) =>
+        n +
+        Object.values(wire[id] ?? {}).filter(
+          (s) => s && s.boatId === boatId && s.status !== 'empty' && !claimable(s, now),
+        ).length,
+      0,
     )
-    return result.committed ? { ok: true } : { ok: false, error: refusal ?? 'offline' }
+    if (held + crates > QUOTA) return { ok: false, error: 'quota' }
+
+    const candidates = Object.entries(wire[boxId] ?? {})
+      .filter(([, slot]) => claimable(slot, now))
+      .map(([index]) => Number(index))
+      .sort((x, y) => x - y)
+    if (candidates.length < crates) return { ok: false, error: 'boxFull' }
+
+    // One slot at a time, taking the next candidate whenever we lose a race.
+    const won: number[] = []
+    for (const index of candidates) {
+      if (won.length === crates) break
+      if (await claimSlot(a, harbourId, boxId, index, boatId, species)) won.push(index)
+    }
+
+    if (won.length === crates) return { ok: true }
+
+    // Half a booking is worse than none: the skipper would hold one crate
+    // while believing they had two. Give back what we took, then say the box
+    // filled up — which is exactly what happened.
+    for (const index of won) {
+      await changeOwnSlot(a, harbourId, boxId, index, boatId, ['reserved'], () => ({
+        status: 'empty',
+      }))
+    }
+    return { ok: false, error: 'boxFull' }
   } catch (error) {
     return { ok: false, error: reasonFor(error) }
   }
@@ -788,27 +949,23 @@ async function mutateOwnSlots(
   if (!a) return { ok: false, error: 'offline' }
 
   try {
-    const result = await a.runTransaction(
-      a.ref(a.db, `harbours/${harbourId}/boxes`),
-      (current: WireBoxes | null) => {
-        // `undefined` aborts; `null` would ask Firebase to delete the node.
-        if (!current) return undefined
-        let touched = false
-        for (const boxId of BOX_IDS) {
-          if (onlyBoxId && boxId !== onlyBoxId) continue
-          for (const [index, slot] of Object.entries(current[boxId] ?? {})) {
-            if (slot.boatId !== boatId || !statuses.includes(slot.status)) continue
-            current[boxId][index] = pruneWire(change(slot))
-            touched = true
-          }
-        }
-        return touched ? current : undefined
-      },
+    const wire = await readBoxes(a, harbourId)
+    if (!wire) return { ok: false, error: 'stale' }
+
+    const mine = ownSlots(wire, boatId, statuses, onlyBoxId)
+    // Nothing to change is not a dead link. The hold ran out, or another
+    // phone got there first — saying "no signal" on full bars is a lie.
+    if (mine.length === 0) return { ok: false, error: 'stale' }
+
+    // Slot by slot, so the rules can check each one against its owner. Each
+    // re-checks ownership inside its own transaction, so a crate released
+    // from another phone while this ran is skipped rather than resurrected.
+    const done = await Promise.all(
+      mine.map(({ boxId, index }) =>
+        changeOwnSlot(a, harbourId, boxId, index, boatId, statuses, change),
+      ),
     )
-    // An abort here means the shared copy held nothing to change — the hold
-    // expired, or another phone already did it. That is not a dead link, and
-    // saying "no signal" to someone on full bars is a lie.
-    return result.committed ? { ok: true } : { ok: false, error: 'stale' }
+    return done.some(Boolean) ? { ok: true } : { ok: false, error: 'stale' }
   } catch (error) {
     return { ok: false, error: reasonFor(error) }
   }

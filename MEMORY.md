@@ -443,3 +443,53 @@ Throttle it to once every few seconds.
 **Size:** ~7 800 lines of source, 860 of tests. The two biggest files are
 `useDockStore.ts` (1 120) and `harbourSync.ts` (815); both are approaching the
 point where they should be split by concern rather than left to grow.
+
+---
+
+## 15. Per-slot writes — the security rewrite, done
+
+The item that sat at the top of "next build" through four audit rounds. It
+closed four gaps and a scaling bottleneck with one change.
+
+**What changed.** Booking used to run one transaction over the harbour's whole
+`boxes` node. That forced the rules to grant write permission at the node, and
+a rule that can write the node can write every slot in it — it could not tell
+one boat's crate from another's. Now:
+
+- each crate is claimed by a transaction on its own slot (`boxes/$box/$slot`)
+- a boat is bound to the phone that claims it (`boats/$id/uid`), first claim
+  wins, and the binding can never be reassigned or dropped — a whole-object
+  write that omits `uid` is refused by rule
+- `.write` moved off `boxes` entirely and onto `$slot`, where the rule asks the
+  only question that matters: **is this your boat?**
+- seeding and Reset demo use multi-path `update()`, so each slot path is
+  checked on its own
+- `putBoat` uses `update` not `set`, so approving a boat cannot drop its `uid`
+
+**Now enforced by the server, not the client:** you cannot claim a slot for a
+boat that is not yours, and you cannot touch a crate held by someone else's
+boat. The harbour-wipe write is gone with it — there is no path that writes
+more than one slot without being checked against that slot's owner.
+
+**Still not enforced, and stated in the rules header, README and TRADEOFFS:**
+the 2-crate cap (no rule can count across boxes), admin approval (no admin
+identity), and clearing a crate the harbour has given up on — an expired hold
+or a flagged overstay — which anyone may do. That last one is how force-release
+works without an admin account; it is a deliberate community rule.
+
+**A boat nobody has claimed is open to anyone.** That is the seeded demo
+roster, and it is what keeps the app testable from a cold start.
+
+**Verified live, against the real database:** two crates claimed as two
+independent slot writes; deposit and release across both; and the race — two
+instances, one free slot, A won it, zero empty slots left, B told *"Another
+boat took that space just now."*
+
+**Degrades rather than bricks.** If the database refuses the `uid` write —
+older rules still published, say — the boat stays unbound and the harbour
+behaves exactly as it did before binding existed. A rules deployment lagging a
+code deployment must never lock a skipper out.
+
+**The rules must be re-pasted for any of the enforcement to be real.** Until
+then the new client runs correctly under the old rules, with the old (weaker)
+guarantees.

@@ -14,6 +14,7 @@ import { ADMIN_IDLE_MS, appendAudit, lockoutMs, verifyPin, type PinResult } from
 import {
   cancelRemote,
   claimBoat,
+  claimForThisDevice,
   depositRemote,
   putBoat,
   releaseRemote,
@@ -270,7 +271,7 @@ export interface DockState {
   dismissToast: () => void
 
   register: (input: RegistrationInput) => Promise<RegistrationResult>
-  signInAs: (boatId: string, last4: string) => boolean
+  signInAs: (boatId: string, last4: string) => Promise<boolean>
   signOut: () => void
 
   /**
@@ -550,14 +551,33 @@ export const useDockStore = create<DockState>()(
          *
          * Without this the roster is a one-tap "become anyone" list, and on
          * a shared dock phone that means releasing another skipper's crates.
-         * Four digits is not authentication — a client-only app cannot do
-         * authentication — but it stops casual impersonation, which is the
-         * threat that actually exists here.
+         * Four digits is not authentication — they are readable by anyone
+         * with the link — but they identify the boat you mean.
+         *
+         * What actually protects the crates is the second step: the boat is
+         * bound to this device in the shared roster, first claim wins, and
+         * the database then refuses to let any other phone move its crates.
+         * A boat already held by another device cannot be signed into here,
+         * and saying so plainly is better than letting someone in and having
+         * every action they take refused.
          */
-        signInAs: (boatId, last4) => {
-          const { boats, harbourId } = get()
+        signInAs: async (boatId, last4) => {
+          const { boats, harbourId, lang } = get()
           const boat = boats.find((b) => b.harbourId === harbourId && b.id === boatId)
           if (!boat || boat.mobile.slice(-4) !== last4.trim()) return false
+
+          if (syncEnabled) {
+            if (!requireLink()) return false
+            // Only a boat genuinely held by another device is refused. A boat
+            // the database would not let us bind stays unbound — the harbour
+            // then behaves as it did before binding existed, rather than
+            // locking a skipper out over a rules deployment.
+            if ((await claimForThisDevice(harbourId, boatId)) === 'taken') {
+              set({ toast: toast('error', t(lang, 'errClaimedElsewhere')) })
+              return false
+            }
+          }
+
           set({ myBoatId: boatId, tab: 'dock', toast: null })
           return true
         },

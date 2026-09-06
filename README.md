@@ -187,14 +187,32 @@ is not in the shared copy is not a hold, so it is never shown as one:
 Firebase would otherwise display a queued offline booking immediately, and a
 skipper would walk to the box on a promise that reached nobody.
 
-**What these rules still cannot do.** They check shape and identity, not
-harbour policy. Booking transacts over the whole `boxes` node, so write
-permission is granted there rather than per slot — which means a signed-in
-client that ignores the app can still overwrite a slot it does not own. The
-2-crate cap and admin approval are client-side for the same reason. Closing
-that gap means binding each slot to its boat's `uid`, which needs the booking
-path rewritten as per-slot compare-and-set writes. It is the next thing to
-build, and it does not need a paid plan.
+**Your crate is yours, and the database is what says so.** Every write names a
+single slot, and a boat is bound to the phone that claimed it — first claim
+wins, and the binding can never be reassigned. The rules then refuse any write
+to a slot held by a boat that is not yours. Two phones racing the last crate is
+settled by the server: the loser's transaction re-runs against the winner's
+commit and aborts.
+
+A boat nobody has claimed yet is open to anyone. That is the seeded demo
+roster, and it is deliberate — it keeps the app testable from a cold start.
+The moment a skipper signs in on their phone, that boat's crates are theirs.
+
+**What the rules still cannot do.** Three things, and the README would rather
+name them than imply they are covered:
+
+- **The 2-crate cap is counted on the client.** No rule can count a boat's
+  crates in boxes it is not writing to.
+- **Approval is not enforced.** There is no admin identity to check against,
+  so a determined client could set its own boat to `active`. The PIN is a lock
+  on a shared phone, not authorisation.
+- **A crate the harbour has given up on — an expired hold or a flagged
+  overstay — can be cleared by anyone.** That is how force-release works
+  without an admin account, and it is a deliberate community rule rather than
+  an oversight.
+
+All three need a server-held identity, which needs a paid plan. Everything
+that could be closed on the free tier has been.
 
 **Local (no config).** Exactly the old behaviour: one device, no sync, useful
 for an offline demo. The booking rules still hold on that device, but two

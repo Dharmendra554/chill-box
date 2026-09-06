@@ -462,19 +462,19 @@ describe('claiming an existing boat', () => {
     useDockStore.getState().signOut()
   }
 
-  it('refuses the wrong last-four digits and grants the right ones', () => {
+  it('refuses the wrong last-four digits and grants the right ones', async () => {
     fresh()
     // Ramu #04 at Nizampatnam is seeded with 9848012004.
-    expect(useDockStore.getState().signInAs('04', '0000')).toBe(false)
+    expect(await useDockStore.getState().signInAs('04', '0000')).toBe(false)
     expect(useDockStore.getState().myBoatId).toBeNull()
 
-    expect(useDockStore.getState().signInAs('04', '2004')).toBe(true)
+    expect(await useDockStore.getState().signInAs('04', '2004')).toBe(true)
     expect(useDockStore.getState().myBoatId).toBe('04')
   })
 
-  it('refuses a boat that does not exist at this harbour', () => {
+  it('refuses a boat that does not exist at this harbour', async () => {
     fresh()
-    expect(useDockStore.getState().signInAs('99', '2004')).toBe(false)
+    expect(await useDockStore.getState().signInAs('99', '2004')).toBe(false)
   })
 })
 

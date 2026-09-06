@@ -56,23 +56,33 @@
       "$harbour": {
         "boxes": {
           ".read": true,
-          // Signed in, and all three boxes still present. Booking transacts
-          // over this whole node, so write has to be granted here rather than
-          // per slot — which is also the honest limit of these rules: a
-          // hostile client that is signed in can still overwrite a slot it
-          // does not own. Binding each slot to its boat's uid needs the
-          // booking path rewritten to per-slot writes; see README.
-          ".write": "auth != null && newData.hasChildren(['box1', 'box2', 'box3'])",
-          ".validate": "newData.hasChildren()",
+          // NO write permission here, deliberately. It is granted one level
+          // down, on the slot — which is the whole point. A rule that can
+          // write this node can write every slot in it, and cannot tell your
+          // crate from mine.
 
-          // Exactly three boxes of ten slots. A typo, or a client inventing
-          // 'box9' or slot 47, is refused rather than quietly stored.
+          // A typo, or a client inventing 'box9' or slot 47, is refused
+          // rather than quietly stored.
           "$box": {
-            // Ten slots, always — it keeps the harbour's SHAPE intact, so a
-            // malformed or truncated write is refused. It does not stop a
-            // well-formed write of ten empty slots; see the header.
-            ".validate": "$box.matches(/^box[1-3]$/) && newData.hasChildren(['0','1','2','3','4','5','6','7','8','9'])",
+            ".validate": "$box.matches(/^box[1-3]$/)",
+
             "$slot": {
+              // Who may move this crate. Three questions:
+              //
+              //   1. any boat I name in the new slot must be mine
+              //   2. any boat already in the slot must be mine, unless
+              //   3. the harbour has given up on it — a hold that ran out, or
+              //      a crate already flagged as an overstay
+              //
+              // "Mine" means the boat carries this device's uid. A boat that
+              // no device has claimed is open to anyone: that is the seeded
+              // demo roster, and it is what keeps Publish harbour and Reset
+              // demo working. The moment a skipper claims a boat, only their
+              // phone can move its crates — including the harbour master's.
+              //
+              // 14400000 is the 4-hour hold in ms; it must match HOLD_MS in
+              // src/lib/time.ts.
+              ".write": "auth != null && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.child('reservedAt').val() + 14400000 <= now))",
               ".validate": "$slot.matches(/^[0-9]$/) && newData.hasChildren(['status'])",
               "status": {
                 ".validate": "newData.isString() && (newData.val() === 'empty' || newData.val() === 'reserved' || newData.val() === 'occupied' || newData.val() === 'overstay')"
@@ -94,7 +104,12 @@
           "$boat": {
             // Never deletable: slots point at boats, and a deleted boat would
             // orphan whatever it is holding. Rejection is a local matter.
-            ".write": "auth != null && newData.exists()",
+            //
+            // And a write may never drop or change an existing `uid`. Without
+            // that clause, replacing the boat object without a uid would
+            // silently unclaim it — and the finder could then claim it and
+            // move that skipper's crates.
+            ".write": "auth != null && newData.exists() && (!data.hasChild('uid') || newData.child('uid').val() === data.child('uid').val())",
             ".validate": "newData.hasChildren(['name', 'owner', 'mobileLast4', 'status', 'registeredAt'])",
             "name": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 40" },
             "nameTe": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
@@ -112,6 +127,14 @@
             // from whichever phone seeded it, so pinning them here would make
             // a second phone's publish fail on every boat.
             "registeredAt": { ".validate": "newData.isNumber()" },
+            // The device that holds this boat. First claim wins and it can
+            // never be reassigned — this is the only thing that makes the
+            // slot rules above mean anything, so it must not be something a
+            // second phone can simply overwrite. It can only ever be your own
+            // uid, so nobody can hand a boat to someone else either.
+            "uid": {
+              ".validate": "newData.isString() && (newData.val() === auth.uid || newData.val() === data.val())"
+            },
             "$other": { ".validate": false }
           }
         },
