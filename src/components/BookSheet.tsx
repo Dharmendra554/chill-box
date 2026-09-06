@@ -16,12 +16,15 @@ export function BookSheet({
   t,
   boxLabel,
   maxCrates,
+  capReached,
   onConfirm,
   onClose,
 }: {
   t: T
   boxLabel: string
   maxCrates: number
+  /** Whether it is the 2-crate cap, rather than the box, that limits this. */
+  capReached: boolean
   onConfirm: (crates: 1 | 2, species: Species) => void | Promise<void>
   onClose: () => void
 }) {
@@ -119,6 +122,16 @@ export function BookSheet({
             ))}
           </div>
         )}
+
+        {/* One crate available is the COMMON case — a boat already holding
+            one, or a box with a single slot left — and it rendered as a
+            second button greyed to about 2:1 contrast with no word for it.
+            A disabled control must say why. */}
+        {maxCrates === 1 ? (
+          <p className="text-sm font-bold text-ink-2">
+            {t(capReached ? 'crate2Cap' : 'crate2Room')}
+          </p>
+        ) : null}
 
         <button type="button" className="btn btn-ghost btn-block" onClick={onClose}>
           {t('cancel')}

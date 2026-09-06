@@ -68,7 +68,7 @@ export function SafetyCard({ band, fix }: { band: WaveBand | null; fix: GeoFix |
         </ol>
       ) : null}
 
-      <h3 className="text-sm font-extrabold uppercase tracking-wide">{t('emergency')}</h3>
+      <h3 className="text-sm font-extrabold uppercase">{t('emergency')}</h3>
       <ul className="flex flex-col gap-2">
         {contacts.map((contact) => (
           <li key={contact.number}>

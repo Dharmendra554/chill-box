@@ -10,14 +10,27 @@ export function CompassRose({
   bearing,
   atTarget,
   label,
+  bearingLabel,
 }: {
   bearing: number
   atTarget: boolean
+  /** Spoken only once the boat has actually arrived. */
   label: string
+  /** Spoken the rest of the time — the heading the dial is showing. */
+  bearingLabel: string
 }) {
   return (
     <figure className="card flex items-center justify-center p-4">
-      <svg viewBox="0 0 200 200" className="h-52 w-52" role="img" aria-label={label}>
+      {/* `label` used to be the aria-label unconditionally, so a skipper
+          using TalkBack eight kilometres offshore was told "You are at the
+          box". The dial's visible text is already gated on atTarget; its
+          spoken text was not. */}
+      <svg
+        viewBox="0 0 200 200"
+        className="h-52 w-52"
+        role="img"
+        aria-label={atTarget ? label : bearingLabel}
+      >
         <circle cx="100" cy="100" r="94" fill="none" stroke="currentColor" strokeWidth="3" />
 
         {Array.from({ length: 24 }, (_, i) => {

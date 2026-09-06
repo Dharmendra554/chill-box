@@ -78,6 +78,9 @@ const STORAGE_VERSION = 4
 /** Coalesce persist writes to at most one per this interval. */
 const WRITE_EVERY_MS = 5_000
 
+/** Refresh the admin's idle timer at most this often. See touchAdmin. */
+const TOUCH_EVERY_MS = 10_000
+
 /**
  * The ledger only grows and the persisted store shares a ~5 MB quota, so it
  * has to be bounded — PER HARBOUR, not overall. The rows arrive grouped by
@@ -121,8 +124,12 @@ export function setStorageErrorHandler(fn: () => void): void {
 
 let storageFailed = false
 
+/** Set by `resetStorage`, so nothing can write the store back afterwards. */
+let wiped = false
+
 function commitWrite(): void {
   writeTimer = null
+  if (wiped) return
   const write = pendingWrite
   pendingWrite = null
   if (!write) return
@@ -145,6 +152,27 @@ export function flushStorage(): void {
   if (writeTimer !== null) {
     clearTimeout(writeTimer)
     commitWrite()
+  }
+}
+
+/**
+ * Wipe the persisted store and stop this page ever writing it again.
+ *
+ * The escape hatch on the crash screen. `localStorage.clear()` followed by a
+ * reload does NOT reset this app — AGENTS.md §6 has said so for four rounds
+ * — because the clock keeps ticking after React unmounts, the next `set()`
+ * queues a write, and the old page puts everything back before the new one
+ * loads. Latching the writer shut is what makes the clear stick.
+ */
+export function resetStorage(): void {
+  wiped = true
+  if (writeTimer !== null) clearTimeout(writeTimer)
+  writeTimer = null
+  pendingWrite = null
+  try {
+    localStorage.clear()
+  } catch {
+    /* nothing left to do; the reload is still worth attempting */
   }
 }
 
@@ -171,6 +199,7 @@ const safeStorage: Storage = {
     }
   },
   setItem: (key, value) => {
+    if (wiped) return
     pendingWrite = { key, value }
     if (writeTimer === null) writeTimer = setTimeout(commitWrite, WRITE_EVERY_MS)
   },
@@ -295,7 +324,7 @@ export interface DockState {
   publishHarbour: () => Promise<void>
   record: (action: string, target: string, detail?: string) => Promise<void>
 
-  resetDemo: () => void
+  resetDemo: () => Promise<void>
 }
 
 let toastSeq = 1
@@ -305,7 +334,17 @@ function toast(tone: ToastTone, text: string): ToastMessage {
   return { id: toastSeq++, tone, text }
 }
 
-function seed(now: number) {
+/**
+ * A whole demo harbour, from nothing.
+ *
+ * Exported for the tests, which need a store that is genuinely fresh
+ * between cases. They used to call `resetDemo` for this, and that quietly
+ * became the reason `resetDemo` replaced the roster and the ledger for all
+ * three harbours — a demo button doing a factory reset because a test
+ * needed one. The button now clears the crates it says it clears; the tests
+ * reset the store directly.
+ */
+export function seed(now: number) {
   return {
     boats: [...seedBoats(), ...seedPending(now)],
     boxesByHarbour: seedAllBoxes(now),
@@ -416,6 +455,13 @@ export const useDockStore = create<DockState>()(
         }
         if (result.error === 'unseeded') {
           set({ toast: toast('error', t(lang, 'syncUnseeded')) })
+          return
+        }
+        if (result.error === 'partial') {
+          // Some of this boat's crates moved and some did not. Silence here
+          // is the dangerous one: the skipper walks away believing both
+          // crates are dealt with, and the other is still holding fish.
+          set({ toast: toast('error', t(lang, 'syncPartial')) })
           return
         }
         set({
@@ -783,7 +829,20 @@ export const useDockStore = create<DockState>()(
           return 'ok'
         },
 
-        touchAdmin: () => set({ adminTouchedAt: serverNow() }),
+        /**
+         * Keep the admin's idle timer alive while they are working.
+         *
+         * Bound to pointer-down and key-down on the whole console, so it
+         * used to fire a `set()` on every tap — each one re-rendering every
+         * subscriber and queueing a re-serialisation of the persisted store.
+         * The idle lock is measured in minutes; refreshing it more than once
+         * every few seconds buys nothing at all.
+         */
+        touchAdmin: () => {
+          const now = serverNow()
+          if (now - get().adminTouchedAt < TOUCH_EVERY_MS) return
+          set({ adminTouchedAt: now })
+        },
 
         lockAdmin: () => set({ adminUnlocked: false, tab: 'dock' }),
 
@@ -914,13 +973,13 @@ export const useDockStore = create<DockState>()(
           }
         },
 
-        resetDemo: () => {
+        resetDemo: async () => {
           // THE harbour being looked at, never a hard-coded one. This reset
           // clears live holds for every phone in that harbour, and it used to
           // always target Nizampatnam — so an admin at Kakinada emptied
           // another society's boxes, with fish in them, and was told they had
           // cleared the one on screen.
-          const { harbourId, audit } = get()
+          const { harbourId, boxesByHarbour } = get()
           const fresh = seed(serverNow())
 
           // A local-only reset would be undone by the watcher a second later,
@@ -931,31 +990,42 @@ export const useDockStore = create<DockState>()(
           // of. On an unpublished harbour that made this button fail with a
           // refusal the admin could do nothing about — so it now seeds what
           // it needs. Both writes yield to anything already there.
+          // The shared copy first, and only mirror it locally if it landed.
+          // A multi-path update is atomic: one refused slot — which is what
+          // happens the moment a real skipper has claimed a boat — refuses
+          // all thirty. Setting the local copy first showed the admin an
+          // empty harbour, then a refusal toast, then the watcher putting
+          // every crate back. Say no, or do it; never both.
           if (syncEnabled) {
-            void seedHarbour(
+            await seedHarbour(
               harbourId,
               fresh.boxesByHarbour[harbourId],
               fresh.boats.filter((b) => b.harbourId === harbourId),
               fresh.ledger.filter((e) => e.harbourId === harbourId),
             )
-              .then(() => resetRemoteBoxes(harbourId, fresh.boxesByHarbour[harbourId]))
-              .then(reportFailure)
+            const outcome = await resetRemoteBoxes(harbourId, fresh.boxesByHarbour[harbourId])
+            if (!outcome.ok) {
+              reportFailure(outcome)
+              return
+            }
           }
 
           set({
-            ...fresh,
-            harbourId,
-            // The action log survives. It is the record of what the admin
-            // did, including this reset — wiping it here destroyed the
-            // integrity trail the console advertises, silently.
-            audit,
+            // ONLY this harbour's crates. `...fresh` replaced the roster and
+            // the ledger for all three harbours, so a registration that had
+            // not reached the shared copy yet was destroyed without a word —
+            // while the button's own text promised both were kept. The audit
+            // log survives for the same reason: it is the integrity trail
+            // the console advertises, and this reset is recorded in it.
+            boxesByHarbour: {
+              ...boxesByHarbour,
+              [harbourId]: fresh.boxesByHarbour[harbourId],
+            },
             // Signed out, not signed in as #04: handing out an approved boat
             // here would make the last-4 check pointless.
             myBoatId: null,
-            adminUnlocked: false,
             adminFailures: 0,
             adminLockedUntil: 0,
-            tab: 'dock',
           })
           void get().record('demo.reset', harbourId)
         },

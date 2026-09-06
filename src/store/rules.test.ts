@@ -19,7 +19,7 @@ import {
   slotsForBoat,
   suggestedBoxId,
 } from './selectors'
-import { releaseSlots, selectBoxes, useDockStore } from './useDockStore'
+import { releaseSlots, seed, selectBoxes, useDockStore } from './useDockStore'
 
 /**
  * These cover the harbour rules a judge will try to break: the hold clock,
@@ -458,7 +458,7 @@ describe('a tick that changes nothing changes nothing', () => {
 
 describe('claiming an existing boat', () => {
   const fresh = () => {
-    useDockStore.getState().resetDemo()
+    useDockStore.setState(seed(Date.now()))
     useDockStore.getState().signOut()
   }
 
@@ -480,8 +480,7 @@ describe('claiming an existing boat', () => {
 
 describe('a blocked boat cannot move crates', () => {
   it('refuses reserve, deposit, cancel and release once blocked', async () => {
-    const store = useDockStore.getState()
-    store.resetDemo()
+    useDockStore.setState(seed(Date.now()))
     useDockStore.getState().signInAs('04', '2004')
 
     expect(await useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(true)
@@ -503,7 +502,7 @@ describe('a blocked boat cannot move crates', () => {
 
 describe('regressions the audit caught', () => {
   it('keeps history for every harbour when the ledger is capped', () => {
-    useDockStore.getState().resetDemo()
+    useDockStore.setState(seed(Date.now()))
     const ledger = useDockStore.getState().ledger
     for (const id of ['vizag', 'kakinada', 'nizampatnam'] as const) {
       const rows = ledger.filter((e) => e.harbourId === id)
@@ -512,10 +511,30 @@ describe('regressions the audit caught', () => {
     }
   })
 
-  it('leaves you signed out after a demo reset, not signed in as #04', () => {
-    useDockStore.getState().signInAs('04', '2004')
-    useDockStore.getState().resetDemo()
+  it('leaves you signed out after a demo reset, not signed in as #04', async () => {
+    useDockStore.setState(seed(Date.now()))
+    await useDockStore.getState().signInAs('04', '2004')
+    await useDockStore.getState().resetDemo()
     expect(useDockStore.getState().myBoatId).toBeNull()
+  })
+
+  it('a demo reset clears this harbour and keeps the roster, ledger and audit', async () => {
+    useDockStore.setState(seed(Date.now()))
+    const before = useDockStore.getState()
+    const boats = before.boats.length
+    const rows = before.ledger.length
+    const otherHarbour = before.boxesByHarbour.kakinada
+
+    await useDockStore.getState().reserve('box3', 1, 'prawn')
+    await useDockStore.getState().resetDemo()
+
+    const after = useDockStore.getState()
+    // The button says the roster and past records are kept. `...seed()`
+    // replaced both, for all three harbours, and destroyed any registration
+    // that had not reached the shared copy yet.
+    expect(after.boats.length).toBe(boats)
+    expect(after.ledger.length).toBe(rows)
+    expect(after.boxesByHarbour.kakinada).toBe(otherHarbour)
   })
 
   it('never shows more hold remaining than a hold can have', () => {
@@ -533,7 +552,7 @@ describe('an admin decision has to survive', () => {
     // shared roster came back: the boat reappeared as pending, and the audit
     // log still claimed it had been rejected. A blocked boat cannot book, and
     // the rules forbid removing a boat because slots point at boats.
-    useDockStore.getState().resetDemo()
+    useDockStore.setState(seed(Date.now()))
     const pending = useDockStore
       .getState()
       .boats.find((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
@@ -549,7 +568,7 @@ describe('an admin decision has to survive', () => {
   })
 
   it('drops a rejected boat out of the approvals queue', async () => {
-    useDockStore.getState().resetDemo()
+    useDockStore.setState(seed(Date.now()))
     const pending = useDockStore
       .getState()
       .boats.filter((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
@@ -562,7 +581,7 @@ describe('an admin decision has to survive', () => {
   })
 
   it('signs out a skipper whose own boat was just rejected', async () => {
-    useDockStore.getState().resetDemo()
+    useDockStore.setState(seed(Date.now()))
     const pending = useDockStore
       .getState()
       .boats.find((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')!

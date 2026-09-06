@@ -118,7 +118,11 @@ export function DockScreen({
             <CompassIcon size={26} />
             {t('navTitle')}
           </h2>
-          <p className="font-bold text-ink-2">{t('navTapMap')}</p>
+          {/* The instruction has to match what a tap will actually do for
+              THIS boat. A boat still waiting on approval cannot book, and
+              telling it to tap a box to book one is a promise the screen
+              cannot keep. */}
+          <p className="font-bold text-ink-2">{t(canBook ? 'navTapMap' : 'navTapMapView')}</p>
           <p className="tabular text-sm font-extrabold">{t('quotaLeft', quota)}</p>
         </section>
       ) : (
@@ -156,22 +160,36 @@ export function DockScreen({
           routeTo={myBoxId}
           landmarkLabel={landmarkLabel}
           offlineLabel={t('navOffline')}
-          onPick={canBook ? setBookingFor : undefined}
+          mapLabel={t('navMapLabel')}
+          onPick={(id) => {
+            // Same rule as the box cards: book it if this boat can, and
+            // otherwise open who is inside. Never a tap that does nothing.
+            const box = boxes.find((b) => b.id === id)
+            if (canBook && box && emptyCount(box) > 0) setBookingFor(id)
+            else setDetailsFor(id)
+          }}
         />
       </Suspense>
 
       {/* Route figures appear only once a box is actually booked. */}
       {nav ? (
         <>
-          <section className="card grid grid-cols-3 gap-2 p-4" aria-live="polite">
+          {/* A <dl>, because these are three term/value pairs and <dt>/<dd>
+              are only meaningful inside one. */}
+          <dl className="card grid grid-cols-3 gap-2 p-4" aria-live="polite">
             <Stat label={t('navDistance')} value={formatKm(nav.km, lang)} />
             <Stat label={t('navEta')} value={formatEta(nav.etaMinutes, lang)} />
             <Stat
               label={t('navBearing')}
               value={`${Math.round(nav.bearing)}° ${cardinal(nav.bearing, lang)}`}
             />
-          </section>
-          <CompassRose bearing={nav.bearing} atTarget={nav.km < 0.05} label={t('navAtBox')} />
+          </dl>
+          <CompassRose
+            bearing={nav.bearing}
+            atTarget={nav.km < 0.05}
+            label={t('navAtBox')}
+            bearingLabel={`${t('navBearing')} ${Math.round(nav.bearing)}° ${cardinal(nav.bearing, lang)}`}
+          />
         </>
       ) : null}
 
@@ -232,6 +250,9 @@ export function DockScreen({
             quota,
             emptyCount(boxes.find((b) => b.id === bookingFor)!),
           )}
+          // Which of the two limits is biting, so the sheet can say the true
+          // one rather than a generic "not available".
+          capReached={quota <= emptyCount(boxes.find((b) => b.id === bookingFor)!)}
           // The sheet stays up until the claim is settled. Closing first and
           // showing a receipt built from local state printed "0 crates" and a
           // code that did not match what was recorded — and on a lost race,
@@ -312,7 +333,7 @@ function Legend() {
         <li
           key={key}
           className={cx(
-            'border-3 border-rule px-2 py-1 text-xs font-extrabold uppercase tracking-wide',
+            'border-3 border-rule px-2 py-1 text-xs font-extrabold uppercase',
             style,
           )}
         >
@@ -498,7 +519,7 @@ function DemoTools({
   const t = useT()
   return (
     <section className="card-soft flex flex-col gap-2 p-3">
-      <h3 className="text-sm font-extrabold uppercase tracking-wide">{t('demoTitle')}</h3>
+      <h3 className="text-sm font-extrabold uppercase">{t('demoTitle')}</h3>
       <p className="text-sm font-bold text-ink-2">{t('demoBody')}</p>
 
       <button

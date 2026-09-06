@@ -21,7 +21,7 @@ import { saveCsv } from '../lib/download'
 import { syncEnabled } from '../lib/harbourSync'
 import { formatDayClock, formatGap, monthKey, monthLabel } from '../lib/time'
 import { cx } from '../lib/ui'
-import { occupancyRows } from '../store/selectors'
+import { forceReleasable, occupancyRows } from '../store/selectors'
 import { selectBoxes, selectHarbour, useDockStore } from '../store/useDockStore'
 import { ConfirmButton } from './ConfirmButton'
 import { HelmIcon } from '../icons/marine'
@@ -260,13 +260,19 @@ function Console() {
                     : ''}
                 </p>
               </div>
-              {row.status !== 'reserved' ? (
+              {row.status === 'reserved' ? null : forceReleasable(row) ? (
                 <ConfirmButton
                   className="btn h-11 min-h-11 px-3 text-sm btn-warn"
                   label={t('adminForceRelease')}
                   onConfirm={() => adminRelease(row.boatId, row.boxId)}
                 />
-              ) : null}
+              ) : (
+                // A true sentence rather than a button that the database
+                // will refuse. See forceReleasable.
+                <p className="w-24 shrink-0 text-xs font-bold text-ink-2">
+                  {t('adminForceWait')}
+                </p>
+              )}
             </div>
           ))
         )}
@@ -521,7 +527,11 @@ function Bars({
     return (
       <figure className="card p-3">
         <figcaption className="mb-2 text-sm font-extrabold uppercase text-ink-2">{title}</figcaption>
-        <div className="flex h-24 items-end gap-[2px]">
+        {/* Height and colour, and a `title` that never renders on a touch
+            screen — so this chart carried no text at all, which is the
+            "never colour alone" rule the README states and this broke. The
+            bars are decorative; the figure carries the reading. */}
+        <div className="flex h-24 items-end gap-[2px]" aria-hidden="true">
           {rows.map((row) => (
             <div
               key={row.key}
@@ -531,6 +541,7 @@ function Bars({
             />
           ))}
         </div>
+        <p className="sr-only">{rows.map((row) => `${row.label}: ${row.value}`).join('. ')}</p>
       </figure>
     )
   }

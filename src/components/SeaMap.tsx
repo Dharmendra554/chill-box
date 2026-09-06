@@ -35,6 +35,7 @@ export function SeaMap({
   routeTo,
   landmarkLabel,
   offlineLabel,
+  mapLabel,
   onPick,
 }: {
   harbour: Harbour
@@ -44,6 +45,7 @@ export function SeaMap({
   routeTo: BoxId | null
   landmarkLabel: (key: string) => string
   offlineLabel: string
+  mapLabel: string
   onPick?: (id: BoxId) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
@@ -155,7 +157,12 @@ export function SeaMap({
         className: 'sea-box',
         offset: [0, -30],
       })
-      if (onPick && !marker.full) pin.on('click', () => onPick(marker.id))
+      // Every pin answers a tap, including a full one. The map is the
+      // primary way in and the screen above it says to tap a box; a pin that
+      // silently ignored the tap taught a skipper the app was broken. The
+      // caller decides what the tap means — book it, or show who is inside —
+      // exactly as the box cards already do.
+      if (onPick) pin.on('click', () => onPick(marker.id))
     }
 
     if (fix) L.marker([fix.lat, fix.lon], { icon: boatPin() }).addTo(group)
@@ -198,8 +205,13 @@ export function SeaMap({
       <div
         ref={host}
         className="h-[46vh] min-h-72 w-full border-3 border-rule"
-        role="application"
-        aria-label="chart"
+        // Not role="application": that blackboxes the whole chart for a
+        // screen reader, and there is nothing here it could then reach. The
+        // pins are also box cards further down the page, which is the path
+        // that actually works. The label was the one hardcoded English
+        // string in the app, in a Telugu-first UI.
+        role="img"
+        aria-label={mapLabel}
       />
       {tilesFailed ? (
         <p className="absolute inset-x-0 bottom-0 z-[500] bg-late px-2 py-1 text-sm font-extrabold text-late-ink">

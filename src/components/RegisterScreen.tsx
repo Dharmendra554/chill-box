@@ -188,7 +188,7 @@ function Field({
 } & Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'>) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-sm font-extrabold uppercase tracking-wide">{label}</span>
+      <span className="text-sm font-extrabold uppercase">{label}</span>
       <input
         className="field"
         value={value}

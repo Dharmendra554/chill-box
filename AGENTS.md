@@ -102,6 +102,11 @@ Do not redesign. Extend what is here.
 - **60–72 px** targets for primary actions, 44 px minimum for utilities.
 - Status is **colour AND shape AND text**. Never colour alone.
 - **12-hour clocks** with am/pm. A dock does not read 22:30.
+- **No `letter-spacing` on anything that can hold Telugu**, which is every
+  user-visible string. Tracking pulls matras away from the consonant they
+  belong to, and low-literacy readers are exactly who cannot absorb that. The
+  small-caps label look costs legibility in the primary language; `uppercase`
+  alone is a harmless no-op on Telugu and stays.
 - **Hand-drawn SVG icons only** (`src/icons/`). No emoji — they render
   differently on every Android build and cannot be recoloured for contrast.
 - **Boxes are named after landmarks** (Auction Hall / Ice Plant / Diesel

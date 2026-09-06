@@ -1,7 +1,7 @@
 import type { T } from '../i18n/dictionary'
 import { BOX_PLACE } from '../i18n/dictionary'
 import { formatClockShort } from '../lib/time'
-import { cx, STATUS_STYLE } from '../lib/ui'
+import { cx, STATUS_LABEL, STATUS_STYLE } from '../lib/ui'
 import { emptyCount, isFull, usedCount } from '../store/selectors'
 import type { ColdBox, Slot } from '../types'
 import { IceIcon } from '../icons/marine'
@@ -66,7 +66,7 @@ export function BoxCard({
       </header>
 
       {suggested && !full ? (
-        <p className="w-fit bg-free-wash px-2 py-0.5 text-xs font-extrabold uppercase tracking-wide text-ink">
+        <p className="w-fit bg-free-wash px-2 py-0.5 text-xs font-extrabold uppercase text-ink">
           {t('suggested')}
         </p>
       ) : null}
@@ -139,10 +139,19 @@ function SlotCell({ t, slot, now }: { t: T; slot: Slot; now: number }) {
         'flex aspect-square flex-col items-center justify-center gap-0.5 border-3 border-rule',
         STATUS_STYLE[slot.status],
       )}
-      title={
+      // `title` renders on hover, and there is no hover on a dock phone — so
+      // the grid's only status text was invisible to every user it has, and
+      // the status came down to fill colour alone. That contradicts the one
+      // design rule this app repeats everywhere: colour AND shape AND text.
+      // aria-label is the half a screen reader can reach; the visible half
+      // is the boat number, the collection hour and the dashed border.
+      aria-label={
         slot.boatId
-          ? `#${slot.boatId} · ${t(slot.status === 'reserved' ? 'legendHold' : slot.status === 'overstay' ? 'legendLate' : 'legendFull')}`
-          : t('legendFree')
+          ? `#${slot.boatId} · ${t(STATUS_LABEL[slot.status])}`
+          : t(STATUS_LABEL.empty)
+      }
+      title={
+        slot.boatId ? `#${slot.boatId} · ${t(STATUS_LABEL[slot.status])}` : t(STATUS_LABEL.empty)
       }
     >
       <span className="flex items-center gap-0.5 font-display text-sm leading-none font-extrabold">

@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
-import { AdminScreen } from './components/AdminScreen'
-import { OfflineBanner, TabBar, Toast, TopBar, WaveStrip } from './components/Chrome'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  LoadingBanner,
+  OfflineBanner,
+  TabBar,
+  Toast,
+  TopBar,
+  WaveStrip,
+} from './components/Chrome'
 import { DockScreen } from './components/DockScreen'
 import { HarbourScreen } from './components/HarbourScreen'
 import { RegisterScreen } from './components/RegisterScreen'
@@ -21,6 +27,20 @@ import {
   setStorageErrorHandler,
   useDockStore,
 } from './store/useDockStore'
+
+/**
+ * The harbour master's console, off the skipper's critical path.
+ *
+ * It is 619 lines, and it pulls in the reporting maths, the CSV writer and
+ * the PBKDF2 verifier behind it. Twenty skippers on 2G were downloading all
+ * of it to look at three boxes, and never opening it — while MEMORY.md
+ * claimed it was already a separate chunk. It lives at #admin only, so
+ * fetching it when that route opens costs the one person who wants it a
+ * moment and everyone else nothing.
+ */
+const AdminScreen = lazy(() =>
+  import('./components/AdminScreen').then((m) => ({ default: m.AdminScreen })),
+)
 
 /**
  * App shell. It decides *what* is on screen and keeps the document in sync
@@ -112,19 +132,33 @@ export default function App() {
 
   useEffect(() => () => stopSpeech(), [])
 
+  // Whether we have already said that this phone has no Telugu voice.
+  const toldAboutVoice = useRef(false)
+
   const onSpeak = useCallback(() => {
     if (speaking) {
       stopSpeech()
       setSpeaking(false)
       return
     }
-    // Always Telugu, whatever the screen language is set to.
-    if (speakCapacity(boxes, () => setSpeaking(false)) === 'unsupported') {
+    // Always Telugu, whatever the screen language is set to. And the voice
+    // carries the same staleness warning the banner does — see speakCapacity.
+    const outcome = speakCapacity(boxes, reach === 'connected', () => setSpeaking(false))
+    if (outcome === 'unsupported') {
       notify('warn', t('voiceNone'))
       return
     }
+    // This phone has no Telugu voice, so those are Telugu words spoken by an
+    // Indian English voice. Worth saying once — the skipper can hear that it
+    // sounds wrong and should know it is the phone, not the app. Once per
+    // session only: a warning on every tap is noise, and this toast does not
+    // fade by itself.
+    if (outcome === 'transliterated' && !toldAboutVoice.current) {
+      toldAboutVoice.current = true
+      notify('warn', t('voiceRoman'))
+    }
     setSpeaking(true)
-  }, [boxes, notify, speaking, t])
+  }, [boxes, notify, reach, speaking, t])
 
   const inAdmin = tab === 'admin'
   const band = marine.reading ? waveBand(marine.reading.waveHeight) : null
@@ -142,7 +176,19 @@ export default function App() {
         onTheme={setTheme}
         onSpeak={onSpeak}
       />
-      {reach !== 'stale' ? (
+      {/*
+        Three states, not two. `checking` used to render the wave strip,
+        which says nothing about the figures — so for the first twenty
+        seconds of every cold start the boxes showed either the last
+        session's snapshot or, on a fresh install, the seeded demo
+        occupancy, rendered pixel-identically to live data and with nothing
+        on screen to say otherwise. A skipper opening the app on 2G reads it
+        inside those twenty seconds. It fails in the dangerous direction: he
+        sees crates that do not exist, rather than none at all.
+      */}
+      {reach === 'checking' && syncEnabled ? (
+        <LoadingBanner t={t} />
+      ) : reach !== 'stale' ? (
         <WaveStrip t={t} reading={marine.reading} error={marine.error} />
       ) : (
         <OfflineBanner t={t} since={reachedAt} />
@@ -150,7 +196,9 @@ export default function App() {
 
       <main className="mx-auto max-w-6xl px-3 py-4 pb-28">
         {inAdmin ? (
-          <AdminScreen />
+          <Suspense fallback={null}>
+            <AdminScreen />
+          </Suspense>
         ) : !boat ? (
           <RegisterScreen />
         ) : (

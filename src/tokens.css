@@ -114,7 +114,11 @@
 
   --font-display: "Bricolage Grotesque", "Noto Sans Telugu", sans-serif;
   --font-body: "Noto Sans Telugu", "Noto Sans", sans-serif;
-  --font-outlier: "IBM Plex Mono", ui-monospace, monospace;
+  /* Telugu is in this stack because `.tabular` is applied to whole phrases,
+     not only to digits — "3గం 12ని", "2గం 10నిలో", the crates-left line. The
+     mono face has no Telugu, so those lines fell back glyph by glyph and
+     rendered in a different face and weight from the text beside them. */
+  --font-outlier: "IBM Plex Mono", "Noto Sans Telugu", ui-monospace, monospace;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);

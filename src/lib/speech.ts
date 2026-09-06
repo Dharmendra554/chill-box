@@ -75,6 +75,7 @@ const TE = {
   box3: 'డీజిల్ బంక్ బాక్స్',
   crates: 'క్రేట్లు',
   full: 'నిండింది',
+  stale: 'జాగ్రత్త. ఈ లెక్క పాతది. బాక్స్ దగ్గర చూసుకోండి.',
   counts: ['సున్నా', 'ఒక', 'రెండు', 'మూడు', 'నాలుగు', 'ఐదు', 'ఆరు', 'ఏడు', 'ఎనిమిది', 'తొమ్మిది', 'పది'],
 } as const
 
@@ -85,6 +86,7 @@ const ROMAN = {
   box3: 'diesel bunk box',
   crates: 'cretlu',
   full: 'nindindi',
+  stale: 'jaagratta. ee lekka paatadi. box daggara chusukondi.',
   counts: ['sunna', 'oka', 'rendu', 'moodu', 'naalugu', 'aidu', 'aaru', 'edu', 'enimidi', 'tommidi', 'padi'],
 } as const
 
@@ -104,14 +106,31 @@ function line(boxes: ColdBox[], words: Phrases): string {
 /** What actually happened, so the UI can be honest about a downgrade. */
 export type SpeechOutcome = 'telugu' | 'transliterated' | 'unsupported'
 
-export function speakCapacity(boxes: ColdBox[], onEnd: () => void): SpeechOutcome {
+/**
+ * Read the harbour out loud.
+ *
+ * `fresh` is whether these figures are current. It is not optional and it is
+ * not decoration: the readout exists for the skipper who cannot read the
+ * screen, and the staleness warning used to live *entirely* in on-screen
+ * text. So the one person the feature is for heard a flat, confident "four
+ * crates" off a frozen snapshot, and walked to a full box with his catch —
+ * the app's own primary failure mode, delivered through its own
+ * accessibility feature. If the figures are not current, the voice says so
+ * first, before any number.
+ */
+export function speakCapacity(
+  boxes: ColdBox[],
+  fresh: boolean,
+  onEnd: () => void,
+): SpeechOutcome {
   if (!supportsSpeech()) return 'unsupported'
 
   const telugu = findVoice('te')
   const voice = telugu ?? findVoice('en') ?? findVoice('hi')
   const words: Phrases = telugu ? TE : ROMAN
 
-  const utterance = new SpeechSynthesisUtterance(line(boxes, words))
+  const spoken = fresh ? line(boxes, words) : `${words.stale} ${line(boxes, words)}`
+  const utterance = new SpeechSynthesisUtterance(spoken)
   utterance.lang = voice?.lang ?? (telugu ? 'te-IN' : 'en-IN')
   if (voice) utterance.voice = voice
   utterance.rate = 0.88

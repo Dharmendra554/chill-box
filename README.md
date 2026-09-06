@@ -145,11 +145,13 @@ The app runs in one of two modes, decided by whether a Firebase config is
 present at build time.
 
 **Shared (set `VITE_FIREBASE_*`).** Every phone reads and writes one copy of
-the harbour, and changes arrive live. Booking runs inside a Firebase
-transaction over the whole harbour node, so the capacity check, the 2-crate cap
-and the expiry of stale holds all commit together — when two boats tap the last
-crate at the same moment, exactly one wins and the other is told why. Free
-Spark plan, no card. Setup:
+the harbour, and changes arrive live. Each crate is claimed by a Firebase
+transaction on its own slot, so when two boats tap the last crate at the same
+moment the server settles it: exactly one wins and the other is told why.
+Two crates are two writes and either can lose, so a booking that cannot win
+both gives back the one it took rather than leaving you holding half a
+booking. The 2-crate cap is checked on the client — no rule can count across
+boxes. Free Spark plan, no card. Setup:
 
 1. Create a project at [firebase.google.com](https://firebase.google.com) →
    **Realtime Database** → start in **locked mode**.
@@ -198,30 +200,44 @@ A boat nobody has claimed yet is open to anyone. That is the seeded demo
 roster, and it is deliberate — it keeps the app testable from a cold start.
 The moment a skipper signs in on their phone, that boat's crates are theirs.
 
-**What the rules still cannot do.** Three things, and the README would rather
-name them than imply they are covered:
+**What the rules still cannot do.** Named here rather than implied to be
+covered:
 
+- **Any signed-in phone can set any boat's status.** There is no admin
+  identity, so a client could approve its own boat — or block all twenty and
+  stop the whole harbour booking. This is the largest remaining gap.
 - **The 2-crate cap is counted on the client.** No rule can count a boat's
   crates in boxes it is not writing to.
-- **Approval is not enforced.** There is no admin identity to check against,
-  so a determined client could set its own boat to `active`. The PIN is a lock
-  on a shared phone, not authorisation.
-- **A crate the harbour has given up on — an expired hold or a flagged
-  overstay — can be cleared by anyone.** That is how force-release works
-  without an admin account, and it is a deliberate community rule rather than
-  an oversight.
+- **A crate the harbour has given up on — an expired hold, or a stored crate
+  past its overstay hour — can be cleared by anyone.** That is how
+  force-release works without an admin account, and it is a deliberate
+  community rule rather than an oversight. The rule reads the crate's
+  `depositedAt`, the same timestamp the screen counts from.
+- **Ledger rows can be added, never edited.** A padded report is still a
+  problem for a society billing off the CSV.
 
-All three need a server-held identity, which needs a paid plan. Everything
-that could be closed on the free tier has been.
+These need a server-held identity, which needs a paid plan. Everything that
+could be closed on the free tier has been.
+
+**And the cost of binding a boat to a phone: it can never be undone.** That
+is what makes crate ownership enforceable, and it means a skipper who clears
+their browser, reinstalls the app, or loses the phone gets a new anonymous
+identity and **can never sign in as their own boat again, on any device**.
+No admin control can release it, because a rule an admin could override
+would not be a rule. On a real deployment this needs an out-of-band answer —
+a harbour master who can retire a hull number and issue a new one — and the
+app does not have one yet.
 
 **Local (no config).** Exactly the old behaviour: one device, no sync, useful
 for an offline demo. The booking rules still hold on that device, but two
 phones will disagree, and the app says so rather than pretending.
 
-Either way, the client is the last word on policy. Firebase rules check the
-*shape* of the data, not the harbour's rules, so a determined user editing
-their own requests is not stopped. Server-side code is what fixes that, and
-nothing else in the app would have to move.
+Either way, the harbour's *policy* is the client's word — the cap, the
+approval queue, the hold length. What the database now enforces on its own is
+who owns a crate: the rules refuse a write to a slot held by someone else's
+boat, and there is no path that writes more than one crate without being
+checked against that crate's owner. Policy enforcement needs a server-held
+identity, which needs a paid plan; crate ownership did not, and has been done.
 
 ## Free, no-account services
 

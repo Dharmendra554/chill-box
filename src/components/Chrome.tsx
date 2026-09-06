@@ -179,6 +179,28 @@ export function OfflineBanner({ t, since }: { t: T; since: number | null }) {
 }
 
 /**
+ * The first few seconds, before the shared harbour has said anything.
+ *
+ * The figures on screen behind this are the last snapshot this phone kept,
+ * or — on a fresh install — the seeded demo occupancy. Both render exactly
+ * like live data. Until the first snapshot lands there is no honest way to
+ * show them as current, so we say plainly that they are still coming. Same
+ * slot and same weight as the offline banner, because it is the same
+ * promise: never a confident number we cannot stand behind.
+ */
+export function LoadingBanner({ t }: { t: T }) {
+  return (
+    <p
+      className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-hold-wash px-3 py-1.5 text-sm font-extrabold"
+      role="status"
+    >
+      <span>{t('loadingTitle')}</span>
+      <span className="font-bold">{t('loadingBody')}</span>
+    </p>
+  )
+}
+
+/**
  * Two tabs only. Admin is deliberately absent: a harbour-master console has
  * no business being one thumb-reach from twenty skippers' booking screen.
  * It lives at the #admin URL and behind a PIN.

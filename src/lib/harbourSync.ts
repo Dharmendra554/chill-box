@@ -9,22 +9,31 @@ import type { Boat, BoxId, ColdBox, HarbourId, LedgerEntry, Slot, Species } from
  * ------------------------------
  * The product's whole job is coordinating a scarce shared resource, and a
  * plain write cannot do that: two boats read "one crate free", both write,
- * both believe they hold it, and one arrives to a full box. So every booking
- * runs `runTransaction` over the harbour's entire `boxes` node — Firebase
- * re-runs the body against fresh data until it commits, which makes the
- * capacity check and the 2-crate cap atomic against a real race.
+ * both believe they hold it, and one arrives to a full box. Every crate is
+ * therefore claimed with `runTransaction` — Firebase re-runs the body
+ * against fresh data until it commits, so the capacity check is evaluated
+ * against what the server actually holds at commit time.
  *
- * It has to be the whole harbour, because the cap is counted across boxes.
- * That is three boxes of ten slots — a few kilobytes, small enough to
- * transact on with twenty boats.
+ * ONE SLOT PER WRITE
+ * ------------------
+ * Each transaction names a single slot (`boxes/$box/$slot`), never the node
+ * above it. That is what lets the database rules ask whose crate it is — a
+ * rule that can write the `boxes` node can write every slot in it and cannot
+ * tell one boat's crate from another's. See `claimSlot` and
+ * `firebase/database.rules.json`.
+ *
+ * The cost is that two crates are two writes, so a booking, a deposit or a
+ * release can half-succeed. `reserveRemote` gives back what it won rather
+ * than leaving a skipper holding one crate believing they hold two, and
+ * `settle` refuses to call a partly-applied change a success.
  *
  * WHAT THIS DOES NOT DO
  * ---------------------
- * The rules run here, on the client. That is correct against two honest
- * boats racing — the case that actually happens on a dock — but not against
- * someone editing their own requests. The database rules constrain the shape
- * of the data (firebase/database.rules.json), not harbour policy. Real
- * enforcement needs server-side code; the README says so plainly.
+ * The 2-crate cap is still counted here, on the client, because no database
+ * rule can count a boat's crates across three boxes. Nor is there an admin
+ * identity to check against. The rules enforce shape, identity and crate
+ * ownership; they are not harbour policy. The rules file lists exactly what
+ * a signed-in client can still do, and the README repeats it.
  *
  * WITHOUT CONFIG
  * --------------
@@ -56,6 +65,7 @@ export type BookingError =
   | 'refused'
   | 'stale'
   | 'unseeded'
+  | 'partial'
 
 /**
  * What happened to a shared write. Every caller must be able to tell the
@@ -491,20 +501,53 @@ export async function claimBoat(harbourId: HarbourId, boat: Boat): Promise<strin
 
   for (let tries = 0; tries < 50; tries += 1, n += 1) {
     const id = String(n).padStart(2, '0')
-    try {
-      const result = await a.runTransaction(
-        a.ref(a.db, `harbours/${harbourId}/boats/${id}`),
-        // Bound to this device as it is created: whoever registers a boat
-        // owns it, with no separate claiming step to lose.
-        (current: WireBoat | null) =>
-          current ? undefined : { ...toWireBoat({ ...boat, id }), uid: a.uid ?? undefined },
-      )
-      if (result.committed) return id
-    } catch {
-      return null
+
+    // Bind the boat to this device as it is created: whoever registers a boat
+    // owns it, with no separate claiming step to lose. If that is refused,
+    // register without the binding rather than failing — see writeNewBoat.
+    let outcome = await writeNewBoat(a, harbourId, id, boat, a.uid)
+    if (outcome === 'refused' && a.uid) {
+      outcome = await writeNewBoat(a, harbourId, id, boat, null)
     }
+
+    if (outcome === 'won') return id
+    if (outcome === 'refused') return null
   }
   return null
+}
+
+/**
+ * Write one candidate hull number, aborting if the id already exists.
+ *
+ * `bind` is this device's uid, or null to register the boat unbound.
+ *
+ * Both cases earned their place. Passing `uid: undefined` when there is no
+ * signed-in identity constructs a real own property that the Firebase SDK
+ * *rejects* — the pruneWire defect, in a second wire shape — and a rules file
+ * that predates the `uid` field refuses the child outright. Either way the
+ * throw was caught, registration failed on full bars, and the skipper was
+ * told "No signal. Nothing was saved". Registering unbound is exactly how the
+ * harbour behaved before device binding existed: no worse, and never a
+ * skipper who cannot join because a rules paste has not happened yet.
+ * `claimForThisDevice` already degraded this way; this call site did not.
+ */
+async function writeNewBoat(
+  a: Api,
+  harbourId: HarbourId,
+  id: string,
+  boat: Boat,
+  bind: string | null,
+): Promise<'won' | 'taken' | 'refused'> {
+  const wire = toWireBoat({ ...boat, id })
+  try {
+    const result = await a.runTransaction(
+      a.ref(a.db, `harbours/${harbourId}/boats/${id}`),
+      (current: WireBoat | null) => (current ? undefined : bind ? { ...wire, uid: bind } : wire),
+    )
+    return result.committed ? 'won' : 'taken'
+  } catch {
+    return 'refused'
+  }
 }
 
 /**
@@ -871,34 +914,38 @@ export function pruneWire(slot: WireSlot): WireSlot {
  * Depositing at one used to mark both occupied, so a physically empty crate
  * showed as full to the whole harbour and blocked a real booking for hours.
  */
-export function depositRemote(
+export async function depositRemote(
   harbourId: HarbourId,
   boatId: string,
   plannedOutAt: number,
   onlyBoxId?: BoxId,
 ): Promise<RemoteResult> {
-  return mutateOwnSlots(
-    harbourId,
-    boatId,
-    ['reserved'],
-    (slot) => ({
-      status: 'occupied',
-      boatId: slot.boatId,
-      species: slot.species,
-      depositedAt: serverNow(),
-      plannedOutAt,
-    }),
-    onlyBoxId,
+  return settle(
+    await mutateOwnSlots(
+      harbourId,
+      boatId,
+      ['reserved'],
+      (slot) => ({
+        status: 'occupied',
+        boatId: slot.boatId,
+        species: slot.species,
+        depositedAt: serverNow(),
+        plannedOutAt,
+      }),
+      onlyBoxId,
+    ),
   )
 }
 
 /** Give back a hold that was never filled, in one box for the same reason. */
-export function cancelRemote(
+export async function cancelRemote(
   harbourId: HarbourId,
   boatId: string,
   onlyBoxId?: BoxId,
 ): Promise<RemoteResult> {
-  return mutateOwnSlots(harbourId, boatId, ['reserved'], () => ({ status: 'empty' }), onlyBoxId)
+  return settle(
+    await mutateOwnSlots(harbourId, boatId, ['reserved'], () => ({ status: 'empty' }), onlyBoxId),
+  )
 }
 
 /** Free stored crates and append the ledger rows they earned. */
@@ -916,14 +963,20 @@ export async function releaseRemote(
     onlyBoxId,
   )
   if (!freed.ok) return freed
+  if (freed.changed === 0) return { ok: false, error: 'stale' }
 
   const a = await api()
   if (!a) return { ok: true } // slots are free; the row is the lesser loss
 
   try {
-    // Ledger rows are append-only by rule, so each gets its own key.
+    // One row per crate ACTUALLY freed, never per crate we aimed at. The
+    // ledger is what the society bills off and it can never be corrected —
+    // rows are append-only by rule — so over-reporting a release is charging
+    // a fisherman for a crate that is still sitting in the box.
     await Promise.all(
-      entries.map((entry) => a.set(a.push(a.ref(a.db, `harbours/${harbourId}/ledger`)), entry)),
+      entries
+        .slice(0, freed.changed)
+        .map((entry) => a.set(a.push(a.ref(a.db, `harbours/${harbourId}/ledger`)), entry)),
     )
   } catch {
     // Same judgement as above: the crate is already free, which is what the
@@ -931,12 +984,22 @@ export async function releaseRemote(
     // rejection at the call site — but it must not be reported as failure,
     // because the release itself did happen.
   }
-  return { ok: true }
+  // Freed some but not all: the skipper has crates still in the box and must
+  // be told so, even though the rows for what did come out are written.
+  return settle(freed)
 }
 
+/** How many of this boat's slots moved, out of how many were aimed at. */
+type SlotChange = { ok: true; changed: number; total: number } | { ok: false; error: BookingError }
+
 /**
- * Rewrite every slot this boat owns in the given statuses, in one
- * transaction, so it cannot half-apply while another phone is writing.
+ * Rewrite every slot this boat owns in the given statuses.
+ *
+ * Slot by slot, in parallel, because permission is granted per slot and the
+ * rules check each write against that slot's owner. It is NOT one
+ * transaction and cannot be: two crates are two writes, and either can lose.
+ * The comment here used to claim otherwise, which is how `settle` came to be
+ * needed.
  */
 async function mutateOwnSlots(
   harbourId: HarbourId,
@@ -944,7 +1007,7 @@ async function mutateOwnSlots(
   statuses: Slot['status'][],
   change: (slot: WireSlot) => WireSlot,
   onlyBoxId?: BoxId,
-): Promise<RemoteResult> {
+): Promise<SlotChange> {
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
 
@@ -957,16 +1020,37 @@ async function mutateOwnSlots(
     // phone got there first — saying "no signal" on full bars is a lie.
     if (mine.length === 0) return { ok: false, error: 'stale' }
 
-    // Slot by slot, so the rules can check each one against its owner. Each
-    // re-checks ownership inside its own transaction, so a crate released
-    // from another phone while this ran is skipped rather than resurrected.
+    // Each re-checks ownership inside its own transaction, so a crate
+    // released from another phone while this ran is skipped rather than
+    // resurrected.
     const done = await Promise.all(
       mine.map(({ boxId, index }) =>
         changeOwnSlot(a, harbourId, boxId, index, boatId, statuses, change),
       ),
     )
-    return done.some(Boolean) ? { ok: true } : { ok: false, error: 'stale' }
+    return { ok: true, changed: done.filter(Boolean).length, total: mine.length }
   } catch (error) {
     return { ok: false, error: reasonFor(error) }
   }
+}
+
+/**
+ * Turn a slot-by-slot outcome into something the skipper can act on.
+ *
+ * Reporting "at least one slot committed" as success is how a boat holding
+ * two crates could tap **Fish deposited**, see it confirmed, and walk away
+ * with the second crate still on a four-hour hold *with the catch inside it*.
+ * Four hours later that hold expired and the crate was handed to the next
+ * boat, who found it full. That is the round-3 defect, reintroduced by the
+ * per-slot rewrite through a different door, and this function is the one
+ * place it can come back.
+ *
+ * Nothing moved at all is `stale` — an expired hold, or another phone that
+ * got there first. Some but not all is its own reason, because the skipper
+ * has to go and look at the box.
+ */
+function settle(result: SlotChange): RemoteResult {
+  if (!result.ok) return result
+  if (result.changed === 0) return { ok: false, error: 'stale' }
+  return result.changed === result.total ? { ok: true } : { ok: false, error: 'partial' }
 }

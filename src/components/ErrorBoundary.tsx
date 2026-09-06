@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { resetStorage } from '../store/useDockStore'
 
 interface State {
   error: Error | null
@@ -53,16 +54,22 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
             type="button"
             className="btn btn-block"
             onClick={() => {
-              try {
-                localStorage.clear()
-              } catch {
-                /* storage may be blocked; the reload is still worth doing */
-              }
+              // Not a bare localStorage.clear(): the running page writes the
+              // store back before the reload lands. resetStorage latches the
+              // writer shut first — see AGENTS.md §6.
+              resetStorage()
               location.reload()
             }}
           >
             రీసెట్ · Reset this phone
           </button>
+          {/* The panel above says the booking is safe, and for a shared
+              harbour it is — it lives in the database. This button empties
+              what is saved on the phone, which in local-only mode is the
+              booking itself. Say so next to the button, not afterwards. */}
+          <p className="text-xs font-bold text-ink-2">
+            ఈ ఫోన్‌లో సేవ్ అయినది పోతుంది. · Clears what is saved on this phone.
+          </p>
           <p className="text-xs font-bold text-ink-2">{error.message}</p>
         </div>
       </div>

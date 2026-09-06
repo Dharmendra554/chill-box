@@ -108,6 +108,10 @@ const S = {
   // — Navigation ——————————————————————————————————
   navTitle: { te: 'దగ్గరలోని కోల్డ్ బాక్సులు', en: 'Cold boxes near you' },
   navTapMap: { te: 'మ్యాప్‌లో బాక్స్ మీద నొక్కి బుక్ చేయండి.', en: 'Tap a box on the map to book it.' },
+  navTapMapView: { te: 'బాక్స్ మీద నొక్కితే లోపల ఎవరున్నారో కనిపిస్తుంది.', en: 'Tap a box to see who is inside it.' },
+  navMapLabel: { te: 'హార్బర్ మ్యాప్ — మూడు బాక్సుల స్థానాలు', en: 'Harbour map — where the three boxes are' },
+  crate2Cap: { te: 'ఒక పడవకు రెండు క్రేట్లే. మీకు ఇంకొకటే మిగిలింది.', en: 'Two crates per boat is the limit — you have one left.' },
+  crate2Room: { te: 'ఈ బాక్స్‌లో ఒక్క క్రేట్‌కే చోటు ఉంది.', en: 'This box has room for one crate only.' },
   // — Harbour & union ————————————————————————————————
   harbourSwitch: { te: 'హార్బర్ మార్చు', en: 'Change harbour' },
   harbourChoose: { te: 'మీ హార్బర్ ఎంచుకోండి', en: 'Choose your harbour' },
@@ -161,10 +165,18 @@ const S = {
   syncNoChange: { te: 'ఇది ఇప్పటికే జరిగిపోయింది. హార్బర్ రికార్డు ప్రకారం మార్చడానికి ఏమీ లేదు.', en: 'That is already done — the harbour record has nothing left to change.' },
   syncUnseeded: { te: 'ఈ హార్బర్ ఇంకా సెటప్ కాలేదు. అడ్మిన్‌ను ఒకసారి అడగండి.', en: 'This harbour is not set up yet. Ask the harbour admin.' },
   syncRefused: { te: 'హార్బర్ రికార్డు దీన్ని ఒప్పుకోలేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'The harbour record refused that. Tell someone at the box.' },
+  syncPartial: { te: 'మీ క్రేట్లలో ఒకటి మాత్రమే మారింది. బాక్స్ దగ్గరకు వెళ్లి చూడండి.', en: 'Only one of your crates changed. Go to the box and check.' },
+  loadingTitle: { te: 'సంఖ్యలు వస్తున్నాయి…', en: 'Getting the numbers…' },
+  loadingBody: { te: 'కింద కనిపిస్తున్నది ఇంకా పాతది.', en: 'What is below is not current yet.' },
+  voiceRoman: { te: 'ఈ ఫోన్‌లో తెలుగు గొంతు లేదు. తెలుగు మాటలు ఇంగ్లిష్ గొంతుతో చదువుతోంది.', en: 'This phone has no Telugu voice — Telugu words are read by an English voice.' },
   storageFull: { te: 'ఫోన్ మెమరీ నిండింది — కొత్త మార్పులు సేవ్ కావట్లేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'Phone storage is full — changes are not being saved. Tell someone at the box.' },
   staleNever: { te: 'ఈ సంఖ్యలు ఈ ఫోన్‌లోనివి మాత్రమే. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from this phone only. Check again at the box.' },
   staleBody: { te: 'ఈ సంఖ్యలు {0} నాటివి. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from {0}. Check again at the box.' },
-  errClaimedElsewhere: { te: 'ఈ బోటు వేరే ఫోన్‌లో ఉంది. దాని ఫోన్‌లోనే బుక్ చేయాలి.', en: 'This boat is already held on another phone. Use that phone, or ask the admin.' },
+  // Not "ask the admin": there is no admin control that can move a boat to
+  // another phone, and pointing someone at a remedy that does not exist
+  // sends them across the harbour for nothing. The phone that claimed it is
+  // the only answer this app has.
+  errClaimedElsewhere: { te: 'ఈ బోటు వేరే ఫోన్‌లో ఉంది. దాని ఫోన్‌లోనే బుక్ చేయాలి.', en: 'This boat is held on another phone. Only that phone can book for it.' },
   errNotApproved: { te: 'అడ్మిన్ ఆమోదం వచ్చాకే బుక్ చేయగలరు.', en: 'You can book once the admin approves your boat.' },
   errQuota: { te: 'ఒక్క బోటుకి {0} క్రేట్లు మాత్రమే. మీకు ఇంకా {1} మిగిలింది.', en: 'Max {0} crates per boat. You have {1} left.' },
   holdExpired: { te: '4 గంటల హోల్డ్ ముగిసింది. స్థలం తిరిగి పూల్‌లోకి వెళ్లింది.', en: 'The 4-hour hold ended. That slot is back in the pool.' },
@@ -195,6 +207,7 @@ const S = {
   unblock: { te: 'తిరిగి ఇవ్వు', en: 'Restore' },
   adminLive: { te: 'ప్రస్తుత వాడకం', en: 'Live usage' },
   adminForceRelease: { te: 'బలవంతంగా ఖాళీ', en: 'Force release' },
+  adminForceWait: { te: 'ఆలస్యం అయ్యాకే ఖాళీ చేయగలరు', en: 'Can be cleared once it is overdue' },
   adminMonth: { te: 'నెల', en: 'Month' },
   adminTrips: { te: 'ట్రిప్‌లు', en: 'Trips' },
   adminCrates: { te: 'క్రేట్లు', en: 'Crates' },
@@ -265,6 +278,9 @@ const S = {
 
 export type StringKey = keyof typeof S
 
+/** Every string, exported so the dead-key test can walk them. */
+export const DICT = S
+
 /** Translate `key`, substituting `{0}`, `{1}` … with `args`. */
 export function t(lang: Lang, key: StringKey, ...args: Array<string | number>): string {
   return S[key][lang].replace(/\{(\d+)\}/g, (_, i: string) => String(args[Number(i)] ?? ''))
@@ -275,12 +291,6 @@ export type T = (key: StringKey, ...args: Array<string | number>) => string
 
 export function translator(lang: Lang): T {
   return (key, ...args) => t(lang, key, ...args)
-}
-
-export const BOX_NAME: Record<BoxId, StringKey> = {
-  box1: 'box1',
-  box2: 'box2',
-  box3: 'box3',
 }
 
 export const BOX_SHORT: Record<BoxId, StringKey> = {

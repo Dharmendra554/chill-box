@@ -2,51 +2,64 @@
 //
 // No skipper ever logs in - the app signs each phone in anonymously behind
 // the scenes - so these rules are the only thing standing between a public
-// web config and the harbour's data. They constrain SHAPE and IDENTITY,
-// which is what rules can do well:
+// web config and the harbour's data.
+//
+// WHAT THESE RULES ENFORCE
 //
 //   * every write needs a signed-in identity. The app signs each phone in
 //     anonymously, so nothing changes for the skipper, but the public web
 //     config on its own no longer grants anyone write access
 //   * anyone may read - the boxes are public information, that is the point
-//   * a slot must always be a well-formed slot: a known status, a slot index
-//     in range, and a boat that actually exists at that harbour
-//   * a write that replaces the boxes must carry all three boxes, each with
-//     its ten slots, so the shape of the harbour survives - but see below:
-//     this does NOT stop a signed-in client emptying every one of them
-//   * only the last four digits of a mobile number are ever stored here, and
-//     they cannot be rewritten once set. No boat can be deleted, because
-//     slots point at boats
+//   * A CRATE BELONGS TO A BOAT, AND A BOAT BELONGS TO A PHONE. Write
+//     permission is granted on the individual slot, never on the node above
+//     it, so the rule can ask the only question that matters: is this your
+//     boat? You cannot claim a slot for a boat that is not yours, and you
+//     cannot move a crate held by someone else's boat
+//   * because permission is per slot, there is no write anywhere that
+//     touches more than one crate without being checked against that crate's
+//     owner. A client cannot empty the harbour, and cannot delete or
+//     overwrite another boat's slot
+//   * a boat's binding to a phone (`uid`) is set once and can never be
+//     reassigned, dropped, or set to anyone else's identity
+//   * a slot must always be a well-formed slot: a known status, a box name
+//     and slot index in range, and a boat that actually exists here
+//   * only the last four digits of a mobile number are ever stored, and they
+//     cannot be rewritten once set. No boat can be deleted, because slots
+//     point at boats
 //   * a ledger row, once written, can never be edited or deleted
 //
-// BE CLEAR ABOUT WHAT THIS IS NOT. These rules check the SHAPE of the data
-// and that the writer is signed in. They are not harbour policy, and a
-// signed-in client that ignores the app can still:
+// BE CLEAR ABOUT WHAT THIS IS NOT. These rules check the shape of the data,
+// the writer's identity, and who owns a crate. They are not harbour policy.
+// A signed-in client that ignores the app can still:
 //
-//   * EMPTY THE WHOLE HARBOUR in one perfectly valid write: three boxes of
-//     ten empty slots passes every rule here. Every live hold and stored
-//     crate, on every phone, gone. This is the biggest thing these rules do
-//     not stop, and per-slot writes are what would stop it
-//   * overwrite a slot belonging to another boat - booking transacts over the
-//     whole 'boxes' node, so write is granted there rather than per slot
-//   * delete an individual slot. Write cascades from 'boxes', and a validate
-//     rule does not run on a delete, so the ten-slot check above cannot see
-//     it. The reader backfills the gap as empty, so a crate would vanish
-//     quietly. Per-slot writes would close this too
+//   * BLOCK EVERY BOAT IN THE HARBOUR. There is no admin identity, so any
+//     signed-in phone can set any boat's status - including setting its own
+//     to 'active' to skip approval, and including setting all twenty to
+//     'blocked', which stops the whole harbour from booking. This is the
+//     biggest thing these rules do not stop
+//   * exceed the 2-crate cap, which no rule can count across three boxes
 //   * append invented ledger rows. Rows cannot be edited, but the report can
 //     be padded by addition, which for a society billing off the CSV is the
 //     same problem
-//   * rewrite another boat's name or owner, and set its own status to
-//     'active' - there is no admin identity to check against
-//   * exceed the 2-crate cap, which no rule can count across three boxes
+//   * rewrite another boat's name or owner
+//   * move a crate the harbour has given up on - a hold that ran out, or a
+//     stored crate past its overstay hour. That one is deliberate: it is how
+//     force-release works with no admin account, and it is a community rule
+//     rather than a hole. See the slot rule below
 //
-// All of those run in the client (lib/harbourSync.ts) inside a transaction,
-// which makes them correct against two honest boats racing - the case that
-// actually happens on a dock - and not against a determined attacker.
-// Closing them means binding each slot to its boat's uid, which needs the
-// booking path rewritten as per-slot writes. See README, 'What this cannot
-// do yet'. The last four digits are also world-readable, so they identify a
-// boat; they do not authenticate one.
+// A BOAT NOBODY HAS CLAIMED IS OPEN TO ANYONE. That is the seeded demo
+// roster, and it is what keeps Publish harbour, Reset demo and a cold-start
+// demo working. The moment a skipper claims a boat, only their phone can
+// move its crates.
+//
+// AND THE COST OF THAT BINDING: it can never be reassigned. A skipper who
+// clears their browser, reinstalls, or is evicted by Android storage
+// pressure gets a new anonymous identity and can never sign in as their own
+// boat again, on any device. There is no admin control that can undo it. See
+// README, 'What this cannot do yet'.
+//
+// The last four digits are world-readable, so they identify a boat; they do
+// not authenticate one.
 {
   "rules": {
     ".read": true,
@@ -61,28 +74,40 @@
           // write this node can write every slot in it, and cannot tell your
           // crate from mine.
 
-          // A typo, or a client inventing 'box9' or slot 47, is refused
-          // rather than quietly stored.
           "$box": {
-            ".validate": "$box.matches(/^box[1-3]$/)",
-
             "$slot": {
               // Who may move this crate. Three questions:
               //
               //   1. any boat I name in the new slot must be mine
               //   2. any boat already in the slot must be mine, unless
-              //   3. the harbour has given up on it — a hold that ran out, or
-              //      a crate already flagged as an overstay
+              //   3. the harbour has given up on it — a hold that ran out,
+              //      or a stored crate past its overstay hour
               //
               // "Mine" means the boat carries this device's uid. A boat that
-              // no device has claimed is open to anyone: that is the seeded
-              // demo roster, and it is what keeps Publish harbour and Reset
-              // demo working. The moment a skipper claims a boat, only their
-              // phone can move its crates — including the harbour master's.
+              // no device has claimed is open to anyone.
               //
-              // 14400000 is the 4-hour hold in ms; it must match HOLD_MS in
-              // src/lib/time.ts.
-              ".write": "auth != null && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.child('reservedAt').val() + 14400000 <= now))",
+              // Clause 3 is DERIVED FROM `depositedAt`, not from a stored
+              // 'overstay' status. The overstay flag is raised by applyTick
+              // on each phone's own copy and is never written to the shared
+              // one, so a rule that waited for it would never fire: force
+              // release was refused for every boat a skipper had claimed,
+              // and the crate — with a catch rotting in it — could then be
+              // cleared by nobody in the harbour, the harbour master
+              // included. Every rehearsal passed because every seeded boat
+              // is unbound. One rule, one source of truth: the timestamp.
+              //
+              // The stored 'overstay' status is still honoured because the
+              // seeded demo harbour ships one.
+              //
+              // 14400000 is HOLD_MS and 21600000 is OVERSTAY_MS, both from
+              // src/lib/time.ts. They must match.
+              ".write": "auth != null && $box.matches(/^box[1-3]$/) && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.hasChild('reservedAt') && data.child('reservedAt').val() + 14400000 <= now) || (data.child('status').val() === 'occupied' && data.hasChild('depositedAt') && data.child('depositedAt').val() + 21600000 <= now))",
+              // A typo, or a client inventing 'box9' or slot 47, is refused
+              // rather than quietly stored. The box name is checked in the
+              // .write above, not in a .validate on $box: permission is
+              // granted here, and Firebase evaluates validate rules on the
+              // node written and its children — never on its ancestors. A
+              // .validate one level up would never run at all.
               ".validate": "$slot.matches(/^[0-9]$/) && newData.hasChildren(['status'])",
               "status": {
                 ".validate": "newData.isString() && (newData.val() === 'empty' || newData.val() === 'reserved' || newData.val() === 'occupied' || newData.val() === 'overstay')"
@@ -132,6 +157,12 @@
             // slot rules above mean anything, so it must not be something a
             // second phone can simply overwrite. It can only ever be your own
             // uid, so nobody can hand a boat to someone else either.
+            //
+            // OPTIONAL, deliberately. A client running against an older
+            // published copy of these rules registers boats without it, and
+            // the harbour then behaves exactly as it did before binding
+            // existed. A rules deployment lagging a code deployment must
+            // never lock a skipper out of registering.
             "uid": {
               ".validate": "newData.isString() && (newData.val() === auth.uid || newData.val() === data.val())"
             },

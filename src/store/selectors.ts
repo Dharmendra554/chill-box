@@ -136,6 +136,25 @@ export interface Occupancy {
 }
 
 /**
+ * May the harbour take this crate back over its owner's head?
+ *
+ * Only once the harbour has given up on it — a stored crate past its
+ * overstay hour, which `applyTick` marks from `depositedAt`. That is exactly
+ * the condition the database rule derives, from the same timestamp and the
+ * same constant, so the button on screen and the write it performs agree.
+ *
+ * They did not agree before. The admin console offered Force release on
+ * every stored crate, and the rule refused it for any boat a skipper had
+ * claimed — a dead button whose failure only ever appeared in production,
+ * because every boat in the seeded demo roster is unbound. An admin has no
+ * remedy for a crate the rules will not let them touch, so the honest thing
+ * is not to offer the tap until the harbour is entitled to it.
+ */
+export function forceReleasable(row: Occupancy): boolean {
+  return row.status === 'overstay'
+}
+
+/**
  * One row per boat-in-a-box: what the harbour list and the admin table
  * both render. Sorted by the soonest promised collection so a skipper
  * scanning the list sees the next space to open up first.
