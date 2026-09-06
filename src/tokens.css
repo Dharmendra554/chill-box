@@ -1,0 +1,139 @@
+/* Nizampatnam Chill-Box · design tokens
+ *
+ * Two themes, one contract. `--c-*` are the swappable raw values;
+ * `@theme` maps them into Tailwind utilities via var() so a theme
+ * switch is a single attribute flip on <html>, no rebuild.
+ *
+ * DAY is the default and is tuned for a phone held in direct coastal
+ * sun: warm near-white ground (less glare than pure white), near-black
+ * ink, 3px structural borders, and status fills that stay separable
+ * when the screen is washed out. Every status pair clears WCAG AA.
+ */
+
+:root,
+:root[data-theme='day'] {
+  --c-paper: oklch(97.6% 0.013 92);
+  --c-paper-2: oklch(94.2% 0.016 92);
+  --c-paper-3: oklch(89.5% 0.02 92);
+  --c-card: oklch(99.5% 0.005 92);
+  --c-ink: oklch(17% 0.02 255);
+  --c-ink-2: oklch(38% 0.02 255);
+  --c-rule: oklch(17% 0.02 255);
+  --c-rule-soft: oklch(80% 0.02 92);
+
+  --c-free: oklch(50% 0.15 152);
+  --c-free-hover: oklch(44% 0.15 152);
+  --c-free-ink: oklch(99% 0.01 152);
+  --c-free-wash: oklch(93% 0.05 152);
+
+  --c-hold: oklch(47% 0.17 254);
+  --c-hold-ink: oklch(99% 0.01 254);
+  --c-hold-wash: oklch(93% 0.04 254);
+
+  --c-full: oklch(51% 0.21 26);
+  --c-full-ink: oklch(99% 0.01 26);
+  --c-full-wash: oklch(93% 0.05 26);
+
+  --c-late: oklch(76% 0.17 68);
+  --c-late-ink: oklch(20% 0.06 68);
+  --c-late-wash: oklch(94% 0.07 68);
+
+  --c-sea: oklch(46% 0.13 232);
+  --c-sea-ink: oklch(99% 0.01 232);
+
+  --c-focus: oklch(52% 0.22 300);
+  --c-shadow: oklch(17% 0.02 255 / 0.18);
+  --c-scrim: oklch(17% 0.02 255 / 0.55);
+}
+
+:root[data-theme='night'] {
+  --c-paper: oklch(19% 0.035 255);
+  --c-paper-2: oklch(24% 0.035 255);
+  --c-paper-3: oklch(30% 0.033 255);
+  --c-card: oklch(25.5% 0.033 255);
+  --c-ink: oklch(97% 0.01 255);
+  --c-ink-2: oklch(80% 0.018 255);
+  --c-rule: oklch(70% 0.025 255);
+  --c-rule-soft: oklch(38% 0.03 255);
+
+  --c-free: oklch(72% 0.16 152);
+  --c-free-hover: oklch(78% 0.16 152);
+  --c-free-ink: oklch(16% 0.05 152);
+  --c-free-wash: oklch(32% 0.07 152);
+
+  --c-hold: oklch(70% 0.15 254);
+  --c-hold-ink: oklch(15% 0.05 254);
+  --c-hold-wash: oklch(31% 0.07 254);
+
+  --c-full: oklch(66% 0.19 26);
+  --c-full-ink: oklch(15% 0.05 26);
+  --c-full-wash: oklch(31% 0.09 26);
+
+  --c-late: oklch(80% 0.16 68);
+  --c-late-ink: oklch(18% 0.05 68);
+  --c-late-wash: oklch(34% 0.08 68);
+
+  --c-sea: oklch(70% 0.13 232);
+  --c-sea-ink: oklch(15% 0.04 232);
+
+  --c-focus: oklch(80% 0.18 90);
+  --c-shadow: oklch(8% 0.02 255 / 0.5);
+  --c-scrim: oklch(10% 0.02 255 / 0.7);
+}
+
+@theme {
+  --color-paper: var(--c-paper);
+  --color-paper-2: var(--c-paper-2);
+  --color-paper-3: var(--c-paper-3);
+  --color-card: var(--c-card);
+  --color-ink: var(--c-ink);
+  --color-ink-2: var(--c-ink-2);
+  --color-rule: var(--c-rule);
+  --color-rule-soft: var(--c-rule-soft);
+
+  --color-free: var(--c-free);
+  --color-free-hover: var(--c-free-hover);
+  --color-free-ink: var(--c-free-ink);
+  --color-free-wash: var(--c-free-wash);
+
+  --color-hold: var(--c-hold);
+  --color-hold-ink: var(--c-hold-ink);
+  --color-hold-wash: var(--c-hold-wash);
+
+  --color-full: var(--c-full);
+  --color-full-ink: var(--c-full-ink);
+  --color-full-wash: var(--c-full-wash);
+
+  --color-late: var(--c-late);
+  --color-late-ink: var(--c-late-ink);
+  --color-late-wash: var(--c-late-wash);
+
+  --color-sea: var(--c-sea);
+  --color-sea-ink: var(--c-sea-ink);
+  --color-focus: var(--c-focus);
+
+  --font-display: "Bricolage Grotesque", "Noto Sans Telugu", sans-serif;
+  --font-body: "Noto Sans Telugu", "Noto Sans", sans-serif;
+  --font-outlier: "IBM Plex Mono", ui-monospace, monospace;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --radius-none: 0px;
+  --radius-sm: 3px;
+}
+
+:root {
+  --z-base: 1;
+  --z-raised: 10;
+  --z-sticky: 200;
+  --z-modal: 400;
+  --z-toast: 500;
+
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+
+  --tap: 60px;
+  --tap-lg: 72px;
+}

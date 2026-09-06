@@ -1,0 +1,328 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+@import "./tokens.css";
+
+/* No `overflow-x: clip` here: clipping on the root makes it the scroll
+   container for `position: sticky`, which detaches the top bar from the
+   viewport. Wide content clips inside its own wrapper instead. */
+html {
+  background: var(--color-paper);
+  color-scheme: light;
+}
+
+html[data-theme='night'] {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 4px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-outlier);
+}
+
+/* ---- Structure ------------------------------------------------------- */
+
+/* Every surface is a hard-edged slab with a 3px rule. In direct sun the
+   border is what survives; fills and shadows do not. */
+.card {
+  background: var(--color-card);
+  color: var(--color-ink);
+  border: 3px solid var(--color-rule);
+}
+
+.card-soft {
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+  border: 3px solid var(--color-rule);
+}
+
+/* ---- Controls -------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: var(--tap);
+  padding: 0.8rem 1.15rem;
+  border: 3px solid var(--color-rule);
+  background: var(--color-card);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  line-height: 1.15;
+  letter-spacing: 0.005em;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    transform 90ms var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.btn-lg {
+  min-height: var(--tap-lg);
+  font-size: 1.3rem;
+  padding: 1rem 1.25rem;
+}
+
+.btn:active {
+  transform: translateY(2px);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-primary {
+  background: var(--color-free);
+  color: var(--color-free-ink);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-free-hover);
+}
+
+.btn-danger {
+  background: var(--color-full);
+  color: var(--color-full-ink);
+}
+
+.btn-warn {
+  background: var(--color-late);
+  color: var(--color-late-ink);
+}
+
+.btn-sea {
+  background: var(--color-sea);
+  color: var(--color-sea-ink);
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--color-paper-3);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.field {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.75rem 0.9rem;
+  border: 3px solid var(--color-rule);
+  background: var(--color-card);
+  color: var(--color-ink);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.field::placeholder {
+  color: var(--color-ink-2);
+  font-weight: 500;
+}
+
+/* ---- Motion ---------------------------------------------------------- */
+
+@keyframes late-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.pulse-late {
+  animation: late-pulse 1.8s var(--ease-in-out) infinite;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sheet-in {
+  animation: sheet-up var(--dur-short) var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  .pulse-late {
+    animation: none;
+  }
+}
+
+/* ---- Overlays -------------------------------------------------------- */
+
+::backdrop {
+  background: var(--c-scrim);
+}
+
+.toast {
+  position: fixed;
+  z-index: var(--z-toast);
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.75rem);
+  border: 3px solid var(--color-rule);
+  padding: 0.9rem 1rem;
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.toast-error {
+  background: var(--color-full);
+  color: var(--color-full-ink);
+}
+
+.toast-warn {
+  background: var(--color-late);
+  color: var(--color-late-ink);
+}
+
+.toast-ok {
+  background: var(--color-free);
+  color: var(--color-free-ink);
+}
+
+/* ---- Leaflet: match the slab language, kill the rounded chrome ------- */
+
+.leaflet-container {
+  background: var(--color-paper-3);
+  font-family: var(--font-body);
+  outline: none;
+}
+
+.leaflet-control-zoom a {
+  border-radius: 0 !important;
+  border: 2px solid var(--color-rule) !important;
+  background: var(--color-card) !important;
+  color: var(--color-ink) !important;
+  font-weight: 800;
+  width: 40px !important;
+  height: 40px !important;
+  line-height: 38px !important;
+}
+
+.leaflet-control-attribution {
+  background: var(--color-card) !important;
+  color: var(--color-ink-2) !important;
+  font-size: 0.65rem;
+}
+
+.leaflet-control-attribution a {
+  color: var(--color-sea) !important;
+}
+
+/* Night reads the tiles back — OSM raster has no dark variant, so we
+   dim and cool them rather than ship a second (paid) tile source. */
+html[data-theme='night'] .leaflet-tile-pane {
+  filter: brightness(0.62) saturate(0.7) contrast(1.08);
+}
+
+/* Chart labels: slab tooltips that stay readable over raster tiles. */
+.leaflet-tooltip.sea-box,
+.leaflet-tooltip.sea-landmark {
+  border: 3px solid var(--color-rule);
+  border-radius: 0;
+  background: var(--color-card);
+  color: var(--color-ink);
+  box-shadow: none;
+  font-family: var(--font-display);
+  font-weight: 800;
+  padding: 2px 6px;
+}
+
+.leaflet-tooltip.sea-landmark {
+  border-width: 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  opacity: 0.92;
+}
+
+.leaflet-tooltip.sea-box::before,
+.leaflet-tooltip.sea-landmark::before {
+  display: none;
+}
+
+.leaflet-container.hide-landmarks .leaflet-tooltip.sea-landmark,
+.leaflet-container.hide-box-labels .leaflet-tooltip.sea-box {
+  display: none;
+}
+
+/* Armed state for two-tap confirmation.
+ *
+ * Defined last on purpose: it is applied on top of whatever variant the
+ * button already carries, and `.btn-ghost` further up would otherwise win
+ * the cascade and paint the armed button transparent instead of red. */
+.btn-armed,
+.btn-armed:hover {
+  background: var(--color-full);
+  color: var(--color-full-ink);
+  border-color: var(--color-rule);
+}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Fish cold storage">
+  <rect width="512" height="512" fill="#0F172A"/>
+  <rect x="86" y="168" width="340" height="252" fill="#FAFBFF" stroke="#071018" stroke-width="14"/>
+  <rect x="194" y="118" width="124" height="58" fill="#F59E0B" stroke="#071018" stroke-width="12"/>
+  <path d="M214 128h84M214 142h84M214 156h84" stroke="#071018" stroke-width="6"/>
+  <rect x="86" y="250" width="340" height="14" fill="#071018"/>
+  <path d="M168 318c38-44 138-44 176 0-18 36-50 54-88 54s-70-18-88-54z" fill="#94A3B8" stroke="#071018" stroke-width="10"/>
+  <path d="M344 318l48-28v56z" fill="#94A3B8" stroke="#071018" stroke-width="10"/>
+  <circle cx="220" cy="312" r="8" fill="#071018"/>
+  <rect x="70" y="210" width="28" height="86" fill="#FAFBFF" stroke="#071018" stroke-width="10"/>
+  <rect x="414" y="210" width="28" height="86" fill="#FAFBFF" stroke="#071018" stroke-width="10"/>
+</svg>

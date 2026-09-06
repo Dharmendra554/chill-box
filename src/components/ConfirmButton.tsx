@@ -1,0 +1,49 @@
+import { useEffect, useState } from 'react'
+import { useT } from '../i18n/useT'
+import { cx } from '../lib/ui'
+
+/**
+ * Two-tap button for anything that cannot be undone.
+ *
+ * Salt spray and wet fingers make phantom taps routine on this dock, and a
+ * stray tap on "release" hands a skipper's space to the next boat. The
+ * first tap only arms the button; it disarms itself after four seconds so
+ * an armed control never lies in wait in a pocket. Cheaper and safer than
+ * a modal, which a wet screen can dismiss by itself.
+ */
+export function ConfirmButton({
+  label,
+  className,
+  onConfirm,
+}: {
+  label: string
+  className: string
+  onConfirm: () => void
+}) {
+  const t = useT()
+  const [armed, setArmed] = useState(false)
+
+  useEffect(() => {
+    if (!armed) return
+    const id = window.setTimeout(() => setArmed(false), 4000)
+    return () => window.clearTimeout(id)
+  }, [armed])
+
+  return (
+    <button
+      type="button"
+      className={cx(className, armed && 'btn-armed')}
+      aria-live="polite"
+      onClick={() => {
+        if (!armed) {
+          setArmed(true)
+          return
+        }
+        setArmed(false)
+        onConfirm()
+      }}
+    >
+      {armed ? t('confirmQ') : label}
+    </button>
+  )
+}
