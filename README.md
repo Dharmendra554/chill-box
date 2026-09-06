@@ -281,12 +281,16 @@ The skipper is never asked whether they have signal — the app works it out:
   confidently wrong "2 free" is worse than an honest "possibly stale".
 - Nothing blocks on the network. Bearing, distance, ETA and every harbour rule
   are local maths.
-- The map, the database client and the admin console are lazy chunks. The
-  entry bundle is **94 kB gzipped**; with CSS and the service worker a first
-  paint is **~109 kB of our own code**. The webfonts are another **265 kB**
-  on a cold visit — Noto Sans Telugu alone is 124 kB — which is the largest
-  single cost in the app and is not yet fixed. Quoting the JS figure alone
-  would be the dishonest number, so both are here. And
+- The map, the database client and the admin console are separate chunks —
+  though only the map and the console are genuinely off the critical path.
+  Measured, gzipped: entry **94 kB**, CSS **12 kB**, service worker **9 kB**,
+  and **88 kB of Firebase**, which is fetched at start-up because the
+  "numbers are still coming" banner cannot clear until the first snapshot
+  arrives through it. That is **~203 kB of our own code** before the app can
+  stand behind a figure, plus **265 kB of webfonts** on a cold visit — Noto
+  Sans Telugu alone is 124 kB. **~470 kB in total**, and the fonts are the
+  largest single item. Self-hosting and subsetting them is the next real
+  win, and it has not been done. And
   tiles are cached first-hit, so a route drawn once redraws with no signal.
 - Browser storage is wrapped: private mode and a full quota both throw, and the
   app falls back to memory rather than white-screening — and *says so*, once,

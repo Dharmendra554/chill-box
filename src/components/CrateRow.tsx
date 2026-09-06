@@ -1,6 +1,6 @@
 import { boatName } from '../data/boats'
 import { formatClock, formatGap } from '../lib/time'
-import { cx, STATUS_STYLE } from '../lib/ui'
+import { cx, STATUS_LABEL, STATUS_STYLE } from '../lib/ui'
 import type { Occupancy } from '../store/selectors'
 import type { T } from '../i18n/dictionary'
 import type { Boat, Lang, Species } from '../types'
@@ -36,13 +36,21 @@ export function CrateRow({
   return (
     <li className="card flex flex-col gap-2 p-3">
       <div className="flex items-start gap-3">
+        {/* The same mark the crate grid carries, for the same reason: this
+            chip said everything with fill colour alone, and `pulse-late` —
+            its one non-colour cue — is switched off under
+            prefers-reduced-motion, which cheap Androids often have on. An
+            overdue crate and a stored one then differed by hue only, in
+            direct sun, on the whole Harbour tab and in every full box's
+            detail sheet. */}
         <span
           className={cx(
-            'grid h-11 w-11 shrink-0 place-items-center border-3 border-rule font-display text-sm font-extrabold',
+            'grid h-11 w-11 shrink-0 place-items-center border-3 border-rule font-display text-sm font-extrabold leading-none',
             STATUS_STYLE[row.status],
           )}
+          aria-label={`#${row.boatId} · ${t(STATUS_LABEL[row.status])}`}
         >
-          #{row.boatId}
+          <span aria-hidden>{row.status === 'overstay' ? '!' : ''}#{row.boatId}</span>
         </span>
 
         <p className="min-w-0 flex-1 truncate font-display text-lg font-extrabold">

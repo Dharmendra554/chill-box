@@ -104,6 +104,7 @@ const S = {
   waveRoughHint: { te: 'ల్యాండింగ్‌లో జాగ్రత్త', en: 'Caution on landing' },
   waveLoading: { te: 'అలల సమాచారం…', en: 'Fetching swell…' },
   waveError: { te: 'అలల సమాచారం లేదు', en: 'Swell data offline' },
+  waveStale: { te: 'ఈ అలల కొలత {0} నాటిది. ఇప్పటి సమాచారం లేదు.', en: 'This swell reading is from {0}. Nothing current.' },
 
   // — Navigation ——————————————————————————————————
   navTitle: { te: 'దగ్గరలోని కోల్డ్ బాక్సులు', en: 'Cold boxes near you' },

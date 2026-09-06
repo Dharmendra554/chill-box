@@ -21,8 +21,17 @@ const FIRST_FIX_MS = 12_000
  * responds to that on its own.
  *
  * The timeout matters: `watchPosition` can sit silently forever indoors
- * without ever calling the error handler, which would leave the UI claiming
- * it is "waiting for GPS" for the rest of the tide.
+ * without ever calling the error handler, which would leave the screen
+ * saying "still working out where you are" for the rest of the tide. It is
+ * the PLATFORM's timeout, not a timer of ours, because the spec stops that
+ * clock while the permission dialog is open — and a skipper who takes
+ * twenty seconds to read an English system prompt must not be told in the
+ * meantime that his phone cannot find him.
+ *
+ * `status` is consumed by `SafetyCard`, which is the reason it exists: on
+ * the screen for a boat in trouble, "no position yet" and "no position
+ * ever" need different words. It was computed and read by nothing for
+ * several rounds, and the card said the first one for ever.
  *
  * Nothing in the app blocks on this hook: booking works with no fix at all.
  */
@@ -37,11 +46,14 @@ export function useGeolocation(override: GeoFix | null): {
   useEffect(() => {
     if (override || !supported) return
 
-    const giveUp = window.setTimeout(() => {
-      // Only if nothing has arrived; a later fix still promotes us to ready.
-      setStatus((current) => (current === 'locating' ? 'unavailable' : current))
-    }, FIRST_FIX_MS)
-
+    // No wall-clock give-up timer. The platform's own `timeout` below is the
+    // right signal precisely because the spec excludes time spent waiting
+    // for the user's permission answer — a plain setTimeout does not, so a
+    // skipper reading an English system dialog for more than twelve seconds
+    // was told, on the distress panel, that his phone could not find him.
+    // That is a definite false statement about the hardware while the
+    // hardware is fine, on the one screen that exists for a boat in trouble.
+    // Staying in `locating` until the platform says otherwise is true.
     const id = navigator.geolocation.watchPosition(
       (position) => {
         setFix({
@@ -56,10 +68,7 @@ export function useGeolocation(override: GeoFix | null): {
       { enableHighAccuracy: true, maximumAge: 5000, timeout: FIRST_FIX_MS },
     )
 
-    return () => {
-      window.clearTimeout(giveUp)
-      navigator.geolocation.clearWatch(id)
-    }
+    return () => navigator.geolocation.clearWatch(id)
   }, [override, supported])
 
   if (override) return { fix: override, status: 'ready' }

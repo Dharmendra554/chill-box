@@ -164,6 +164,28 @@ export function forceReleasable(row: Occupancy): boolean {
 }
 
 /**
+ * Has the harbour given up on this crate?
+ *
+ * One definition, shared by `releaseSlots` and by `rowsFor` in the sync
+ * layer, and mirrored by the database rule that decides who may clear a
+ * crate. Those two builders had drifted apart: one derived lateness from
+ * `depositedAt`, the other read the local `overstay` flag alone — so a
+ * release that landed before `applyTick` had raised the flag was billed as
+ * an on-time one, silently, in the CSV the society bills from.
+ *
+ * `applyTick` keeps its own arithmetic because it must also CLEAR the flag
+ * when a clock moves back, which this cannot express.
+ */
+export function isOverdue(
+  slot: { status: Slot['status']; depositedAt?: number | null },
+  now: number,
+): boolean {
+  if (slot.status === 'overstay') return true
+  const at = slot.depositedAt
+  return typeof at === 'number' && now - at >= OVERSTAY_MS
+}
+
+/**
  * One row per boat-in-a-box: what the harbour list and the admin table
  * both render. Sorted by the soonest promised collection so a skipper
  * scanning the list sees the next space to open up first.

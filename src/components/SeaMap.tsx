@@ -51,6 +51,9 @@ export function SeaMap({
   const host = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const overlay = useRef<L.LayerGroup | null>(null)
+  // The boat and its route live on their own layer so they can be redrawn
+  // on every position update without touching the box pins. See below.
+  const boat = useRef<L.LayerGroup | null>(null)
   const [tilesFailed, setTilesFailed] = useState(false)
   // Latest props, readable from effects that must NOT re-run when they
   // change: the fix moves every few seconds and must not re-frame the map
@@ -104,6 +107,7 @@ export function SeaMap({
     }).addTo(instance)
 
     overlay.current = L.layerGroup().addTo(instance)
+    boat.current = L.layerGroup().addTo(instance)
     map.current = instance
 
     // Three boxes sit ~300 m apart, so at route zoom every label overlaps
@@ -131,10 +135,11 @@ export function SeaMap({
       instance.remove()
       map.current = null
       overlay.current = null
+      boat.current = null
     }
   }, [])
 
-  // Redraw pins, landmarks and route whenever anything moves.
+  // Redraw the box pins and shore landmarks. NOT the boat — see below.
   useEffect(() => {
     const instance = map.current
     const group = overlay.current
@@ -174,16 +179,31 @@ export function SeaMap({
       pin.on('click', () => pickRef.current?.(marker.id))
     }
 
-    if (fix) L.marker([fix.lat, fix.lon], { icon: boatPin() }).addTo(group)
+    // NOTE: the boat pin and its route are NOT drawn here. They move with
+    // the position, which arrives about once a second, and redrawing this
+    // group on every one of those tore down and rebuilt all three box pins.
+    // A rebuild landing between a thumb going down and coming up destroys
+    // the marker before its click fires, so roughly one tap in ten was lost
+    // on the primary booking path — for every phone whose location works.
+    // The last round removed `onPick` from these dependencies and left
+    // `fix`, and verified the fix on the demo button, which sets a position
+    // once and never again. See the boat layer below.
+  }, [harbour, boxes, selectedId, landmarkLabel])
 
-    if (fix && routeTo) {
-      const legs = routeLegs(fix, harbour, routeTo)
-      L.polyline(legs, {
+  // The boat and its route, on their own layer and their own clock.
+  useEffect(() => {
+    const group = boat.current
+    if (!group) return
+    group.clearLayers()
+    if (!fix) return
+
+    L.marker([fix.lat, fix.lon], { icon: boatPin() }).addTo(group)
+    if (routeTo) {
+      L.polyline(routeLegs(fix, harbour, routeTo), {
         color: SEA,
         weight: 6,
         dashArray: '10 8',
       }).addTo(group)
-      return
     }
 
     // Before a booking the map's job is to let a skipper pick between three
@@ -191,7 +211,7 @@ export function SeaMap({
     // offshore would zoom out until all three pins sat on the same pixel and
     // none of them could be tapped. Distance to each box is on its card, and
     // the boat and its route take over the view once one is booked.
-  }, [harbour, fix, boxes, selectedId, routeTo, landmarkLabel])
+  }, [harbour, fix, routeTo])
 
   // Frame the view only when WHAT is being framed changes — the harbour, or
   // which box the route runs to. Refitting on every redraw would snap a

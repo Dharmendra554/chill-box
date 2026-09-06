@@ -13,6 +13,7 @@ import {
   emptyCount,
   emptySlot,
   holdRemainingMs,
+  isOverdue,
   forceReleasable,
   occupancyRows,
   QUOTA,
@@ -638,5 +639,25 @@ describe('what the harbour may take back', () => {
     expect(result.boxes[0].slots[0].status).toBe('empty')
     // The crate that is still in time is untouched.
     expect(result.boxes[0].slots[1].status).toBe('occupied')
+  })
+})
+
+describe('an overstay must be billed as one', () => {
+  it('marks a release late from the timestamp, not only from the flag', () => {
+    // The flag is raised by applyTick a second or so after the six-hour
+    // mark; a release that lands in that window used to be credited as an
+    // on-time one, in a CSV the society bills from and no rule can correct.
+    const boxes = [
+      box('box1', [
+        { index: 0, status: 'occupied', boatId: '11', depositedAt: NOW - 7 * HOUR_MS },
+      ]),
+    ]
+    expect(isOverdue(boxes[0].slots[0], NOW)).toBe(true)
+    expect(releaseSlots(boxes, H, '11', NOW).entries[0].overstay).toBe(true)
+  })
+
+  it('does not call a crate late one second early', () => {
+    const slot = { status: 'occupied' as const, depositedAt: NOW - OVERSTAY_MS + 1000 }
+    expect(isOverdue(slot, NOW)).toBe(false)
   })
 })

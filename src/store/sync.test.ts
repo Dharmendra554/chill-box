@@ -252,8 +252,8 @@ describe('a shared harbour that has not proven itself live', () => {
     await publishedHarbour()
     writes.length = 0
 
-    expect(await sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn')).toEqual({ ok: true })
-    expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toEqual({
+    expect(await sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn')).toMatchObject({ ok: true })
+    expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toMatchObject({
       ok: true,
     })
     await sync.releaseRemote('nizampatnam', '04')
@@ -288,7 +288,7 @@ describe('a write that only half lands', () => {
     // stored, while the second sat on a four-hour hold WITH THE CATCH IN IT
     // and was handed to the next boat when it expired.
     await publishedHarbour()
-    expect(await sync.reserveRemote('nizampatnam', 'box3', '04', 2, 'prawn')).toEqual({ ok: true })
+    expect(await sync.reserveRemote('nizampatnam', 'box3', '04', 2, 'prawn')).toMatchObject({ ok: true })
 
     const held = Object.keys(db).filter(
       (path) =>
@@ -298,7 +298,7 @@ describe('a write that only half lands', () => {
     expect(held.length).toBe(2)
     refuse.add(held[1])
 
-    expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toEqual({
+    expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toMatchObject({
       ok: false,
       error: 'partial',
     })
@@ -321,7 +321,7 @@ describe('a write that only half lands', () => {
     expect(stored.length).toBe(2)
     refuse.add(stored[1])
 
-    expect(await sync.releaseRemote('nizampatnam', '04')).toEqual({
+    expect(await sync.releaseRemote('nizampatnam', '04')).toMatchObject({
       ok: false,
       error: 'partial',
     })
@@ -352,7 +352,7 @@ describe('a write that only half lands', () => {
     refuse.add(stored[1])
 
     const outcome = await sync.releaseRemote('nizampatnam', '04')
-    expect(outcome).toEqual({ ok: false, error: 'partial' })
+    expect(outcome).toMatchObject({ ok: false, error: 'partial' })
 
     // The crate that DID come out is billed, in its own box.
     const rows = Object.keys(db)
@@ -402,5 +402,30 @@ describe('a client running ahead of the published rules', () => {
 
     const boat = db[`harbours/nizampatnam/boats/${id}`] as { uid?: string }
     expect(boat?.uid).toBe('test-uid')
+  })
+})
+
+describe('a database that says no', () => {
+  it('reports a refusal as a refusal, never as "already done"', async () => {
+    // Filtering rejections out of allSettled made a total refusal look
+    // identical to a lost race, so a skipper whose deposit was DENIED —
+    // anonymous sign-in off, rules a commit behind, a phone that lost its
+    // identity — was told the harbour record had nothing left to change,
+    // and walked away from a crate still holding his catch.
+    await publishedHarbour()
+    await sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn')
+
+    const held = Object.keys(db).filter(
+      (path) =>
+        path.startsWith('harbours/nizampatnam/boxes/box3/') &&
+        (db[path] as { boatId?: string })?.boatId === '04',
+    )
+    expect(held.length).toBe(1)
+    refuse.add(held[0])
+
+    expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toMatchObject({
+      ok: false,
+      error: 'refused',
+    })
   })
 })

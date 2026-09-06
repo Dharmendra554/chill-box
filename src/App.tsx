@@ -207,7 +207,7 @@ export default function App() {
       {reach === 'checking' && syncEnabled ? (
         <LoadingBanner t={t} />
       ) : reach !== 'stale' ? (
-        <WaveStrip t={t} reading={marine.reading} error={marine.error} />
+        <WaveStrip t={t} reading={marine.reading} band={band} error={marine.error} />
       ) : (
         // Local-only mode has no shared copy to be behind, and `reachedAt` is
         // then the weather poll — dating the box figures to it said something

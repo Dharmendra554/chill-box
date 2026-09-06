@@ -49,6 +49,7 @@ import {
   applyTick,
   emptyCount,
   emptySlot,
+  isOverdue,
   LEDGER_LIMIT,
   QUOTA,
   remainingQuota,
@@ -387,7 +388,7 @@ export function releaseSlots(
       if (!mine) return slot
 
       crates += 1
-      if (slot.status === 'overstay') late = true
+      if (isOverdue(slot, now)) late = true
       species ??= slot.species
       if (slot.depositedAt !== null && slot.depositedAt < earliest) {
         earliest = slot.depositedAt
@@ -932,23 +933,34 @@ export const useDockStore = create<DockState>()(
           // the audit row before the release resolved left the hash-chained
           // record — the thing the README sells as the integrity trail —
           // permanently asserting a release that had failed.
-          const logIt = () =>
+          //
+          // The COUNT comes from the harbour, not from this phone's copy.
+          // `result.entries[0].crates` is what we could see before the
+          // write; another phone may have released one of them a moment
+          // earlier, and the audit log then claimed two crates while the
+          // ledger correctly recorded one — the integrity trail disagreeing
+          // with the billing record, with the trail being the wrong one.
+          const logIt = (crates: number) =>
             void get().record(
               'slot.forceRelease',
               `#${boatId}`,
-              `${harbourId} ${boxId} · ${result.entries[0].crates} crates`,
+              `${harbourId} ${boxId} · ${crates} crates`,
             )
 
           if (syncEnabled) {
             if (!requireLink()) return
             const outcome = await releaseRemote(harbourId, boatId, boxId, indexes)
             reportFailure(outcome)
-            if (outcome.ok) logIt()
+            // Recorded whenever a crate actually came out, including a
+            // partial release. Logging only on `ok` meant a crate was
+            // freed, billed in the ledger, and left with no record that any
+            // admin had touched it.
+            if (outcome.freed) logIt(outcome.freed)
             return
           }
 
           putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
-          logIt()
+          logIt(result.entries[0].crates)
         },
 
         /**

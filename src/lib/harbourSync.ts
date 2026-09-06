@@ -1,5 +1,5 @@
-import { LEDGER_LIMIT, QUOTA } from '../store/selectors'
-import { HOLD_MS, OVERSTAY_MS } from './time'
+import { isOverdue, LEDGER_LIMIT, QUOTA } from '../store/selectors'
+import { HOLD_MS } from './time'
 import type { Boat, BoxId, ColdBox, HarbourId, LedgerEntry, Slot, Species } from '../types'
 
 /**
@@ -71,7 +71,10 @@ export type BookingError =
  * What happened to a shared write. Every caller must be able to tell the
  * skipper the truth, so none of these return a bare boolean.
  */
-export type RemoteResult = { ok: true } | { ok: false; error: BookingError }
+export type RemoteResult =
+  | { ok: true; freed?: number }
+  /** `freed` is how many crates DID move, even when the whole did not. */
+  | { ok: false; error: BookingError; freed?: number }
 
 /**
  * Tell a dead link apart from a database that said no. They need different
@@ -83,10 +86,15 @@ function reasonFor(error: unknown): BookingError {
 }
 
 /**
- * Firebase is ~45 kB gzipped and nothing on the first screen needs it, so it
- * loads on demand instead of sitting in the entry chunk. On a 2G tether that
- * is the difference between the booking screen appearing now and appearing
- * once a database library has downloaded.
+ * Firebase is **88.5 kB gzipped** across four chunks, and it is fetched at
+ * start-up, not on demand: `main.tsx` calls `startHarbourSync()` before
+ * React mounts. Splitting it out still keeps it out of the entry bundle and
+ * off the parse path of a local-only build — but on a shared harbour it is
+ * on the critical path, because the loading banner cannot clear until the
+ * first snapshot arrives through it.
+ *
+ * This comment said "~45 kB … loads on demand". Both halves were wrong, and
+ * the number was the one quoted onward into the README.
  */
 type Api = Awaited<ReturnType<typeof loadApi>>
 
@@ -841,7 +849,7 @@ function rowsFor(freed: Freed[], now: number): Omit<LedgerEntry, 'id' | 'harbour
   const rows = new Map<BoxId, Omit<LedgerEntry, 'id' | 'harbourId'>>()
   for (const { boxId, slot } of freed) {
     const depositedAt = slot.depositedAt ?? now
-    const late = slot.status === 'overstay' || depositedAt + OVERSTAY_MS <= now
+    const late = isOverdue({ status: slot.status, depositedAt }, now)
     const row = rows.get(boxId)
     if (!row) {
       rows.set(boxId, {
@@ -1008,7 +1016,8 @@ export async function releaseRemote(
   if (freed.freed.length === 0) return { ok: false, error: 'stale' }
 
   const a = await api()
-  if (!a) return { ok: true } // slots are free; the row is the lesser loss
+  // Slots are free; the row is the lesser loss.
+  if (!a) return { ok: true, freed: freed.freed.length }
 
   try {
     // The rows are built HERE, from the slots that actually came out, rather
@@ -1091,6 +1100,19 @@ async function mutateOwnSlots(
       ),
     )
     const freed = mine.filter((_, i) => done[i].status === 'fulfilled' && done[i].value)
+
+    // Nothing moved AND the database said no. Filtering rejections out made a
+    // refusal indistinguishable from a lost race, so a skipper whose write
+    // was denied — anonymous sign-in off, rules a commit behind, or a phone
+    // that lost its identity — was told "That is already done" and walked
+    // away from a crate still holding his catch. A refusal must always read
+    // as a refusal; that is what sends him to find the harbour master.
+    if (freed.length === 0) {
+      const denied = done.some(
+        (r) => r.status === 'rejected' && reasonFor(r.reason) === 'refused',
+      )
+      if (denied) return { ok: false, error: 'refused' }
+    }
     return { ok: true, freed, total: mine.length }
   } catch (error) {
     return { ok: false, error: reasonFor(error) }
@@ -1114,6 +1136,7 @@ async function mutateOwnSlots(
  */
 function settle(result: SlotChange): RemoteResult {
   if (!result.ok) return result
-  if (result.freed.length === 0) return { ok: false, error: 'stale' }
-  return result.freed.length === result.total ? { ok: true } : { ok: false, error: 'partial' }
+  const freed = result.freed.length
+  if (freed === 0) return { ok: false, error: 'stale', freed }
+  return freed === result.total ? { ok: true, freed } : { ok: false, error: 'partial', freed }
 }

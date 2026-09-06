@@ -62,7 +62,7 @@ export function DockScreen({
 }: {
   band: WaveBand | null
   onChangeHarbour: () => void
-  onResetDemo: () => void
+  onResetDemo: () => void | Promise<void>
 }) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
@@ -315,25 +315,36 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
+/**
+ * What the crate grid's four states look like — and, since round 9, what
+ * each one's MARK is.
+ *
+ * The marks exist so a skipper who cannot separate the fills in glare can
+ * read the shape instead. That only works if something on screen says which
+ * shape means what: the legend taught four colours and none of the marks,
+ * so `!` in particular — a Latin punctuation mark used as a semantic token,
+ * self-evident to nobody — was never explained anywhere.
+ */
 function Legend() {
   const t = useT()
   const items = [
-    ['legendFree', 'bg-free-wash text-ink'],
-    ['legendHold', 'bg-hold text-hold-ink'],
-    ['legendFull', 'bg-full text-full-ink'],
-    ['legendLate', 'bg-late text-late-ink'],
+    ['legendFree', 'bg-free-wash text-ink', '·'],
+    ['legendHold', 'bg-hold text-hold-ink', null],
+    ['legendFull', 'bg-full text-full-ink', null],
+    ['legendLate', 'bg-late text-late-ink', '!'],
   ] as const
 
   return (
     <ul className="flex flex-wrap gap-2">
-      {items.map(([key, style]) => (
+      {items.map(([key, style, mark]) => (
         <li
           key={key}
           className={cx(
-            'border-3 border-rule px-2 py-1 text-xs font-extrabold uppercase',
+            'flex items-center gap-1 border-3 border-rule px-2 py-1 text-xs font-extrabold uppercase',
             style,
           )}
         >
+          {mark ?? (key === 'legendHold' ? <TideClockIcon size={13} /> : <CrateIcon size={13} />)}
           {t(key)}
         </li>
       ))}
@@ -514,7 +525,7 @@ function DemoTools({
   simulating: boolean
   onSimulate: () => void
   onChangeHarbour: () => void
-  onResetDemo: () => void
+  onResetDemo: () => void | Promise<void>
 }) {
   const t = useT()
   return (
@@ -544,7 +555,15 @@ function DemoTools({
         {syncEnabled ? (
           <p className="text-xs font-bold text-ink-2">{t('demoResetMoved')}</p>
         ) : (
-          <button type="button" className="btn btn-ghost text-sm" onClick={onResetDemo}>
+          // Typed `void | Promise<void>`, because typing an async function
+          // as `() => void` is legal TypeScript — return-type bivariance for
+          // `void` — and that is exactly the hole that hid
+          // `if (!signInAs(...))` for eight rounds.
+          <button
+            type="button"
+            className="btn btn-ghost text-sm"
+            onClick={() => void onResetDemo()}
+          >
             {t('resetDemo')}
           </button>
         )}

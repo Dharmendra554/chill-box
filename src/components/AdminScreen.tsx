@@ -114,6 +114,8 @@ function Console() {
   const boxes = useDockStore(selectBoxes)
   const allLedger = useDockStore((s) => s.ledger)
   const now = useNow()
+  /** The boat whose approval is in flight, so a second tap cannot fire. */
+  const [busy, setBusy] = useState<string | null>(null)
   const approveBoat = useDockStore((s) => s.approveBoat)
   const rejectBoat = useDockStore((s) => s.rejectBoat)
   const setBoatStatus = useDockStore((s) => s.setBoatStatus)
@@ -231,7 +233,24 @@ function Console() {
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" className="btn btn-primary" onClick={() => approveBoat(boat.id)}>
+                {/* Awaited and guarded, like every other write on this
+                    screen. It was the one bare promise-returning handler
+                    left: a rejection inside it was unhandled, and a second
+                    tap on 2G sent a second approval. */}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy === boat.id}
+                  onClick={async () => {
+                    if (busy) return
+                    setBusy(boat.id)
+                    try {
+                      await approveBoat(boat.id)
+                    } finally {
+                      setBusy(null)
+                    }
+                  }}
+                >
                   {t('approve')}
                 </button>
                 <ConfirmButton className="btn btn-danger" label={t('reject')} onConfirm={() => rejectBoat(boat.id)} />

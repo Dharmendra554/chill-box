@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the eighth hostile audit round (two auditors), pushed.
+**Last updated:** 7 Sept 2026, after the ninth hostile audit round, pushed.
 
 ---
 
@@ -27,7 +27,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 78 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 81 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
 **First paint, measured, all of it:**
 
@@ -36,19 +36,22 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 | Entry JS | 96 kB gz |
 | CSS | 12 kB gz |
 | Service worker + workbox runtime, first visit | 9 kB gz |
+| **Firebase**, fetched at start-up by `main.tsx` | **88 kB gz** |
 | **Google Fonts** — three families; Noto Sans Telugu alone is 124 kB | **265 kB** |
-| **Total before the app can answer "is there room"** | **~382 kB** |
+| **Total before the app can answer "is there room"** | **~470 kB** |
 
-Round 7 called ~110 kB "the honest first-paint figure". It was not: it
-counted only our own code and left out the fonts, which are **2.7× the JS
-entry**. Do not quote a first-paint number that stops at the bundle. The
-fonts are the largest single cost in the app and are not yet fixed —
-self-host and subset them to the glyphs `dictionary.ts` actually uses.
+Two rounds got this number wrong in the same direction. Round 7 called
+~110 kB "honest" and omitted the fonts; round 8 added the fonts and omitted
+Firebase, which is *lazy* but not *off the critical path* — the "numbers are
+still coming" banner cannot clear until the first snapshot arrives through
+it. **Do not quote a first-paint figure that stops at the entry bundle.**
 
-Map, Firebase and the admin console are separate lazy chunks, verified in
-`dist/`.
+The fonts are the largest single item and are not yet fixed — self-host and
+subset them to the glyphs `dictionary.ts` actually uses.
 
-**Pushed and deployed.** `240bcd9` is on `main` and the Deploy workflow runs
+The map and the admin console are genuinely lazy, verified in `dist/`.
+
+**Pushed and deployed.** `4ad1fa8` and later are on `main` and the Deploy workflow runs
 typecheck, tests, lint and build before publishing.
 
 The three `VITE_FIREBASE_*` repository secrets are set. They are public by
@@ -63,6 +66,7 @@ Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
+| `4ad1fa8` | Round 8: the ship-blocker, the ledger over-billing, the lost refusal |
 | `240bcd9` | GPS out of the interface, swipeable toast, hover hints, firebase.json |
 | `af506e3` | Round 7: the seams between the per-slot rewrite and everything else |
 | `0fbf511` | Per-slot writes: the database enforces whose crate it is |
@@ -88,22 +92,27 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Eight hostile audit rounds were run and acted on
+### Nine hostile audit rounds were run and acted on
 
 Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, round 7's pair — **3.5**
-(rules/sync/store) and **4.5** (UI/honesty/performance) — and round 8's
-**3.5 / 3.5**. Every round found real defects with all four gates green, and
-in seven of the eight the *previous round's fixes* caused the next round's
-defects. Details in §9–§13, §16 and §17; the recipe is in `AGENTS.md` §5.
+(rules/sync/store) and **4.5** (UI/honesty) — round 8's **3.5 / 3.5**, and
+round 9's **4.0 / 5.0**. Every round found real defects with all four gates
+green, and in eight of the nine the *previous round's fixes* caused the next
+round's defects. Details in §9–§13 and §16–§18; the recipe is `AGENTS.md` §5.
 
 Splitting the review in two by concern is worth it: the auditors find
 disjoint sets and then converge on the same root cause.
 
-**Assume the ninth will find something too.** That has been true eight times,
-and the score has not yet gone up — every round the fixes are real and every
-round they open a new seam. The lesson is not "audit harder", it is **make
-each round smaller**: round 8's two worst findings were both created by round
-7, which changed twenty things at once.
+**Round 9 is the first time the score went up**, and the reason is the most
+useful sentence in this file: *the narrowly-scoped claims came back clean and
+every claim that touched a seam failed.* Round 8 changed twenty things and
+wrote three of round 9's headline defects; round 9 changed four things in the
+sync layer and the score rose a point and a half.
+
+**So: one subsystem per round.** Not because it is tidier — because nine
+rounds of evidence say a big round buys its own next round's defects.
+
+**Assume the tenth will find something too.** That has been true nine times.
 
 ---
 
@@ -684,3 +693,40 @@ without it; the two ledger ones were mutation-checked.
 change to a different subsystem and each gets its own round — piling fixes
 together is demonstrably how this codebase generates the next round's
 defects, and round 8 is the second consecutive proof.
+
+---
+
+## 18. Ninth review — 4.0 (rules/sync/store) and 5.0 (UI/honesty) → fixed
+
+**The first round where the score went up**, and the reason is recorded here
+because it is the most useful thing this file can say: *the two claims that
+were narrowly scoped came back completely clean, and every claim that failed
+touched a seam.* Round 8 changed twenty things; three of round 9's headline
+findings were written by it. Round 9 changed four things in the sync layer
+and eight small ones in the UI, and the auditor that scored 5.0 called it
+"genuinely better engineering".
+
+| Defect | Why it mattered |
+| --- | --- |
+| **A refused write was reported as "That is already done."** Round 8's `allSettled` fix filtered rejections out, so a total refusal became indistinguishable from a lost race and `settle` called it `stale` | Anonymous sign-in not enabled, rules a commit behind, or a phone that lost its Firebase identity — all three are documented failure modes — and the skipper taps **Fish deposited**, is told the harbour has nothing left to change, and walks away from a crate still on a four-hour hold with his catch in it. Exactly the wrong-reason refusal AGENTS §2 names |
+| **`mobileLast4` was not immutable, and a boat's required fields could be erased.** A `.validate` is skipped when the value written is null, and never runs on an ancestor of the written path — so `update(boats/04, {mobileLast4: null})` slipped past both the immutability rule and `hasChildren` | Any phone that has opened the app could erase the digits that prove a boat is yours. The roster filter drops a boat without them, so it vanished from every phone that had not already seen it: unapprovable, unclaimable, its crates held by nobody. Now asserted in `.write`, which IS evaluated at every ancestor |
+| **A crate could be made permanently unclearable**, by nulling its `depositedAt`: no phone could flag it overdue and the rule could never let anyone else clear it. Nulling `status` was worse — the reader defaults a missing status to `empty`, so the crate read as free while the fish were in it | The rotting-crate scenario round 7 closed, reachable again through a child-path write |
+| **The force-release audit row counted this phone's copy, not the harbour's** — and was skipped entirely when a crate really did come out | The hash-chained trail said "2 crates" while the ledger correctly said 1, and a partial release left no record that any admin had touched it. The same units confusion as §17's ledger defect, fixed on one side and left standing on the other |
+| **Two ledger-row builders disagreed on `overstay`** — one derived it from `depositedAt`, the other read the local flag alone | A release landing before `applyTick` raised the flag was billed as on-time, in the CSV the society bills from. `isOverdue` is now the one definition |
+| **The map overlay was still rebuilt on every position update.** Round 8 removed the `onPick` driver from the dependency array and left `fix` | The same one-tap-in-ten loss on the primary booking path, for every phone whose location works — and round 8 verified the fix on the demo button, which sets a position once and never again. The boat and its route now live on their own layer with their own clock |
+| The wave strip rendered a confident band from a stale reading while the safety card said there was no current reading — two answers about the sea in one viewport — and its staleness line told the skipper to "check again at the box", a sentence written for the capacity figures | |
+| `CrateRow`'s status chip was colour-alone: the whole Harbour tab and every full box's detail sheet, with `pulse-late` disabled under `prefers-reduced-motion` | Round 8 fixed the crate grid and left the component it had not touched, under a README line claiming "never colour alone" |
+| The legend taught four colours and none of the new marks — including `!`, the one that is a convention rather than a picture | |
+| Two more unawaited promise-returning store actions, one of them typed `() => void` so `tsc` structurally cannot see it | The same footgun as §17's ship-blocker, in the round that documented it |
+| The toast's tap guard latched after a short nudge, leaving it undismissable by keyboard or screen reader | |
+| `harbourSync`'s header said Firebase is "~45 kB, loads on demand". It is **88.5 kB** and `main.tsx` fetches it at start-up | The number the README quoted onward |
+| The geolocation give-up timer fired during an unanswered permission prompt | The safety card then stated that the phone could not find you while it was simply waiting for an answer. The platform's own timeout excludes prompt time; ours did not. Timer deleted |
+
+**Corrected figures.** First paint is **~470 kB**, not ~382 kB: the earlier
+table omitted the 88.5 kB of Firebase that `main.tsx` fetches before the
+"numbers are still coming" banner can clear. Everything else in §2's table
+survived independent re-measurement to the byte, including the 265 kB of
+webfonts and the 124 kB Telugu subset.
+
+**Still open and deliberately untouched:** the 223 kB ledger feed, the
+webfonts, and the demo/live toggle. One subsystem per round.

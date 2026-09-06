@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { HARBOURS } from '../data/harbours'
 import type { T } from '../i18n/dictionary'
-import { waveBand } from '../lib/marine'
+import type { WaveBand } from '../lib/marine'
 import { formatClock } from '../lib/time'
 import { cx } from '../lib/ui'
 import type {
@@ -122,10 +122,20 @@ const WAVE_STYLE = {
 export function WaveStrip({
   t,
   reading,
+  band,
   error,
 }: {
   t: T
   reading: MarineReading | null
+  /**
+   * The sea state the rest of the app is acting on, or null when it is not
+   * current enough to act on. Computed once in `App` and passed down: this
+   * strip used to derive its own from the same reading, so a stale figure
+   * showed a confident green "calm" headline here while the safety card one
+   * scroll below said there was no current reading. Two answers about the
+   * sea, in one viewport, and the loud one was the wrong one.
+   */
+  band: WaveBand | null
   error: boolean
 }) {
   if (!reading) {
@@ -136,7 +146,18 @@ export function WaveStrip({
     )
   }
 
-  const band = waveBand(reading.waveHeight)
+  if (band === null) {
+    // Too old to stand behind: the height, its age, and no band, no colour
+    // and no landing advice — because we have none to give.
+    return (
+      <p className="flex items-center gap-2 border-b-3 border-rule bg-paper-2 px-3 py-1.5 text-sm font-bold">
+        <WaveIcon size={18} />
+        <span className="tabular font-extrabold">{reading.waveHeight.toFixed(1)} m</span>
+        <span className="truncate">{t('waveStale', formatClock(reading.fetchedAt))}</span>
+      </p>
+    )
+  }
+
   return (
     <p
       className={cx(
@@ -147,21 +168,15 @@ export function WaveStrip({
       <WaveIcon size={18} />
       {t(band === 'calm' ? 'waveCalm' : band === 'moderate' ? 'waveModerate' : 'waveRough')}
       <span className="tabular">{reading.waveHeight.toFixed(1)} m</span>
-      {/* `error` was consulted only when there was NO reading, so once one
-          had landed every later failure was invisible and a six-hour-old
-          "calm · 0.6 m" sat here undated for the rest of the night. Every
-          other figure in this app carries its age; the one that decides
-          whether a boat comes in did not. */}
+      {/* A rough band survives staleness, because warning about breakers
+          that may have passed is the safe direction — but it must still
+          carry its age, and it keeps its landing advice, which is the
+          reason it survived. */}
       <span className="ml-auto truncate font-bold">
-        {error
-          ? t('staleBody', formatClock(reading.fetchedAt))
-          : t(
-              band === 'calm'
-                ? 'waveCalmHint'
-                : band === 'moderate'
-                  ? 'waveModerateHint'
-                  : 'waveRoughHint',
-            )}
+        {t(
+          band === 'calm' ? 'waveCalmHint' : band === 'moderate' ? 'waveModerateHint' : 'waveRoughHint',
+        )}
+        {error ? ` · ${formatClock(reading.fetchedAt)}` : ''}
       </span>
     </p>
   )
@@ -309,8 +324,16 @@ export function Toast({
       onPointerUp={settle}
       onPointerCancel={settle}
       onClick={() => {
-        // A drag ends in a click too, so only a real tap dismisses.
-        if (!swiped.current) onDismiss()
+        // A drag ends in a click too, so only a real tap dismisses. Reset
+        // afterwards: leaving it set meant a nudge under the swipe
+        // threshold latched the flag, and the toast could then never be
+        // dismissed by keyboard or by a screen reader's activation, neither
+        // of which produces a pointer sequence to clear it. A refusal does
+        // not fade by itself, so that was a permanent band across the
+        // bottom of the screen with no advertised way to remove it.
+        const dragged = swiped.current
+        swiped.current = false
+        if (!dragged) onDismiss()
       }}
     >
       {toast.text}

@@ -115,11 +115,20 @@
               //
               // 14400000 is HOLD_MS and 21600000 is OVERSTAY_MS, both from
               // src/lib/time.ts. They must match.
-              ".write": "auth != null && $box.matches(/^box[1-3]$/) && $slot.matches(/^[0-9]$/) && (!newData.exists() || newData.child('status').val() === 'empty' || newData.hasChild('boatId')) && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.hasChild('reservedAt') && data.child('reservedAt').val() + 14400000 <= now) || (data.child('status').val() === 'occupied' && data.hasChild('depositedAt') && data.child('depositedAt').val() + 21600000 <= now))",
+              ".write": "auth != null && $box.matches(/^box[1-3]$/) && $slot.matches(/^[0-9]$/) && (!newData.exists() || (newData.hasChild('status') && (newData.child('status').val() === 'empty' || newData.hasChild('boatId')) && (newData.child('status').val() !== 'occupied' || newData.hasChild('depositedAt')))) && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.hasChild('reservedAt') && data.child('reservedAt').val() + 14400000 <= now) || (data.child('status').val() === 'occupied' && data.hasChild('depositedAt') && data.child('depositedAt').val() + 21600000 <= now))",
               // A typo, or a client inventing 'box9' or slot 47, is refused
               // rather than quietly stored — and so is a crate with no boat
               // on it, which the reader skips and the console cannot show,
               // leaving a slot permanently full and invisible.
+              //
+              // A stored crate must also keep its `depositedAt`. Erasing
+              // that one child left the crate `occupied` with no timestamp:
+              // no phone could ever flag it as an overstay, and the rule
+              // below could never let anyone else clear it — a rotting
+              // crate its owner had abandoned, unclearable by the whole
+              // harbour. Erasing `status` was worse: the reader defaults a
+              // missing status to `empty`, so the crate read as free to
+              // everyone while the fish were still in it.
               //
               // All three checks live in the .write above, not only here.
               // Firebase evaluates validate rules on the node written and
@@ -154,7 +163,19 @@
             // that clause, replacing the boat object without a uid would
             // silently unclaim it — and the finder could then claim it and
             // move that skipper's crates.
-            ".write": "auth != null && newData.exists() && (!data.hasChild('uid') || newData.child('uid').val() === data.child('uid').val())",
+            // Everything a boat must always have, and everything that can
+            // never change, is asserted HERE rather than in .validate below.
+            // Two Firebase behaviours defeat a .validate for this job, and
+            // this file already relies on both elsewhere: a .validate is
+            // skipped when the value written is null, and it never runs on
+            // an ancestor of the written path. So `update(boats/04,
+            // { mobileLast4: null })` slipped past the immutability rule and
+            // past hasChildren, erasing the digits that prove a boat is
+            // yours — the boat then vanished from every roster that had not
+            // already seen it. A .write, by contrast, IS evaluated at every
+            // ancestor, and its `newData` is the boat as it would be after
+            // the write. One place, both directions.
+            ".write": "auth != null && newData.exists() && newData.hasChildren(['name', 'owner', 'mobileLast4', 'status', 'registeredAt']) && (!data.hasChild('uid') || newData.child('uid').val() === data.child('uid').val()) && (!data.hasChild('mobileLast4') || newData.child('mobileLast4').val() === data.child('mobileLast4').val())",
             ".validate": "newData.hasChildren(['name', 'owner', 'mobileLast4', 'status', 'registeredAt'])",
             "name": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 40" },
             "nameTe": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
