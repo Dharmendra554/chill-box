@@ -61,115 +61,124 @@ textarea {
   font-family: var(--font-outlier);
 }
 
-/* ---- Structure ------------------------------------------------------- */
+/* ---- Structure and controls -----------------------------------------
+ *
+ * These live in the components layer so Tailwind utilities always win the
+ * cascade. Without it, .btn padding silently beat px-2.5 and .btn-ghost beat
+ * .btn-armed purely on stylesheet order — the kind of bug that shows up as
+ * a squeezed header or a confirm button that turns invisible.
+ */
+@layer components {
+  /* ---- Structure ------------------------------------------------------- */
 
-/* Every surface is a hard-edged slab with a 3px rule. In direct sun the
-   border is what survives; fills and shadows do not. */
-.card {
-  background: var(--color-card);
-  color: var(--color-ink);
-  border: 3px solid var(--color-rule);
-}
+  /* Every surface is a hard-edged slab with a 3px rule. In direct sun the
+     border is what survives; fills and shadows do not. */
+  .card {
+    background: var(--color-card);
+    color: var(--color-ink);
+    border: 3px solid var(--color-rule);
+  }
 
-.card-soft {
-  background: var(--color-paper-2);
-  color: var(--color-ink);
-  border: 3px solid var(--color-rule);
-}
+  .card-soft {
+    background: var(--color-paper-2);
+    color: var(--color-ink);
+    border: 3px solid var(--color-rule);
+  }
 
-/* ---- Controls -------------------------------------------------------- */
+  /* ---- Controls -------------------------------------------------------- */
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  min-height: var(--tap);
-  padding: 0.8rem 1.15rem;
-  border: 3px solid var(--color-rule);
-  background: var(--color-card);
-  color: var(--color-ink);
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.1rem;
-  line-height: 1.15;
-  letter-spacing: 0.005em;
-  text-align: center;
-  cursor: pointer;
-  transition:
-    background-color var(--dur-micro) var(--ease-out),
-    transform 90ms var(--ease-out),
-    color var(--dur-micro) var(--ease-out);
-}
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    min-height: var(--tap);
+    padding: 0.8rem 1.15rem;
+    border: 3px solid var(--color-rule);
+    background: var(--color-card);
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.1rem;
+    line-height: 1.15;
+    letter-spacing: 0.005em;
+    text-align: center;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-micro) var(--ease-out),
+      transform 90ms var(--ease-out),
+      color var(--dur-micro) var(--ease-out);
+  }
 
-.btn-lg {
-  min-height: var(--tap-lg);
-  font-size: 1.3rem;
-  padding: 1rem 1.25rem;
-}
+  .btn-lg {
+    min-height: var(--tap-lg);
+    font-size: 1.3rem;
+    padding: 1rem 1.25rem;
+  }
 
-.btn:active {
-  transform: translateY(2px);
-}
+  .btn:active {
+    transform: translateY(2px);
+  }
 
-.btn:disabled,
-.btn[aria-disabled="true"] {
-  opacity: 0.42;
-  cursor: not-allowed;
-  transform: none;
-}
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.42;
+    cursor: not-allowed;
+    transform: none;
+  }
 
-.btn-primary {
-  background: var(--color-free);
-  color: var(--color-free-ink);
-}
+  .btn-primary {
+    background: var(--color-free);
+    color: var(--color-free-ink);
+  }
 
-.btn-primary:hover:not(:disabled) {
-  background: var(--color-free-hover);
-}
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-free-hover);
+  }
 
-.btn-danger {
-  background: var(--color-full);
-  color: var(--color-full-ink);
-}
+  .btn-danger {
+    background: var(--color-full);
+    color: var(--color-full-ink);
+  }
 
-.btn-warn {
-  background: var(--color-late);
-  color: var(--color-late-ink);
-}
+  .btn-warn {
+    background: var(--color-late);
+    color: var(--color-late-ink);
+  }
 
-.btn-sea {
-  background: var(--color-sea);
-  color: var(--color-sea-ink);
-}
+  .btn-sea {
+    background: var(--color-sea);
+    color: var(--color-sea-ink);
+  }
 
-.btn-ghost {
-  background: transparent;
-}
+  .btn-ghost {
+    background: transparent;
+  }
 
-.btn-ghost:hover {
-  background: var(--color-paper-3);
-}
+  .btn-ghost:hover {
+    background: var(--color-paper-3);
+  }
 
-.btn-block {
-  width: 100%;
-}
+  .btn-block {
+    width: 100%;
+  }
 
-.field {
-  display: block;
-  width: 100%;
-  min-height: var(--tap);
-  padding: 0.75rem 0.9rem;
-  border: 3px solid var(--color-rule);
-  background: var(--color-card);
-  color: var(--color-ink);
-  font-size: 1.2rem;
-  font-weight: 700;
-}
+  .field {
+    display: block;
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0.75rem 0.9rem;
+    border: 3px solid var(--color-rule);
+    background: var(--color-card);
+    color: var(--color-ink);
+    font-size: 1.2rem;
+    font-weight: 700;
+  }
 
-.field::placeholder {
-  color: var(--color-ink-2);
-  font-weight: 500;
+  .field::placeholder {
+    color: var(--color-ink-2);
+    font-weight: 500;
+  }
 }
 
 /* ---- Motion ---------------------------------------------------------- */

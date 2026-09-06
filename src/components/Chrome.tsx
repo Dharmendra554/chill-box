@@ -51,26 +51,27 @@ export function TopBar({
   onTheme: (theme: Theme) => void
   onSpeak: () => void
 }) {
-  const here = HARBOURS[harbourId]
+  const h = HARBOURS[harbourId]
+  const here = {
+    name: (l: Lang) => (l === 'te' ? h.nameTe : h.nameEn),
+    union: (l: Lang) => (l === 'te' ? h.unionTe : h.unionEn),
+  }
 
   return (
     <header className="sticky top-0 z-[200] border-b-3 border-rule bg-paper">
       <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2">
         <AnchorIcon size={30} className="shrink-0" />
+        {/* Once a boat is chosen it is the identity that matters, and Telugu
+            harbour names are long enough to eat a 360 px header. So the boat
+            leads and the harbour becomes the second line. */}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-base">
-            {lang === 'te' ? here.nameTe : here.nameEn}
+            {boat ? `${lang === 'te' ? boat.nameTe : boat.nameEn} #${boat.id}` : here.name(lang)}
           </h1>
-          {boat ? (
-            <p className="flex items-center gap-1 truncate text-xs font-bold text-ink-2">
-              <BoatIcon size={13} />
-              {lang === 'te' ? boat.nameTe : boat.nameEn} #{boat.id}
-            </p>
-          ) : (
-            <p className="truncate text-xs font-bold text-ink-2">
-              {lang === 'te' ? here.unionTe : here.unionEn}
-            </p>
-          )}
+          <p className="flex items-center gap-1 truncate text-xs font-bold text-ink-2">
+            {boat ? <BoatIcon size={12} /> : null}
+            {boat ? here.name(lang) : here.union(lang)}
+          </p>
         </div>
 
         {/* The spoken readout lives in the corner every screen shares, so
