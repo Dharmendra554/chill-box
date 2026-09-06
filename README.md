@@ -17,7 +17,7 @@ npm run dev
 ```
 
 ```bash
-npm test        # 49 rule, edge-case, analytics and security tests
+npm test        # rule, sync, edge-case, analytics and security tests
 npm run build   # typecheck, bundle, generate service worker
 npm run lint    # zero warnings
 ```
@@ -153,10 +153,48 @@ Spark plan, no card. Setup:
 
 1. Create a project at [firebase.google.com](https://firebase.google.com) →
    **Realtime Database** → start in **locked mode**.
-2. Paste `firebase/database.rules.json` into the database's **Rules** tab.
+2. **Authentication → Sign-in method → Anonymous → Enable.** Do this *before*
+   step 3. The rules require a signed-in writer, and anonymous sign-in is off
+   by default — without it every booking in the harbour is refused.
+3. Paste `firebase/database.rules.json` into the database's **Rules** tab.
    These are what constrain the public web config — read the header comment.
-3. Copy the web app config into `.env.local` (see `.env.example`), or into
-   Vercel → Settings → Environment Variables.
+4. Copy the web app config into `.env.local` (see `.env.example`), and add the
+   same three as repository secrets — the deploy workflow reads them by those
+   names.
+5. Open `#admin` once and press **Publish harbour**. That seeds the empty
+   database with this harbour's boxes, roster and history. Every write yields
+   to anything already there, so it cannot flatten a harbour that is in use.
+
+Every phone is signed in anonymously, so each write carries a server-issued
+identity the client cannot forge and the public web config alone no longer
+grants anyone write access. Nothing changes for the skipper: no account, no
+password, no extra tap.
+
+Only the **last four digits** of a mobile number are ever stored in the
+shared copy. That node has to be world-readable so any phone can name the
+boat holding a crate, and four digits is exactly what the ownership check
+compares — publishing twenty fishermen's full numbers would be a privacy
+breach with no upside. The full number stays on the phone that registered it.
+
+Shared times are written and compared against the *database's* clock, not the
+device's, so one phone with a wrong clock cannot expire the harbour's holds.
+
+When the link drops, every write that moves a crate — booking, depositing,
+cancelling, releasing — is refused with the real reason, and the figures on
+screen are dated rather than left looking live. A dead link and a rejected
+write say different things, because they need different actions. A hold that
+is not in the shared copy is not a hold, so it is never shown as one:
+Firebase would otherwise display a queued offline booking immediately, and a
+skipper would walk to the box on a promise that reached nobody.
+
+**What these rules still cannot do.** They check shape and identity, not
+harbour policy. Booking transacts over the whole `boxes` node, so write
+permission is granted there rather than per slot — which means a signed-in
+client that ignores the app can still overwrite a slot it does not own. The
+2-crate cap and admin approval are client-side for the same reason. Closing
+that gap means binding each slot to its boat's `uid`, which needs the booking
+path rewritten as per-slot compare-and-set writes. It is the next thing to
+build, and it does not need a paid plan.
 
 **Local (no config).** Exactly the old behaviour: one device, no sync, useful
 for an offline demo. The booking rules still hold on that device, but two
@@ -258,7 +296,9 @@ The skipper is never asked whether they have signal — the app works it out:
 6. Open **`/#admin`** (PIN 2468): approvals, live usage with force-release,
    three months of reporting, **Download for Excel**, and the verified audit
    log.
-7. **Reset demo** restores every harbour in one tap.
+7. **Reset demo** (in `#admin` when the harbour is shared) clears this
+   harbour’s crates for every phone and signs you out. The roster and past
+   records are kept — the ledger is append-only by rule, even for an admin.
 
 ## Layout
 

@@ -22,15 +22,27 @@ export function BookSheet({
   t: T
   boxLabel: string
   maxCrates: number
-  onConfirm: (crates: 1 | 2, species: Species) => void
+  onConfirm: (crates: 1 | 2, species: Species) => void | Promise<void>
   onClose: () => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const [species, setSpecies] = useState<Species>('mixed')
+  /**
+   * One tap, one crate. The claim now waits for the database, and on a 2G
+   * tether that is over a second of a button that still looks pressable — so
+   * a skipper with wet hands taps again and books two crates, uses up their
+   * whole quota, and takes a crate another boat needed.
+   */
+  const [claiming, setClaiming] = useState(false)
 
   useEffect(() => {
     const el = ref.current
-    if (el && !el.open) el.showModal()
+    // Feature-detected: an old Android WebView without showModal() should
+    // still show the sheet rather than throw into the error boundary.
+    if (el && !el.open) {
+      if (typeof el.showModal === 'function') el.showModal()
+      else el.setAttribute('open', '')
+    }
   }, [])
 
   return (
@@ -74,19 +86,39 @@ export function BookSheet({
         <h3 className="text-xl">{t('cratesTitle')}</h3>
         <p className="text-sm font-bold text-ink-2">{t('bookIn', boxLabel)}</p>
 
-        <div className="grid grid-cols-2 gap-3">
-          {([1, 2] as const).map((count) => (
-            <button
-              key={count}
-              type="button"
-              className="btn btn-lg btn-primary"
-              disabled={count > maxCrates}
-              onClick={() => onConfirm(count, species)}
-            >
-              {t(count === 1 ? 'crate1' : 'crate2')}
-            </button>
-          ))}
-        </div>
+        {/* The box can fill while this sheet is open — another boat books the
+            last crate and the live update arrives. Greying both buttons out
+            with no word for it is a dead end: say what happened. */}
+        {maxCrates === 0 ? (
+          <p
+            className="border-3 border-rule bg-full px-3 py-2 font-extrabold text-full-ink"
+            role="alert"
+          >
+            {t('raceLost')}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {([1, 2] as const).map((count) => (
+              <button
+                key={count}
+                type="button"
+                className="btn btn-lg btn-primary"
+                disabled={claiming || count > maxCrates}
+                onClick={async () => {
+                  if (claiming) return
+                  setClaiming(true)
+                  try {
+                    await onConfirm(count, species)
+                  } finally {
+                    setClaiming(false)
+                  }
+                }}
+              >
+                {t(claiming ? 'booking' : count === 1 ? 'crate1' : 'crate2')}
+              </button>
+            ))}
+          </div>
+        )}
 
         <button type="button" className="btn btn-ghost btn-block" onClick={onClose}>
           {t('cancel')}

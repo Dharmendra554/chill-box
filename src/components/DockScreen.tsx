@@ -4,6 +4,7 @@ import { useGeolocation } from '../hooks/useGeolocation'
 import { BOX_SHORT, type StringKey } from '../i18n/dictionary'
 import { useT } from '../i18n/useT'
 import { cardinal, simulateApproachFix } from '../lib/geo'
+import { syncEnabled } from '../lib/harbourSync'
 import type { WaveBand } from '../lib/marine'
 import { distanceToBox, formatEta, formatKm, navigateTo } from '../lib/nav'
 import { formatClock, formatCountdown, formatElapsed, formatGap, HOUR_MS } from '../lib/time'
@@ -26,6 +27,7 @@ import { selectBoxes, selectHarbour, selectMyBoat, useDockStore } from '../store
 import type { BoxId, GeoFix } from '../types'
 import { BookSheet } from './BookSheet'
 import { BoxCard } from './BoxCard'
+import { BoxDetails } from './BoxDetails'
 import { ChoiceSheet } from './ChoiceSheet'
 import { CompassRose } from './CompassRose'
 import { ConfirmButton } from './ConfirmButton'
@@ -73,9 +75,9 @@ export function DockScreen({
   const cancelHold = useDockStore((s) => s.cancelHold)
   const deposit = useDockStore((s) => s.deposit)
   const release = useDockStore((s) => s.release)
-  const notify = useDockStore((s) => s.notify)
 
   const [bookingFor, setBookingFor] = useState<BoxId | null>(null)
+  const [detailsFor, setDetailsFor] = useState<BoxId | null>(null)
   const [confirmed, setConfirmed] = useState<BoxId | null>(null)
   const [planOpen, setPlanOpen] = useState(false)
   const [simulated, setSimulated] = useState<GeoFix | null>(null)
@@ -190,6 +192,7 @@ export function DockScreen({
               geo.fix ? formatKm(distanceToBox(geo.fix, harbour, box.id), lang) : null
             }
             onPick={canBook ? (picked) => setBookingFor(picked.id) : undefined}
+            onDetails={(picked) => setDetailsFor(picked.id)}
           />
         ))}
       </section>
@@ -213,6 +216,13 @@ export function DockScreen({
         onResetDemo={onResetDemo}
       />
 
+      {detailsFor ? (
+        <BoxDetails
+          box={boxes.find((b) => b.id === detailsFor)!}
+          onClose={() => setDetailsFor(null)}
+        />
+      ) : null}
+
       {bookingFor ? (
         <BookSheet
           t={t}
@@ -222,8 +232,12 @@ export function DockScreen({
             quota,
             emptyCount(boxes.find((b) => b.id === bookingFor)!),
           )}
-          onConfirm={(count, species) => {
-            const booked = reserve(bookingFor, count, species)
+          // The sheet stays up until the claim is settled. Closing first and
+          // showing a receipt built from local state printed "0 crates" and a
+          // code that did not match what was recorded — and on a lost race,
+          // a Booked panel over the toast saying the crate had gone.
+          onConfirm={async (count, species) => {
+            const booked = await reserve(bookingFor, count, species)
             setBookingFor(null)
             if (booked) setConfirmed(bookingFor)
           }}
@@ -256,8 +270,11 @@ export function DockScreen({
             label: t('planHours', h),
             hint: formatClock(now + h * HOUR_MS),
           }))}
-          onPick={(hours) => {
-            if (!deposit(hours)) notify('warn', t('holdExpired'))
+          // The store says why it refused — an expired hold, a dead link, a
+          // rejected write. Saying it here too produced two toasts, the
+          // second of them guessing. The sheet closes once it is settled.
+          onPick={async (hours) => {
+            await deposit(hours)
             setPlanOpen(false)
           }}
           onClose={() => setPlanOpen(false)}
@@ -498,9 +515,18 @@ function DemoTools({
         <button type="button" className="btn btn-ghost text-sm" onClick={onChangeHarbour}>
           {t('harbourSwitch')}
         </button>
-        <button type="button" className="btn btn-ghost text-sm" onClick={onResetDemo}>
-          {t('resetDemo')}
-        </button>
+        {/* Once the harbour is shared, resetting it destroys every live hold
+            and stored crate for every phone in the harbour — a demo control
+            with production reach. It moves into the admin console, where the
+            PIN is at least a lock on it. Local mode affects this phone only,
+            so it stays where a judge can find it. */}
+        {syncEnabled ? (
+          <p className="text-xs font-bold text-ink-2">{t('demoResetMoved')}</p>
+        ) : (
+          <button type="button" className="btn btn-ghost text-sm" onClick={onResetDemo}>
+            {t('resetDemo')}
+          </button>
+        )}
       </div>
     </section>
   )

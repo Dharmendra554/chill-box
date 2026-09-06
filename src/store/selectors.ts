@@ -3,6 +3,16 @@ import type { BoatState, BoxId, ColdBox, Slot, Species } from '../types'
 
 export const QUOTA = 2
 
+/**
+ * Newest ledger rows any one harbour keeps — and follows.
+ *
+ * One number, in one place. It was declared twice, once for the store's cap
+ * and once for the shared feed's window, and the two happening to be equal is
+ * what made a defect total instead of partial: the window filled entirely
+ * with seeded history and no real release could ever enter it.
+ */
+export const LEDGER_LIMIT = 1_500
+
 /** The canonical cleared slot. Every reset path goes through this so a
  *  new `Slot` field can never be forgotten in one branch. */
 export function emptySlot(index: number): Slot {

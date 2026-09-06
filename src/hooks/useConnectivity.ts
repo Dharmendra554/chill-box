@@ -7,6 +7,17 @@ import { useEffect, useState } from 'react'
  */
 export const STALE_MS = 15 * 60 * 1000
 
+/**
+ * The same allowance when the shared database is the signal instead.
+ *
+ * Much shorter, because the two prove different things. A missed swell poll
+ * means one request did not land; a dropped database socket means another
+ * boat could have taken the last crate a second ago and this phone would
+ * never hear about it. Not zero, so a lift blocking the signal for a moment
+ * does not flash a warning at someone mid-booking.
+ */
+export const SYNC_STALE_MS = 20_000
+
 /** Grace period on startup, while the first request is still in flight. */
 const GRACE_MS = 20_000
 
@@ -31,7 +42,11 @@ export type Reach = 'checking' | 'connected' | 'stale'
  * The skipper never has to know or check anything: the banner appears by
  * itself, and only once the figures have actually stopped being trustworthy.
  */
-export function useConnectivity(reachedAt: number | null, now: number): Reach {
+export function useConnectivity(
+  reachedAt: number | null,
+  now: number,
+  staleMs: number = STALE_MS,
+): Reach {
   const [hasInterface, setHasInterface] = useState(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   )
@@ -50,6 +65,6 @@ export function useConnectivity(reachedAt: number | null, now: number): Reach {
   }, [])
 
   if (!hasInterface) return 'stale'
-  if (reachedAt !== null) return now - reachedAt < STALE_MS ? 'connected' : 'stale'
+  if (reachedAt !== null) return now - reachedAt < staleMs ? 'connected' : 'stale'
   return now - startedAt < GRACE_MS ? 'checking' : 'stale'
 }

@@ -117,7 +117,7 @@ Do not redesign. Extend what is here.
 ### Before you finish, all four must pass
 
 ```bash
-npm test          # currently 49 tests
+npm test          # the four gates; a red one never publishes
 npx tsc -b        # no errors
 npx oxlint        # zero warnings, zero errors
 npm run build     # clean
@@ -145,10 +145,42 @@ security. If you fix a bug, add the failing case first.
 
 ### Audit before claiming done
 
-For anything substantial, dispatch a subagent with a **hostile** review
-prompt — tell it to assume the code is wrong and to prove defects with
-reproductions. Both rounds found things worth fixing, including a fix that
-had itself caused a worse bug. Then act on the report; do not just file it.
+**Six rounds have been run. Every single one found real defects, with all four
+gates green. In five of the six, the previous round's FIXES caused the next
+round's defects.** That is not bad luck; it is the shape of this codebase. The
+seams between a fix and the rest of the app are where the bugs live.
+
+Dispatch a subagent with a genuinely **hostile** prompt after anything
+substantial. A politely-framed review comes back with praise and is worthless.
+
+**What the prompt must contain** — every one of these earned its place:
+
+- **Framing.** "You are a strict, unbiased CTO. Assume the code is wrong and
+  the previous agent was careless. Prove defects. A polite review is a failed
+  review; so is one that re-reports findings already fixed."
+- **The contract.** Tell it to read this file and to judge against it — the
+  honesty rules especially. Most high-value findings have been comments and
+  README lines that overstate the code.
+- **The claims to falsify.** Paste the previous round's "fixed" list from
+  `MEMORY.md` and say: *treat each as an unproven assertion and try to
+  falsify it.* Round 6 found that a claim verified in a browser was false.
+- **Named hypotheses.** List the specific things you changed and the failure
+  modes you are worried about. Ask for others besides.
+- **Evidence format.** `file:line`, the exact trigger a real user or a second
+  phone performs, the consequence *in the harbour*, and a confidence level —
+  certain, likely or speculative, kept in separate sections. No padding.
+- **A score out of 10, itemised, with explicit deductions**, plus a SHIP /
+  DO NOT SHIP call and the shortest list that would flip it. Tell it the
+  previous scores and that inflating is a failure. Scores so far: 4.0, 4.5,
+  3.0, 3.5, 4.5, 4.5.
+- **Rules of engagement.** It must NOT modify the repository. Scratch files go
+  in the system temp directory, never in the project.
+
+**Then act on the report, and re-verify the fix on the side the user
+experiences.** Round 5's ledger fix was "verified" by counting rows in the
+database node; the bug was in the query the phones actually run, so every real
+release stayed invisible for another whole round. Query the thing the user
+sees, not the thing that is easy to query.
 
 ---
 

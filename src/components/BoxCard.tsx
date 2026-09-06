@@ -20,6 +20,7 @@ export function BoxCard({
   selected,
   distanceLabel,
   onPick,
+  onDetails,
 }: {
   t: T
   box: ColdBox
@@ -29,6 +30,8 @@ export function BoxCard({
   /** Pre-formatted distance from the current fix, or null without GPS. */
   distanceLabel: string | null
   onPick?: (box: ColdBox) => void
+  /** Opens the "who is in here and until when" sheet. */
+  onDetails?: (box: ColdBox) => void
 }) {
   const used = usedCount(box)
   const free = emptyCount(box)
@@ -88,11 +91,23 @@ export function BoxCard({
     selected && 'outline-4 outline-offset-2 outline-free',
   )
 
+  // A full box is the one a skipper most wants to understand, so it opens
+  // its occupancy instead of refusing the tap. Never a dead card.
   if (!pickable) {
+    if (!onDetails) {
+      return <article className={cx(shell, full && 'opacity-70')}>{body}</article>
+    }
     return (
-      <article className={cx(shell, full && 'opacity-70')} aria-disabled={full}>
+      <button
+        type="button"
+        className={cx(shell, full && 'opacity-70', 'cursor-pointer active:translate-y-0.5')}
+        onClick={() => onDetails(box)}
+      >
         {body}
-      </article>
+        <span className="w-fit border-3 border-rule px-2 py-0.5 text-xs font-extrabold uppercase">
+          {t('whoIsInside')}
+        </span>
+      </button>
     )
   }
 

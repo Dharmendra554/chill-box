@@ -1,4 +1,5 @@
-import { defineConfig } from 'vite'
+// vitest's re-export, so the `test` block below is typed. Same defineConfig.
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -13,6 +14,21 @@ const base = process.env.BASE_PATH ?? '/'
 
 export default defineConfig({
   base,
+  /**
+   * The unit tests cover the harbour rules on one device, so they must run
+   * the local path whether or not the developer has a `.env.local`. Vitest
+   * loads those files like any other build, so without this the suite would
+   * pass on a machine with no Firebase keys and fail on one with them — and
+   * the shared-database paths are verified in the browser against a real
+   * project, not here.
+   */
+  test: {
+    env: {
+      VITE_FIREBASE_API_KEY: '',
+      VITE_FIREBASE_DATABASE_URL: '',
+      VITE_FIREBASE_PROJECT_ID: '',
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -34,19 +50,19 @@ export default defineConfig({
         categories: ['utilities', 'navigation'],
         icons: [
           {
-            src: '/icon.svg',
+            src: `${base}icon.svg`,
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'any',
           },
           {
-            src: '/icon-192.png',
+            src: `${base}icon-192.png`,
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable',
           },
           {
-            src: '/icon-512.png',
+            src: `${base}icon-512.png`,
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',

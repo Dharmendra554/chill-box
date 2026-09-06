@@ -13,11 +13,19 @@ import { t } from '../i18n/dictionary'
 import { ADMIN_IDLE_MS, appendAudit, lockoutMs, verifyPin, type PinResult } from '../lib/adminAuth'
 import {
   cancelRemote,
+  claimBoat,
   depositRemote,
+  putBoat,
   releaseRemote,
   reserveRemote,
+  resetRemoteBoxes,
+  seedHarbour,
+  serverNow,
   syncEnabled,
+  watchConnection,
   watchHarbour,
+  watchRoster,
+  type RemoteResult,
 } from '../lib/harbourSync'
 import { HOUR_MS } from '../lib/time'
 import type {
@@ -40,6 +48,7 @@ import {
   applyTick,
   emptyCount,
   emptySlot,
+  LEDGER_LIMIT,
   QUOTA,
   remainingQuota,
   slotsForBoat,
@@ -69,16 +78,22 @@ const STORAGE_VERSION = 4
 const WRITE_EVERY_MS = 5_000
 
 /**
- * Newest ledger rows to keep, PER HARBOUR.
- *
  * The ledger only grows and the persisted store shares a ~5 MB quota, so it
- * has to be bounded. Per harbour, not overall: the rows arrive grouped by
+ * has to be bounded — PER HARBOUR, not overall. The rows arrive grouped by
  * harbour, so a global `slice(-N)` silently deleted the FIRST harbour's
- * entire history, and its admin console then reported — with a straight
- * face — that the harbour had never stored a crate. Each society keeps its
- * own months.
+ * entire history, and its admin console then reported, with a straight face,
+ * that the harbour had never stored a crate. `LEDGER_LIMIT` lives in
+ * selectors, shared with the feed that follows it.
  */
-const LEDGER_LIMIT_PER_HARBOUR = 1_500
+
+/**
+ * How long to wait before resubscribing after the harbour listener dies.
+ *
+ * Long enough not to hammer a database that is refusing us, short enough that
+ * a skipper who walked back into signal is not left staring at a booking
+ * screen that refuses everything.
+ */
+const RESUBSCRIBE_MS = 10_000
 
 function capLedger(rows: LedgerEntry[]): LedgerEntry[] {
   const kept = new Map<HarbourId, LedgerEntry[]>()
@@ -88,8 +103,8 @@ function capLedger(rows: LedgerEntry[]): LedgerEntry[] {
     kept.set(row.harbourId, list)
   }
   return [...kept.values()].flatMap((list) =>
-    list.length > LEDGER_LIMIT_PER_HARBOUR
-      ? [...list].sort((a, b) => a.releasedAt - b.releasedAt).slice(-LEDGER_LIMIT_PER_HARBOUR)
+    list.length > LEDGER_LIMIT
+      ? [...list].sort((a, b) => a.releasedAt - b.releasedAt).slice(-LEDGER_LIMIT)
       : list,
   )
 }
@@ -210,7 +225,7 @@ export interface RegistrationInput {
   mobile: string
 }
 
-export type RegistrationError = 'boatName' | 'owner' | 'mobile' | 'mobileTaken'
+export type RegistrationError = 'boatName' | 'owner' | 'mobile' | 'mobileTaken' | 'offline'
 
 export type RegistrationResult =
   | { ok: true; id: string }
@@ -235,6 +250,14 @@ export interface DockState {
   boxesByHarbour: Record<HarbourId, ColdBox[]>
   ledger: LedgerEntry[]
 
+  /**
+   * Link to the shared harbour. Not persisted: on a cold start this phone
+   * has proved nothing yet, and claiming otherwise would date the figures
+   * from a session that ended yesterday.
+   */
+  syncLive: boolean
+  syncedAt: number | null
+
   // ui
   toast: ToastMessage | null
 
@@ -246,22 +269,29 @@ export interface DockState {
   notify: (tone: ToastTone, text: string) => void
   dismissToast: () => void
 
-  register: (input: RegistrationInput) => RegistrationResult
+  register: (input: RegistrationInput) => Promise<RegistrationResult>
   signInAs: (boatId: string, last4: string) => boolean
   signOut: () => void
 
-  reserve: (boxId: BoxId, crates: 1 | 2, species: Species) => boolean
-  cancelHold: () => void
-  deposit: (plannedHours: number) => boolean
-  release: () => void
+  /**
+   * Resolves only once the claim is settled — in shared mode that means the
+   * transaction committed. The receipt must never appear before the crate is
+   * really held.
+   */
+  reserve: (boxId: BoxId, crates: 1 | 2, species: Species) => Promise<boolean>
+  cancelHold: () => Promise<void>
+  /** Resolves once the shared copy has recorded it — never before. */
+  deposit: (plannedHours: number) => Promise<boolean>
+  release: () => Promise<void>
 
   unlockAdmin: (pin: string) => Promise<PinResult | 'locked'>
   touchAdmin: () => void
   lockAdmin: () => void
-  approveBoat: (id: string) => void
-  rejectBoat: (id: string) => void
-  setBoatStatus: (id: string, status: Boat['status']) => void
-  adminRelease: (boatId: string, boxId: BoxId) => void
+  approveBoat: (id: string) => Promise<void>
+  rejectBoat: (id: string) => Promise<void>
+  setBoatStatus: (id: string, status: Boat['status']) => Promise<boolean>
+  adminRelease: (boatId: string, boxId: BoxId) => Promise<void>
+  publishHarbour: () => Promise<void>
   record: (action: string, target: string, detail?: string) => Promise<void>
 
   resetDemo: () => void
@@ -351,6 +381,51 @@ export const useDockStore = create<DockState>()(
       }
 
       /**
+       * Refuse a shared write when there is no link, and say so.
+       *
+       * Every operation that moves a crate goes through here, not just
+       * booking. Firebase queues an offline write and shows it to its own
+       * listener immediately, so without this a release into a dead socket
+       * frees nothing, records nothing, and looks exactly like success.
+       */
+      const requireLink = (): boolean => {
+        if (!syncEnabled || get().syncLive) return true
+        set({ toast: toast('error', t(get().lang, 'syncOffline')) })
+        return false
+      }
+
+      /**
+       * Say what actually went wrong with a shared write.
+       *
+       * 'offline' used to be the answer to everything — a rules refusal, a
+       * deleted project, a revoked key — so a skipper on full bars was told
+       * to wait for a signal. The two need different actions from them.
+       */
+      const reportFailure = (result: RemoteResult) => {
+        if (result.ok) return
+        const lang = get().lang
+        if (result.error === 'stale') {
+          // The shared copy held nothing to change. That covers an expired
+          // hold, a crate someone else already freed, and a second tap that
+          // arrived after the first one committed — so it must NOT say "your
+          // hold ended", which was being shown to skippers whose release had
+          // just succeeded.
+          set({ toast: toast('warn', t(lang, 'syncNoChange')) })
+          return
+        }
+        if (result.error === 'unseeded') {
+          set({ toast: toast('error', t(lang, 'syncUnseeded')) })
+          return
+        }
+        set({
+          toast: toast(
+            'error',
+            t(lang, result.error === 'refused' ? 'syncRefused' : 'syncOffline'),
+          ),
+        })
+      }
+
+      /**
        * The signed-in boat, but only if it is approved right now.
        *
        * Every action that moves a crate goes through this. An admin can
@@ -375,7 +450,9 @@ export const useDockStore = create<DockState>()(
         adminFailures: 0,
         adminLockedUntil: 0,
         audit: [],
-        ...seed(Date.now()),
+        syncLive: false,
+        syncedAt: null,
+        ...seed(serverNow()),
 
         setLang: (lang) => set({ lang }),
         setTheme: (theme) => set({ theme }),
@@ -425,13 +502,17 @@ export const useDockStore = create<DockState>()(
           if (Object.keys(patch).length > 0) set(patch)
         },
 
-        register: ({ boatName, owner, mobile }) => {
+        register: async ({ boatName, owner, mobile }) => {
           const name = boatName.trim()
           const person = owner.trim()
           const digits = normaliseMobile(mobile)
 
-          if (name.length < 2) return { ok: false, error: 'boatName' }
-          if (person.length < 2) return { ok: false, error: 'owner' }
+          // The upper bounds match the database rules exactly. Without them a
+          // long name was accepted here and refused there, the boat never
+          // reached the shared roster, and its first booking came back as
+          // "no signal" on full bars.
+          if (name.length < 2 || name.length > 40) return { ok: false, error: 'boatName' }
+          if (person.length < 2 || person.length > 60) return { ok: false, error: 'owner' }
           if (!isValidMobile(digits)) return { ok: false, error: 'mobile' }
 
           const { boats, harbourId } = get()
@@ -439,19 +520,29 @@ export const useDockStore = create<DockState>()(
             return { ok: false, error: 'mobileTaken' }
           }
 
-          const id = nextBoatId(boats, harbourId)
           const boat: Boat = {
-            id,
+            id: nextBoatId(boats, harbourId),
             harbourId,
             nameEn: name,
             nameTe: name,
             owner: person,
             mobile: digits,
             status: 'pending',
-            registeredAt: Date.now(),
+            registeredAt: serverNow(),
           }
-          set({ boats: [...boats, boat], myBoatId: id, tab: 'dock' })
-          return { ok: true, id }
+
+          // The database decides the hull number, because only it can see
+          // every phone's registrations. It also refuses a slot booked by a
+          // boat it has never heard of, so this must land before booking.
+          if (syncEnabled) {
+            if (!requireLink()) return { ok: false, error: 'offline' }
+            const id = await claimBoat(harbourId, boat)
+            if (!id) return { ok: false, error: 'offline' }
+            boat.id = id
+          }
+
+          set({ boats: [...boats, boat], myBoatId: boat.id, tab: 'dock' })
+          return { ok: true, id: boat.id }
         },
 
         /**
@@ -473,7 +564,7 @@ export const useDockStore = create<DockState>()(
 
         signOut: () => set({ myBoatId: null, adminUnlocked: false, tab: 'dock' }),
 
-        reserve: (boxId, crates, species) => {
+        reserve: async (boxId, crates, species) => {
           const { boxesByHarbour, harbourId, myBoatId, boats, lang } = get()
           if (!myBoatId) return false
           const boxes = boxesByHarbour[harbourId]
@@ -498,34 +589,37 @@ export const useDockStore = create<DockState>()(
             return false
           }
 
+          // No link, no claim: a hold that is not in the shared copy is not
+          // a hold, and must never be shown as one.
+          if (!requireLink()) return false
+
           // With a shared database the claim is settled there, atomically,
           // and the realtime listener brings the result back. The checks
           // above still run first so an obvious refusal is instant and free.
+          //
+          // We wait for the commit before answering. Returning early printed
+          // a receipt built from local state the sync path never writes —
+          // "Stored in Auction Hall, 0 crates", a booking code that did not
+          // match the one recorded, and on a lost race a green Booked panel
+          // sitting on top of the toast explaining it was refused.
           if (syncEnabled) {
-            void reserveRemote(harbourId, boxId, myBoatId, crates, species).then((result) => {
-              if (result.ok) return
-              // 'notActive' cannot reach here — the guard above already
-              // refused an unapproved boat before we touched the network.
-              const key =
-                result.error === 'quota'
-                  ? 'errQuota'
-                  : result.error === 'boxFull'
-                    ? 'raceLost'
-                    : 'syncOffline'
-              set({
-                toast: toast(
-                  'error',
-                  key === 'errQuota'
-                    ? t(get().lang, 'errQuota', QUOTA, quota)
-                    : t(get().lang, key),
-                ),
-              })
-            })
-            return true
+            const result = await reserveRemote(harbourId, boxId, myBoatId, crates, species)
+            if (result.ok) return true
+            // Every refusal gets its own reason. 'notActive' cannot reach
+            // here — the guard above already refused an unapproved boat
+            // before we touched the network.
+            if (result.error === 'quota') {
+              set({ toast: toast('error', t(get().lang, 'errQuota', QUOTA, quota)) })
+            } else if (result.error === 'boxFull') {
+              set({ toast: toast('error', t(get().lang, 'raceLost')) })
+            } else {
+              reportFailure(result)
+            }
+            return false
           }
 
           let left: number = crates
-          const now = Date.now()
+          const now = serverNow()
           putBoxes(
             boxes.map((b) => {
               if (b.id !== boxId) return b
@@ -553,12 +647,14 @@ export const useDockStore = create<DockState>()(
           return true
         },
 
-        cancelHold: () => {
+        cancelHold: async () => {
           const myBoatId = activeBoatId()
           if (!myBoatId) return
           const { boxesByHarbour, harbourId } = get()
           if (syncEnabled) {
-            void cancelRemote(harbourId, myBoatId)
+            if (!requireLink()) return
+            const boxId = activeBoxId(boxesByHarbour[harbourId], myBoatId) ?? undefined
+            reportFailure(await cancelRemote(harbourId, myBoatId, boxId))
             return
           }
           putBoxes(
@@ -573,7 +669,7 @@ export const useDockStore = create<DockState>()(
           )
         },
 
-        deposit: (plannedHours) => {
+        deposit: async (plannedHours) => {
           const myBoatId = activeBoatId()
           if (!myBoatId) return false
           const { boxesByHarbour, harbourId } = get()
@@ -581,14 +677,20 @@ export const useDockStore = create<DockState>()(
 
           // The hold may have expired between opening the sheet and tapping.
           if (!slotsForBoat(boxes, myBoatId).some((s) => s.status === 'reserved')) {
+            set({ toast: toast('warn', t(get().lang, 'holdExpired')) })
             return false
           }
 
-          const now = Date.now()
+          const now = serverNow()
           const plannedOutAt = now + plannedHours * HOUR_MS
+          // Awaited: "Fish deposited" is the promise a skipper walks away on,
+          // and it must not appear until the shared copy actually says so.
           if (syncEnabled) {
-            void depositRemote(harbourId, myBoatId, plannedOutAt)
-            return true
+            if (!requireLink()) return false
+            const boxId = activeBoxId(boxes, myBoatId) ?? undefined
+            const result = await depositRemote(harbourId, myBoatId, plannedOutAt, boxId)
+            reportFailure(result)
+            return result.ok
           }
           putBoxes(
             boxes.map((box) => ({
@@ -609,7 +711,7 @@ export const useDockStore = create<DockState>()(
           return true
         },
 
-        release: () => {
+        release: async () => {
           const myBoatId = activeBoatId()
           if (!myBoatId) return
           const { boxesByHarbour, harbourId, ledger } = get()
@@ -617,16 +719,19 @@ export const useDockStore = create<DockState>()(
             boxesByHarbour[harbourId],
             harbourId,
             myBoatId,
-            Date.now(),
+            serverNow(),
           )
           if (result.entries.length === 0) return
           if (syncEnabled) {
+            if (!requireLink()) return
             // The ledger rows are computed from what we can see, then the
             // shared copy frees the slots and appends them together.
-            void releaseRemote(
-              harbourId,
-              myBoatId,
-              result.entries.map(({ id: _id, harbourId: _h, ...row }) => row),
+            reportFailure(
+              await releaseRemote(
+                harbourId,
+                myBoatId,
+                result.entries.map(({ id: _id, harbourId: _h, ...row }) => row),
+              ),
             )
             return
           }
@@ -634,7 +739,11 @@ export const useDockStore = create<DockState>()(
         },
 
         unlockAdmin: async (pin) => {
-          const now = Date.now()
+          // One clock in this store. `tick` compares adminTouchedAt against
+          // serverNow(), so stamping it with the device clock idle-locked a
+          // slow phone out of the admin console on the very next tick — and
+          // stopped a fast phone from ever locking at all.
+          const now = serverNow()
           if (now < get().adminLockedUntil) return 'locked'
 
           const result = await verifyPin(pin)
@@ -654,7 +763,7 @@ export const useDockStore = create<DockState>()(
           return 'ok'
         },
 
-        touchAdmin: () => set({ adminTouchedAt: Date.now() }),
+        touchAdmin: () => set({ adminTouchedAt: serverNow() }),
 
         lockAdmin: () => set({ adminUnlocked: false, tab: 'dock' }),
 
@@ -662,61 +771,173 @@ export const useDockStore = create<DockState>()(
           set({ audit: await appendAudit(get().audit, action, target, detail) })
         },
 
-        approveBoat: (id) => {
-          get().setBoatStatus(id, 'active')
-          void get().record('boat.approve', `#${id}`, get().harbourId)
+        approveBoat: async (id) => {
+          // Logged only if it landed — see setBoatStatus.
+          if (await get().setBoatStatus(id, 'active')) {
+            void get().record('boat.approve', `#${id}`, get().harbourId)
+          }
         },
 
-        rejectBoat: (id) => {
-          const { boats, harbourId, myBoatId } = get()
-          void get().record('boat.reject', `#${id}`, harbourId)
-          set({
-            boats: boats.filter((b) => !(b.harbourId === harbourId && b.id === id)),
-            myBoatId: myBoatId === id ? null : myBoatId,
-          })
+        /**
+         * Refuse a registration.
+         *
+         * Blocked, not deleted. A hull number can never be reused — the rules
+         * forbid removing a boat, because slots point at boats — and deleting
+         * it only locally was worse than useless: the shared roster put it
+         * straight back as `pending` on the next snapshot, so rejection was a
+         * no-op that still wrote a "rejected" line into the audit log.
+         * Blocking is the state that actually survives and actually stops the
+         * boat booking.
+         */
+        rejectBoat: async (id) => {
+          const { harbourId, myBoatId } = get()
+          const landed = await get().setBoatStatus(id, 'blocked')
+          if (myBoatId === id) set({ myBoatId: null })
+          if (landed) void get().record('boat.reject', `#${id}`, harbourId)
         },
 
-        setBoatStatus: (id, status) => {
+        /**
+         * Resolves once the change has reached the shared roster, so the
+         * caller can log what actually happened. Writing the audit row first
+         * left the chain asserting an approval the database had refused, and
+         * the next snapshot then reverted the boat to pending.
+         */
+        setBoatStatus: async (id, status) => {
           const { boats, harbourId } = get()
-          set({
-            boats: boats.map((b) =>
-              b.harbourId === harbourId && b.id === id ? { ...b, status } : b,
-            ),
-          })
+          const updated = boats.map((b) =>
+            b.harbourId === harbourId && b.id === id ? { ...b, status } : b,
+          )
+          set({ boats: updated })
+          const boat = updated.find((b) => b.harbourId === harbourId && b.id === id)
+          if (!syncEnabled || !boat) return true
+          const result = await putBoat(harbourId, boat)
+          reportFailure(result)
+          return result.ok
         },
 
-        adminRelease: (boatId, boxId) => {
+        adminRelease: async (boatId, boxId) => {
           const { boxesByHarbour, harbourId, ledger } = get()
           const result = releaseSlots(
             boxesByHarbour[harbourId],
             harbourId,
             boatId,
-            Date.now(),
+            serverNow(),
             boxId,
           )
           if (result.entries.length === 0) return
+
+          // The shared copy first, or nothing happened. Freeing this only
+          // locally left the crate occupied for every other phone and the
+          // listener put it straight back — while the ledger row and the
+          // audit entry both swore it had been released.
+          // The log records what happened, not what was attempted. Writing
+          // the audit row before the release resolved left the hash-chained
+          // record — the thing the README sells as the integrity trail —
+          // permanently asserting a release that had failed.
+          const logIt = () =>
+            void get().record(
+              'slot.forceRelease',
+              `#${boatId}`,
+              `${harbourId} ${boxId} · ${result.entries[0].crates} crates`,
+            )
+
+          if (syncEnabled) {
+            if (!requireLink()) return
+            const outcome = await releaseRemote(
+              harbourId,
+              boatId,
+              result.entries.map(({ id: _id, harbourId: _h, ...row }) => row),
+              boxId,
+            )
+            reportFailure(outcome)
+            if (outcome.ok) logIt()
+            return
+          }
+
           putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
-          void get().record(
-            'slot.forceRelease',
-            `#${boatId}`,
-            `${harbourId} ${boxId} · ${result.entries[0].crates} crates`,
-          )
+          logIt()
+        },
+
+        /**
+         * Push this harbour's boxes and roster into the shared database once.
+         *
+         * An admin action, not something on start-up: every write yields to
+         * whatever is already there, so it fills an empty database and
+         * touches nothing in a live one. Safe to press twice.
+         */
+        publishHarbour: async () => {
+          const { harbourId, boxesByHarbour, boats, ledger, lang } = get()
+          if (!requireLink()) return
+          try {
+            const { failed, boxesOk } = await seedHarbour(
+              harbourId,
+              boxesByHarbour[harbourId],
+              boats.filter((b) => b.harbourId === harbourId),
+              ledger.filter((e) => e.harbourId === harbourId),
+            )
+            // Some through and some refused is neither success nor failure,
+            // and reporting it as either would be a lie. The boxes failing is
+            // its own case: the roster landed, and pressing this again is all
+            // that is needed.
+            set({
+              toast: !boxesOk
+                ? toast('warn', t(lang, 'adminPublishRetry'))
+                : failed === 0
+                  ? toast('ok', t(lang, 'adminPublishDone'))
+                  : toast('warn', t(lang, 'adminPublishPartial', failed)),
+            })
+            void get().record('harbour.publish', harbourId, `${failed} refused`)
+          } catch {
+            // Say it failed. A silent failure here looks identical to success
+            // and the harbour would go on believing it is synced.
+            set({ toast: toast('error', t(lang, 'adminPublishFailed')) })
+          }
         },
 
         resetDemo: () => {
+          // THE harbour being looked at, never a hard-coded one. This reset
+          // clears live holds for every phone in that harbour, and it used to
+          // always target Nizampatnam — so an admin at Kakinada emptied
+          // another society's boxes, with fish in them, and was told they had
+          // cleared the one on screen.
+          const { harbourId, audit } = get()
+          const fresh = seed(serverNow())
+
+          // A local-only reset would be undone by the watcher a second later,
+          // so the shared copy has to be reset too or the button lies.
+          //
+          // The roster goes first, because the seeded crates name boats and
+          // the rules refuse a slot naming a boat the database has not heard
+          // of. On an unpublished harbour that made this button fail with a
+          // refusal the admin could do nothing about — so it now seeds what
+          // it needs. Both writes yield to anything already there.
+          if (syncEnabled) {
+            void seedHarbour(
+              harbourId,
+              fresh.boxesByHarbour[harbourId],
+              fresh.boats.filter((b) => b.harbourId === harbourId),
+              fresh.ledger.filter((e) => e.harbourId === harbourId),
+            )
+              .then(() => resetRemoteBoxes(harbourId, fresh.boxesByHarbour[harbourId]))
+              .then(reportFailure)
+          }
+
           set({
-            ...seed(Date.now()),
-            harbourId: DEFAULT_HARBOUR_ID,
-            // Signed out, not signed in as #04: this button sits on the
-            // ordinary booking screen, and handing out an approved boat
+            ...fresh,
+            harbourId,
+            // The action log survives. It is the record of what the admin
+            // did, including this reset — wiping it here destroyed the
+            // integrity trail the console advertises, silently.
+            audit,
+            // Signed out, not signed in as #04: handing out an approved boat
             // here would make the last-4 check pointless.
             myBoatId: null,
             adminUnlocked: false,
-            audit: [],
             adminFailures: 0,
             adminLockedUntil: 0,
             tab: 'dock',
           })
+          void get().record('demo.reset', harbourId)
         },
       }
     },
@@ -742,8 +963,8 @@ export const useDockStore = create<DockState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return
         // A corrupt or truncated write must not brick the app on a dock.
-        if (!looksValid(state)) Object.assign(state, seed(Date.now()))
-        state.tick(Date.now())
+        if (!looksValid(state)) Object.assign(state, seed(serverNow()))
+        state.tick(serverNow())
       },
     },
   ),
@@ -763,12 +984,80 @@ export function startHarbourSync(): () => void {
   if (!syncEnabled) return () => {}
   let stop: (() => void) | null = null
 
+  let stopRoster: (() => void) | null = null
+  let retry: ReturnType<typeof setTimeout> | null = null
+  let following: HarbourId | null = null
+
   const follow = (harbourId: HarbourId) => {
     stop?.()
-    stop = watchHarbour(harbourId, (boxes) => {
-      const { boxesByHarbour } = useDockStore.getState()
-      useDockStore.setState({ boxesByHarbour: { ...boxesByHarbour, [harbourId]: boxes } })
-    })
+    stopRoster?.()
+    if (retry) clearTimeout(retry)
+    following = harbourId
+
+    stop = watchHarbour(
+      harbourId,
+      (boxes) => {
+        // A snapshot arriving is the proof the listener is alive — including
+        // the empty one an unseeded harbour sends. The socket alone is not
+        // proof: it can reconnect while this subscription stays dead, and the
+        // staleness banner would then clear over frozen figures.
+        //
+        // `null` means "connected, nothing published yet": stay live so the
+        // admin can actually press Publish harbour, and leave this device's
+        // seeded boxes alone so there is something to publish.
+        const { boxesByHarbour } = useDockStore.getState()
+        useDockStore.setState({
+          syncLive: true,
+          syncedAt: serverNow(),
+          ...(boxes ? { boxesByHarbour: { ...boxesByHarbour, [harbourId]: boxes } } : {}),
+        })
+      },
+      // The socket can be up while the rules refuse us. Treating that as a
+      // dead link stops the app accepting writes that all fail — and we
+      // resubscribe, because nothing else ever would and the app would sit
+      // there refusing every booking until it was killed and reopened.
+      () => {
+        useDockStore.setState({ syncLive: false })
+        if (retry) clearTimeout(retry)
+        retry = setTimeout(() => {
+          if (following === harbourId) follow(harbourId)
+        }, RESUBSCRIBE_MS)
+      },
+    )
+
+    stopRoster = watchRoster(
+      harbourId,
+      (boats) => {
+        // Merge, never replace. The shared copy wins for every boat it knows
+        // about, but a boat it has not heard of yet is still real — a fresh
+        // registration waiting to be published, or the seeded roster before
+        // anyone has pressed Publish harbour. Replacing wiped all twenty on
+        // an empty database, which left nothing to publish and no boat for
+        // the seeded crates to belong to.
+        const state = useDockStore.getState()
+        const mine = new Map(
+          state.boats.filter((b) => b.harbourId === harbourId).map((b) => [b.id, b]),
+        )
+        const merged = boats.map((shared) => {
+          // The shared copy carries only the last four digits, by design. If
+          // THIS phone is the one that registered the boat it still holds the
+          // whole number, and overwriting it lost the admin's ability to ring
+          // the applicant, the CSV's Mobile column, and the duplicate-number
+          // check. Keep the longer of the two: it always agrees on the last
+          // four, which is all the ownership check reads.
+          const local = mine.get(shared.id)
+          const keepLocal = local && local.mobile.length > shared.mobile.length
+          return keepLocal ? { ...shared, mobile: local.mobile } : shared
+        })
+        const shared = new Set(boats.map((b) => b.id))
+        const kept = state.boats.filter((b) => b.harbourId !== harbourId || !shared.has(b.id))
+        useDockStore.setState({ boats: [...kept, ...merged] })
+      },
+      (entries) => {
+        const others = useDockStore.getState().ledger.filter((e) => e.harbourId !== harbourId)
+        useDockStore.setState({ ledger: capLedger([...others, ...entries]) })
+      },
+    )
   }
 
   follow(useDockStore.getState().harbourId)
@@ -776,8 +1065,34 @@ export function startHarbourSync(): () => void {
     if (state.harbourId !== previous.harbourId) follow(state.harbourId)
   })
 
+  /**
+   * A dropped socket is instant, reliable proof the figures have stopped
+   * arriving, so it takes the link down at once. It is NOT proof the link is
+   * back: the socket can reconnect while this app's subscriptions stay dead.
+   * Coming back up is proven only by data arriving, above — so on reconnect
+   * we resubscribe rather than declare ourselves live.
+   */
+  let wasLive = true
+  const stopConnection = watchConnection((live) => {
+    // Only on a real drop-and-return. `.info/connected` also fires `true` on
+    // the first connect, and resubscribing there re-fetched the whole
+    // harbour, roster and ledger a second time before the first screen had
+    // even settled — on the 2G phone this is built for.
+    const reconnected = live && !wasLive
+    wasLive = live
+    if (live) {
+      if (reconnected && following) follow(following)
+      return
+    }
+    useDockStore.setState({ syncLive: false })
+  })
+
   return () => {
     stop?.()
+    stopRoster?.()
+    stopConnection()
+    if (retry) clearTimeout(retry)
+    following = null
     unsubscribe()
   }
 }

@@ -1,27 +1,53 @@
+// Chill-Box security rules. Paste into Firebase console -> Realtime Database -> Rules.
+//
+// No skipper ever logs in - the app signs each phone in anonymously behind
+// the scenes - so these rules are the only thing standing between a public
+// web config and the harbour's data. They constrain SHAPE and IDENTITY,
+// which is what rules can do well:
+//
+//   * every write needs a signed-in identity. The app signs each phone in
+//     anonymously, so nothing changes for the skipper, but the public web
+//     config on its own no longer grants anyone write access
+//   * anyone may read - the boxes are public information, that is the point
+//   * a slot must always be a well-formed slot: a known status, a slot index
+//     in range, and a boat that actually exists at that harbour
+//   * a write that replaces the boxes must carry all three boxes, each with
+//     its ten slots, so the shape of the harbour survives - but see below:
+//     this does NOT stop a signed-in client emptying every one of them
+//   * only the last four digits of a mobile number are ever stored here, and
+//     they cannot be rewritten once set. No boat can be deleted, because
+//     slots point at boats
+//   * a ledger row, once written, can never be edited or deleted
+//
+// BE CLEAR ABOUT WHAT THIS IS NOT. These rules check the SHAPE of the data
+// and that the writer is signed in. They are not harbour policy, and a
+// signed-in client that ignores the app can still:
+//
+//   * EMPTY THE WHOLE HARBOUR in one perfectly valid write: three boxes of
+//     ten empty slots passes every rule here. Every live hold and stored
+//     crate, on every phone, gone. This is the biggest thing these rules do
+//     not stop, and per-slot writes are what would stop it
+//   * overwrite a slot belonging to another boat - booking transacts over the
+//     whole 'boxes' node, so write is granted there rather than per slot
+//   * delete an individual slot. Write cascades from 'boxes', and a validate
+//     rule does not run on a delete, so the ten-slot check above cannot see
+//     it. The reader backfills the gap as empty, so a crate would vanish
+//     quietly. Per-slot writes would close this too
+//   * append invented ledger rows. Rows cannot be edited, but the report can
+//     be padded by addition, which for a society billing off the CSV is the
+//     same problem
+//   * rewrite another boat's name or owner, and set its own status to
+//     'active' - there is no admin identity to check against
+//   * exceed the 2-crate cap, which no rule can count across three boxes
+//
+// All of those run in the client (lib/harbourSync.ts) inside a transaction,
+// which makes them correct against two honest boats racing - the case that
+// actually happens on a dock - and not against a determined attacker.
+// Closing them means binding each slot to its boat's uid, which needs the
+// booking path rewritten as per-slot writes. See README, 'What this cannot
+// do yet'. The last four digits are also world-readable, so they identify a
+// boat; they do not authenticate one.
 {
-  "//": [
-    "Chill-Box security rules. Paste into Firebase console → Realtime Database → Rules.",
-    "",
-    "There is no login, so these rules are the only thing standing between a",
-    "public web config and the harbour's data. They constrain SHAPE and",
-    "IDENTITY, which is what rules can do well:",
-    "",
-    "  * anyone may read — the boxes are public information, that is the point",
-    "  * a slot must always be a well-formed slot: a known status, a slot index",
-    "    in range, and a boat that actually exists at that harbour",
-    "  * a boat may register itself, but only as 'pending'. Approval flips the",
-    "    status, and that is the admin's job",
-    "  * ledger rows are append-only: once written they cannot be edited or",
-    "    deleted, so the monthly report cannot be quietly rewritten",
-    "",
-    "What rules CANNOT do here is count a boat's crates across three boxes to",
-    "enforce the 2-crate cap, or decide who is really the admin. Those run in",
-    "the client (see lib/harbourSync.ts) inside a transaction, which makes them",
-    "correct against two honest boats racing — the case that actually happens —",
-    "but not against someone deliberately editing their own requests. Enforcing",
-    "that needs server-side code; see README, 'What this cannot do yet'."
-  ],
-
   "rules": {
     ".read": true,
     ".write": false,
@@ -30,12 +56,24 @@
       "$harbour": {
         "boxes": {
           ".read": true,
-          ".write": true,
+          // Signed in, and all three boxes still present. Booking transacts
+          // over this whole node, so write has to be granted here rather than
+          // per slot — which is also the honest limit of these rules: a
+          // hostile client that is signed in can still overwrite a slot it
+          // does not own. Binding each slot to its boat's uid needs the
+          // booking path rewritten to per-slot writes; see README.
+          ".write": "auth != null && newData.hasChildren(['box1', 'box2', 'box3'])",
           ".validate": "newData.hasChildren()",
 
+          // Exactly three boxes of ten slots. A typo, or a client inventing
+          // 'box9' or slot 47, is refused rather than quietly stored.
           "$box": {
+            // Ten slots, always — it keeps the harbour's SHAPE intact, so a
+            // malformed or truncated write is refused. It does not stop a
+            // well-formed write of ten empty slots; see the header.
+            ".validate": "$box.matches(/^box[1-3]$/) && newData.hasChildren(['0','1','2','3','4','5','6','7','8','9'])",
             "$slot": {
-              ".validate": "newData.hasChildren(['status'])",
+              ".validate": "$slot.matches(/^[0-9]$/) && newData.hasChildren(['status'])",
               "status": {
                 ".validate": "newData.isString() && (newData.val() === 'empty' || newData.val() === 'reserved' || newData.val() === 'occupied' || newData.val() === 'overstay')"
               },
@@ -54,22 +92,39 @@
         "boats": {
           ".read": true,
           "$boat": {
-            ".write": true,
-            ".validate": "newData.hasChildren(['name', 'owner', 'mobile', 'status'])",
+            // Never deletable: slots point at boats, and a deleted boat would
+            // orphan whatever it is holding. Rejection is a local matter.
+            ".write": "auth != null && newData.exists()",
+            ".validate": "newData.hasChildren(['name', 'owner', 'mobileLast4', 'status', 'registeredAt'])",
             "name": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 40" },
+            "nameTe": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
             "owner": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 60" },
-            "mobile": { ".validate": "newData.isString() && newData.val().matches(/^[6-9][0-9]{9}$/)" },
+            // Four digits, never the whole number: this node is world-readable
+            // so any phone can name the boat holding a crate, and publishing
+            // twenty fishermen's mobile numbers is a breach with no upside.
+            // Immutable, because those digits are what proves you own a boat.
+            "mobileLast4": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}$/) && (!data.exists() || newData.val() === data.val())" },
+            // Any of the three, including on create. Forcing new boats to
+            // 'pending' would look like enforcement and be none: with no
+            // admin identity, the same client could flip it a moment later.
             "status": { ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'active' || newData.val() === 'blocked')" },
+            // Not immutable, deliberately: the seeded roster gets its dates
+            // from whichever phone seeded it, so pinning them here would make
+            // a second phone's publish fail on every boat.
             "registeredAt": { ".validate": "newData.isNumber()" },
             "$other": { ".validate": false }
           }
         },
 
+        // Append-only: each row is writable once, never edited or deleted.
         "ledger": {
           ".read": true,
+          // Phones follow the newest rows by release time. Without this index
+          // Firebase would sort them on the client, which means downloading
+          // the whole history to every phone on the 2G target.
+          ".indexOn": ["releasedAt"],
           "$entry": {
-            "//": "Append-only: writable once, never edited or deleted.",
-            ".write": "!data.exists() && newData.exists()",
+            ".write": "auth != null && !data.exists() && newData.exists()",
             ".validate": "newData.hasChildren(['boatId', 'boxId', 'crates', 'depositedAt', 'releasedAt'])",
             "boatId": { ".validate": "newData.isString()" },
             "boxId": { ".validate": "newData.isString()" },

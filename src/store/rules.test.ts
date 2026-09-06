@@ -479,18 +479,18 @@ describe('claiming an existing boat', () => {
 })
 
 describe('a blocked boat cannot move crates', () => {
-  it('refuses reserve, deposit, cancel and release once blocked', () => {
+  it('refuses reserve, deposit, cancel and release once blocked', async () => {
     const store = useDockStore.getState()
     store.resetDemo()
     useDockStore.getState().signInAs('04', '2004')
 
-    expect(useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(true)
+    expect(await useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(true)
 
     // The admin blocks the boat while its owner has the sheet open.
     useDockStore.getState().setBoatStatus('04', 'blocked')
 
-    expect(useDockStore.getState().deposit(4)).toBe(false)
-    expect(useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(false)
+    expect(await useDockStore.getState().deposit(4)).toBe(false)
+    expect(await useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(false)
 
     const held = () =>
       slotsForBoat(selectBoxes(useDockStore.getState()), '04').length
@@ -524,5 +524,50 @@ describe('regressions the audit caught', () => {
       box('box1', [{ index: 0, status: 'reserved', boatId: '04', reservedAt: NOW + HOUR_MS }]),
     ]
     expect(holdRemainingMs(boxes, '04', NOW)).toBe(HOLD_MS)
+  })
+})
+
+describe('an admin decision has to survive', () => {
+  it('blocks a rejected boat instead of deleting it', async () => {
+    // Deleting only this device's copy made rejection a no-op the moment the
+    // shared roster came back: the boat reappeared as pending, and the audit
+    // log still claimed it had been rejected. A blocked boat cannot book, and
+    // the rules forbid removing a boat because slots point at boats.
+    useDockStore.getState().resetDemo()
+    const pending = useDockStore
+      .getState()
+      .boats.find((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
+    expect(pending).toBeDefined()
+
+    await useDockStore.getState().rejectBoat(pending!.id)
+
+    const after = useDockStore
+      .getState()
+      .boats.find((b) => b.harbourId === 'nizampatnam' && b.id === pending!.id)
+    expect(after).toBeDefined()
+    expect(after!.status).toBe('blocked')
+  })
+
+  it('drops a rejected boat out of the approvals queue', async () => {
+    useDockStore.getState().resetDemo()
+    const pending = useDockStore
+      .getState()
+      .boats.filter((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
+    await useDockStore.getState().rejectBoat(pending[0].id)
+
+    const stillPending = useDockStore
+      .getState()
+      .boats.filter((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
+    expect(stillPending.map((b) => b.id)).not.toContain(pending[0].id)
+  })
+
+  it('signs out a skipper whose own boat was just rejected', async () => {
+    useDockStore.getState().resetDemo()
+    const pending = useDockStore
+      .getState()
+      .boats.find((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')!
+    useDockStore.setState({ myBoatId: pending.id })
+    await useDockStore.getState().rejectBoat(pending.id)
+    expect(useDockStore.getState().myBoatId).toBeNull()
   })
 })

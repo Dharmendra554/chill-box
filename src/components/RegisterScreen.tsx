@@ -12,6 +12,10 @@ const ERROR_KEY = {
   owner: 'errOwner',
   mobile: 'errMobile',
   mobileTaken: 'errMobileTaken',
+  // A shared harbour issues the hull number, so with no link there is no
+  // registration to show — better to say so than to hand out a number the
+  // society has never seen.
+  offline: 'syncOffline',
 } as const
 
 /**
@@ -37,6 +41,10 @@ export function RegisterScreen() {
   const [form, setForm] = useState({ boatName: '', owner: '', mobile: '' })
   const [error, setError] = useState<RegistrationError | null>(null)
   const [claiming, setClaiming] = useState<string | null>(null)
+  // The hull number comes from the database now, which takes a round trip.
+  // Without this, a second tap registers the same person twice and burns a
+  // hull number that can never be reused.
+  const [submitting, setSubmitting] = useState(false)
 
   const boats = boatsAt(allBoats, harbourId)
   const update = (key: keyof typeof form) => (value: string) => {
@@ -84,10 +92,18 @@ export function RegisterScreen() {
 
         <form
           className="flex flex-col gap-3"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault()
-            const result = register(form)
-            if (!result.ok) setError(result.error)
+            if (submitting) return
+            setSubmitting(true)
+            try {
+              // Awaited: with a shared harbour the database issues the hull
+              // number, so the registration is not real until it answers.
+              const result = await register(form)
+              if (!result.ok) setError(result.error)
+            } finally {
+              setSubmitting(false)
+            }
           }}
         >
           <Field
@@ -120,8 +136,12 @@ export function RegisterScreen() {
             </p>
           ) : null}
 
-          <button type="submit" className="btn btn-lg btn-primary btn-block">
-            {t('regSubmit')}
+          <button
+            type="submit"
+            className="btn btn-lg btn-primary btn-block"
+            disabled={submitting}
+          >
+            {t(submitting ? 'saving' : 'regSubmit')}
           </button>
         </form>
       </section>

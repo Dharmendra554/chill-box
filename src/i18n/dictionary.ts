@@ -52,6 +52,9 @@ const S = {
   legendLate: { te: 'ఆలస్యం', en: 'Late' },
   full: { te: 'నిండింది', en: 'FULL' },
   crates: { te: 'క్రేట్లు', en: 'crates' },
+  // Telugu uses the same word for one and many; English does not, and
+  // "1 crates" on a receipt reads like a bug to the person holding it.
+  crateOne: { te: 'క్రేట్', en: 'crate' },
   freeCrates: { te: '{0} ఖాళీ', en: '{0} free' },
   suggested: { te: 'ఎక్కువ ఖాళీ', en: 'Most room' },
   quotaLeft: { te: 'మీకు ఇంకా {0} క్రేట్లు', en: '{0} crates left for you' },
@@ -151,7 +154,13 @@ const S = {
   navOffline: { te: 'మ్యాప్ లోడ్ కాలేదు — దిక్సూచి పని చేస్తోంది.', en: 'Map tiles unavailable — the compass still works.' },
   boxAway: { te: '{0} దూరం', en: '{0} away' },
   offlineTitle: { te: 'నెట్ లేదు', en: 'No signal' },
-  syncOffline: { te: 'నెట్ లేకుండా బుక్ చేయలేము. సిగ్నల్ వచ్చాక మళ్లీ చూడండి.', en: 'Cannot book without a signal. Try again when you have one.' },
+  // Shown for every shared write, not just booking — approving a boat and
+  // force-releasing a crate reach it too, and both were being told they
+  // could not "book".
+  syncOffline: { te: 'నెట్ లేదు. ఏదీ సేవ్ కాలేదు. సిగ్నల్ వచ్చాక మళ్లీ ప్రయత్నించండి.', en: 'No signal. Nothing was saved — try again when you have one.' },
+  syncNoChange: { te: 'ఇది ఇప్పటికే జరిగిపోయింది. హార్బర్ రికార్డు ప్రకారం మార్చడానికి ఏమీ లేదు.', en: 'That is already done — the harbour record has nothing left to change.' },
+  syncUnseeded: { te: 'ఈ హార్బర్ ఇంకా సెటప్ కాలేదు. అడ్మిన్‌ను ఒకసారి అడగండి.', en: 'This harbour is not set up yet. Ask the harbour admin.' },
+  syncRefused: { te: 'హార్బర్ రికార్డు దీన్ని ఒప్పుకోలేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'The harbour record refused that. Tell someone at the box.' },
   storageFull: { te: 'ఫోన్ మెమరీ నిండింది — కొత్త మార్పులు సేవ్ కావట్లేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'Phone storage is full — changes are not being saved. Tell someone at the box.' },
   staleNever: { te: 'ఈ సంఖ్యలు ఈ ఫోన్‌లోనివి మాత్రమే. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from this phone only. Check again at the box.' },
   staleBody: { te: 'ఈ సంఖ్యలు {0} నాటివి. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from {0}. Check again at the box.' },
@@ -210,6 +219,30 @@ const S = {
   adminAuditIntact: { te: 'రికార్డు చెక్కుచెదరలేదు', en: 'Log verified intact' },
   adminAuditBroken: { te: 'రికార్డు మార్చబడింది — ఎంట్రీ {0}', en: 'Log tampered at entry {0}' },
   adminAuditEmpty: { te: 'ఇంకా చర్యలు లేవు.', en: 'No admin actions yet.' },
+
+  demoResetMoved: { te: 'డెమో రీసెట్ ఇప్పుడు అడ్మిన్‌లో ఉంది (#admin).', en: 'Reset demo now lives in the admin console (#admin).' },
+  adminResetShared: { te: 'డెమోను రీసెట్ చేయి (అందరికీ)', en: 'Reset demo for the whole harbour' },
+  // Precise on purpose: it resets THIS harbour's crates for everyone. The
+  // roster and the record of past storage are not touched, and the other two
+  // harbours are reset on this phone only.
+  adminResetSharedBody: { te: 'ఈ హార్బర్‌లోని ప్రస్తుత బుకింగ్‌లన్నీ అందరి ఫోన్లలో తొలగిపోతాయి. బోట్ల జాబితా, పాత రికార్డు అలాగే ఉంటాయి. డెమో కోసం మాత్రమే.', en: 'Clears this harbour’s live holds and stored crates on every phone. The boat roster and past records are kept. Demonstration only.' },
+
+  booking: { te: 'బుక్ అవుతోంది…', en: 'Booking…' },
+  saving: { te: 'సేవ్ అవుతోంది…', en: 'Saving…' },
+
+  whoIsInside: { te: 'లోపల ఎవరున్నారు', en: 'Who is inside' },
+  storedSince: { te: 'పెట్టింది', en: 'In since' },
+  close: { te: 'మూసివేయి', en: 'Close' },
+
+  adminSync: { te: 'అన్ని ఫోన్లలో ఒకటే సమాచారం', en: 'Shared across phones' },
+  adminSyncOn: { te: 'ఈ హార్బర్ అన్ని ఫోన్లతో కలిసి ఉంది. ఒకరు బుక్ చేస్తే అందరికీ వెంటనే కనిపిస్తుంది.', en: 'This harbour is shared. A booking on one phone appears on every phone at once.' },
+  adminSyncOff: { te: 'ఈ ఫోన్‌లో మాత్రమే. వేరే ఫోన్లకు కనిపించదు.', en: 'This phone only. Nothing is shared with other phones.' },
+  adminPublish: { te: 'హార్బర్‌ను పంపు', en: 'Publish harbour' },
+  adminPublishBody: { te: 'కొత్త డేటాబేస్‌కు మొదటిసారి మాత్రమే. ఇప్పటికే ఉన్న సమాచారం చెరిగిపోదు.', en: 'First-time setup for an empty database. It cannot overwrite data that is already there.' },
+  adminPublishDone: { te: 'హార్బర్ పంపబడింది.', en: 'Harbour published.' },
+  adminPublishPartial: { te: 'హార్బర్ పంపబడింది, కానీ {0} బోట్లు కుదరలేదు.', en: 'Harbour published, but {0} boats were refused.' },
+  adminPublishRetry: { te: 'బోట్ల జాబితా పంపబడింది. బాక్సులు కుదరలేదు — మళ్లీ ఒకసారి నొక్కండి.', en: 'The roster is published. The boxes were refused — press this once more.' },
+  adminPublishFailed: { te: 'పంపడం కుదరలేదు. నెట్ చూసి మళ్లీ ప్రయత్నించండి.', en: 'Could not publish. Check the connection and try again.' },
   confirmQ: { te: 'ఖచ్చితమా?', en: 'Sure?' },
 
   voiceRead: { te: 'ఖాళీ స్థలం చదువు', en: 'Read free space' },

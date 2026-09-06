@@ -7,8 +7,9 @@ import { RegisterScreen } from './components/RegisterScreen'
 import { useNow } from './hooks/useClock'
 import { vibrate } from './hooks/useHaptics'
 import { useMarine } from './hooks/useMarine'
-import { useConnectivity } from './hooks/useConnectivity'
+import { STALE_MS, SYNC_STALE_MS, useConnectivity } from './hooks/useConnectivity'
 import { useT } from './i18n/useT'
+import { syncEnabled } from './lib/harbourSync'
 import { waveBand } from './lib/marine'
 import { speakCapacity, stopSpeech } from './lib/speech'
 import { boatState } from './store/selectors'
@@ -47,15 +48,27 @@ export default function App() {
   const resetDemo = useDockStore((s) => s.resetDemo)
   const dismissToast = useDockStore((s) => s.dismissToast)
   const notify = useDockStore((s) => s.notify)
+  const syncLive = useDockStore((s) => s.syncLive)
+  const syncedAt = useDockStore((s) => s.syncedAt)
 
   const [speaking, setSpeaking] = useState(false)
 
   const now = useNow()
   const marine = useMarine(harbour.lat, harbour.lon)
-  // Reachability is proven by the swell poll landing, not assumed from
+  // Reachability is proven by a request landing, not assumed from
   // navigator.onLine — see useConnectivity.
-  const reachedAt = marine.reading?.fetchedAt ?? null
-  const reach = useConnectivity(reachedAt, now)
+  //
+  // When the harbour is shared, the database socket is the signal that
+  // matters: the swell API and Firebase can fail independently, and it is
+  // the box figures, not the wave height, that send a boat to a full box.
+  // While the socket is live the figures are current by definition; once it
+  // drops, they are only as fresh as the last thing it told us.
+  const reachedAt = syncEnabled
+    ? syncLive
+      ? now
+      : syncedAt
+    : (marine.reading?.fetchedAt ?? null)
+  const reach = useConnectivity(reachedAt, now, syncEnabled ? SYNC_STALE_MS : STALE_MS)
 
   useEffect(() => {
     document.documentElement.lang = lang

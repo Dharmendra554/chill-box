@@ -18,6 +18,7 @@ import {
 } from '../lib/stats'
 import { verifyAudit } from '../lib/adminAuth'
 import { saveCsv } from '../lib/download'
+import { syncEnabled } from '../lib/harbourSync'
 import { formatDayClock, formatGap, monthKey, monthLabel } from '../lib/time'
 import { cx } from '../lib/ui'
 import { occupancyRows } from '../store/selectors'
@@ -427,8 +428,53 @@ function Console() {
         </ul>
       </section>
 
+      <SyncPanel />
       <AuditPanel />
     </div>
+  )
+}
+
+/**
+ * Whether this harbour is shared, and the one-time button that makes it so.
+ *
+ * With no database configured the button would be a lie, so it is not shown
+ * at all — the panel says plainly that this phone is on its own instead.
+ */
+function SyncPanel() {
+  const t = useT()
+  const publishHarbour = useDockStore((s) => s.publishHarbour)
+  const resetDemo = useDockStore((s) => s.resetDemo)
+  const [busy, setBusy] = useState(false)
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xl">{t('adminSync')}</h3>
+      <p className="card p-3 font-bold">{t(syncEnabled ? 'adminSyncOn' : 'adminSyncOff')}</p>
+      {syncEnabled ? (
+        <>
+          <button
+            type="button"
+            className="btn btn-lg btn-block"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              await publishHarbour()
+              setBusy(false)
+            }}
+          >
+            {t('adminPublish')}
+          </button>
+          <p className="text-sm font-bold text-ink-2">{t('adminPublishBody')}</p>
+
+          <ConfirmButton
+            className="btn btn-lg btn-block"
+            label={t('adminResetShared')}
+            onConfirm={resetDemo}
+          />
+          <p className="text-sm font-bold text-ink-2">{t('adminResetSharedBody')}</p>
+        </>
+      ) : null}
+    </section>
   )
 }
 

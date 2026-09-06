@@ -1,3 +1,4 @@
+import { serverNow } from './harbourSync'
 import type { AuditEntry } from '../types'
 
 /**
@@ -133,7 +134,11 @@ export async function appendAudit(
   actor = 'admin',
 ): Promise<AuditEntry[]> {
   const prevHash = log.at(-1)?.hash ?? 'genesis'
-  const base = { id: `A${log.length + 1}`, at: Date.now(), actor, action, target, detail, prevHash }
+  // The harbour's clock, like every other timestamp in the app. This is the
+  // record of who did what and when, rendered beside a console running on
+  // harbour time — stamping it from a phone with a wrong clock made the one
+  // artefact that exists to be trusted disagree with everything around it.
+  const base = { id: `A${log.length + 1}`, at: serverNow(), actor, action, target, detail, prevHash }
   const hash = await sha256(canonical(base))
   // Without Web Crypto there is no chain to extend, so the action is
   // recorded unhashed and marked as such rather than faked.

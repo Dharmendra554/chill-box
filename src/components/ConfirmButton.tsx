@@ -18,10 +18,18 @@ export function ConfirmButton({
 }: {
   label: string
   className: string
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
 }) {
   const t = useT()
   const [armed, setArmed] = useState(false)
+  /**
+   * These actions now wait for the shared harbour, which on a 2G tether is
+   * over a second of a button that still looks pressable. A second confirm
+   * in that window reached a database with nothing left to change and came
+   * back as a refusal — telling a skipper whose release had just worked that
+   * something had gone wrong.
+   */
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (!armed) return
@@ -34,16 +42,23 @@ export function ConfirmButton({
       type="button"
       className={cx(className, armed && 'btn-armed')}
       aria-live="polite"
-      onClick={() => {
+      disabled={busy}
+      onClick={async () => {
+        if (busy) return
         if (!armed) {
           setArmed(true)
           return
         }
         setArmed(false)
-        onConfirm()
+        setBusy(true)
+        try {
+          await onConfirm()
+        } finally {
+          setBusy(false)
+        }
       }}
     >
-      {armed ? t('confirmQ') : label}
+      {busy ? t('saving') : armed ? t('confirmQ') : label}
     </button>
   )
 }

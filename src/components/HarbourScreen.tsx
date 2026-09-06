@@ -1,14 +1,11 @@
 import { boatName, boatsAt } from '../data/boats'
 import { useNow } from '../hooks/useClock'
 import { useT } from '../i18n/useT'
-import { formatClock, formatGap } from '../lib/time'
-import { cx, STATUS_STYLE } from '../lib/ui'
 import { crateCountForBoat, occupancyRows } from '../store/selectors'
 import { selectBoxes, useDockStore } from '../store/useDockStore'
-import type { T } from '../i18n/dictionary'
-import type { Boat, Species } from '../types'
+import type { Boat } from '../types'
 import { BoatIcon, CrateIcon, ShoalIcon } from '../icons/marine'
-import { SPECIES_ICON } from '../icons/species'
+import { CrateRow } from './CrateRow'
 
 /**
  * The community view, and the reason the app is worth opening when you are
@@ -44,61 +41,16 @@ export function HarbourScreen() {
           <p className="card p-4 font-bold">{t('nothingStored')}</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {rows.map((row) => {
-              const boat = byId.get(row.boatId)
-              return (
-                // Two rows, not three columns. Telugu box names are long and
-                // the catch tag is a fixed-width chip, so squeezing name,
-                // box, tag and time onto one line made them overlap on a
-                // narrow phone. The identity line sits above its details.
-                <li key={`${row.boatId}-${row.boxId}`} className="card flex flex-col gap-2 p-3">
-                  <div className="flex items-start gap-3">
-                    <span
-                      className={cx(
-                        'grid h-11 w-11 shrink-0 place-items-center border-3 border-rule font-display text-sm font-extrabold',
-                        STATUS_STYLE[row.status],
-                      )}
-                    >
-                      #{row.boatId}
-                    </span>
-
-                    <p className="min-w-0 flex-1 truncate font-display text-lg font-extrabold">
-                      {boat ? boatName(boat, lang) : `#${row.boatId}`}
-                    </p>
-
-                    <div className="shrink-0 text-right">
-                      <p className="text-[0.65rem] font-extrabold uppercase leading-tight text-ink-2">
-                        {t('outIn')}
-                      </p>
-                      {row.plannedOutAt === null ? (
-                        <p className="text-sm font-bold">{t('noPlan')}</p>
-                      ) : (
-                        <>
-                          <p className="tabular text-lg font-extrabold leading-tight">
-                            {formatClock(row.plannedOutAt)}
-                          </p>
-                          <p
-                            className={cx(
-                              'tabular text-xs font-extrabold leading-tight',
-                              row.plannedOutAt < now && 'text-full',
-                            )}
-                          >
-                            {formatGap(row.plannedOutAt - now, lang)}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold text-ink-2">
-                    <span>
-                      {t(row.boxId)} · {row.crates} {t('crates')}
-                    </span>
-                    {row.species ? <CatchTag t={t} species={row.species} /> : null}
-                  </p>
-                </li>
-              )
-            })}
+            {rows.map((row) => (
+              <CrateRow
+                key={`${row.boatId}-${row.boxId}`}
+                t={t}
+                lang={lang}
+                row={row}
+                boat={byId.get(row.boatId)}
+                now={now}
+              />
+            ))}
           </ul>
         )}
       </section>
@@ -114,11 +66,7 @@ export function HarbourScreen() {
 
         <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {boats.map((boat) => (
-            <BoatRow
-              key={boat.id}
-              boat={boat}
-              stored={crateCountForBoat(boxes, boat.id)}
-            />
+            <BoatRow key={boat.id} boat={boat} stored={crateCountForBoat(boxes, boat.id)} />
           ))}
         </ul>
       </section>
@@ -146,16 +94,5 @@ function BoatRow({ boat, stored }: { boat: Boat; stored: number }) {
         {stored > 0 ? `${t('storingNow')} ${stored}` : t('idle')}
       </span>
     </li>
-  )
-}
-
-/** Catch tag as icon + name, so the list reads without colour alone. */
-function CatchTag({ t, species }: { t: T; species: Species }) {
-  const Icon = SPECIES_ICON[species]
-  return (
-    <span className="inline-flex items-center gap-1 border-3 border-rule px-1 py-0.5 text-xs font-extrabold">
-      <Icon size={13} />
-      {t(species)}
-    </span>
   )
 }

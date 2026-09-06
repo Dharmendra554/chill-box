@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export interface Choice<V> {
   value: V
@@ -24,14 +24,20 @@ export function ChoiceSheet<V extends string | number>({
   body?: string
   options: Array<Choice<V>>
   closeLabel: string
-  onPick: (value: V) => void
+  onPick: (value: V) => void | Promise<void>
   onClose: () => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
+  // Picking a collection time writes to the shared harbour, so the same
+  // double-tap hazard applies here as on the booking sheet.
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     const el = ref.current
-    if (el && !el.open) el.showModal()
+    if (el && !el.open) {
+      if (typeof el.showModal === 'function') el.showModal()
+      else el.setAttribute('open', '')
+    }
   }, [])
 
   return (
@@ -55,7 +61,16 @@ export function ChoiceSheet<V extends string | number>({
               key={String(option.value)}
               type="button"
               className="btn btn-lg btn-primary flex-col gap-0.5"
-              onClick={() => onPick(option.value)}
+              disabled={busy}
+              onClick={async () => {
+                if (busy) return
+                setBusy(true)
+                try {
+                  await onPick(option.value)
+                } finally {
+                  setBusy(false)
+                }
+              }}
             >
               {option.label}
               {option.hint ? (

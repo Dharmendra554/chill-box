@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { serverNow } from '../lib/harbourSync'
 import { useDockStore } from '../store/useDockStore'
 
 /**
@@ -14,8 +15,15 @@ import { useDockStore } from '../store/useDockStore'
  * So the clock is its own tiny external store: components subscribe to it
  * directly, nothing is persisted, and the harbour store is only written when
  * a slot genuinely changes.
+ *
+ * It reads the HARBOUR's clock, not the device's. Every countdown, hold
+ * expiry and overstay a skipper sees is judged here, so a phone twenty
+ * minutes fast used to tell its owner "your 4-hour hold ended" early — and
+ * then refuse to deposit, while the shared harbour went on holding that
+ * crate for everyone else until it really expired. With no database
+ * configured `serverNow()` is `Date.now()`, so nothing changes offline.
  */
-let now = Date.now()
+let now = serverNow()
 const listeners = new Set<() => void>()
 
 function subscribe(listener: () => void): () => void {
@@ -26,7 +34,7 @@ function subscribe(listener: () => void): () => void {
 /** Started once from `main.tsx`; there is only ever one interval. */
 export function startClock(): () => void {
   const id = setInterval(() => {
-    now = Date.now()
+    now = serverNow()
     // Age holds and overstays. The store only writes when something moved.
     useDockStore.getState().tick(now)
     for (const listener of listeners) listener()
