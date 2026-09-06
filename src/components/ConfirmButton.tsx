@@ -14,10 +14,13 @@ import { cx } from '../lib/ui'
 export function ConfirmButton({
   label,
   className,
+  hint,
   onConfirm,
 }: {
   label: string
   className: string
+  /** One line saying what this does, on hover. Nothing on a touch screen. */
+  hint?: string
   onConfirm: () => void | Promise<void>
 }) {
   const t = useT()
@@ -42,6 +45,7 @@ export function ConfirmButton({
       type="button"
       className={cx(className, armed && 'btn-armed')}
       aria-live="polite"
+      title={hint}
       disabled={busy}
       onClick={async () => {
         if (busy) return

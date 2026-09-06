@@ -141,14 +141,6 @@ export function DockScreen({
         />
       )}
 
-      {/* Booking never depends on a fix, so say so where it would be missed. */}
-      {geo.status === 'unavailable' ? (
-        <section className="card border-hold bg-hold-wash p-4">
-          <h3 className="text-xl">{t('noGpsTitle')}</h3>
-          <p className="font-bold">{t('noGpsBody')}</p>
-        </section>
-      ) : null}
-
       <Suspense
         fallback={<div className="h-[46vh] min-h-72 w-full border-3 border-rule bg-paper-2" />}
       >
@@ -437,6 +429,7 @@ function MyStatusCard({
           type="button"
           className="btn btn-lg btn-primary btn-block"
           disabled={!approved}
+          title={t('hintDeposit')}
           onClick={onDeposit}
         >
           {t('deposited')}
@@ -446,6 +439,7 @@ function MyStatusCard({
           <ConfirmButton
             className="btn btn-ghost btn-block"
             label={t('cancelHold')}
+            hint={t('hintCancelHold')}
             onConfirm={onCancel}
           />
         ) : null}
@@ -487,6 +481,7 @@ function MyStatusCard({
         <ConfirmButton
           className={cx('btn btn-lg btn-block', late ? 'btn-warn' : 'btn-primary')}
           label={t('release')}
+          hint={t('hintRelease')}
           onConfirm={onRelease}
         />
       ) : (

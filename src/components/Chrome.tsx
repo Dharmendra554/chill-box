@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { HARBOURS } from '../data/harbours'
 import type { T } from '../i18n/dictionary'
 import { waveBand } from '../lib/marine'
@@ -81,7 +82,7 @@ export function TopBar({
           className={cx('btn h-11 min-h-11 px-2.5', speaking && 'btn-armed')}
           aria-pressed={speaking}
           aria-label={t(speaking ? 'voiceStop' : 'voiceRead')}
-          title={t(speaking ? 'voiceStop' : 'voiceRead')}
+          title={speaking ? t('voiceStop') : t('hintSpeak')}
           onClick={onSpeak}
         >
           {speaking ? <SpeakerStopIcon size={22} /> : <SpeakerIcon size={22} />}
@@ -101,6 +102,7 @@ export function TopBar({
         <button
           type="button"
           className="btn h-11 min-h-11 px-2.5 text-sm"
+          title={t('hintLang')}
           onClick={() => onLang(lang === 'te' ? 'en' : 'te')}
         >
           {lang === 'te' ? 'EN' : 'తె'}
@@ -250,16 +252,53 @@ export function Toast({
   toast: ToastMessage | null
   onDismiss: () => void
 }) {
+  // The live drag, tagged with the message it belongs to so a new toast
+  // cannot inherit the last one's offset — derived here rather than reset in
+  // an effect, which would cost a second render on every message.
+  const [drag, setDrag] = useState<{ id: number; from: number; dx: number } | null>(null)
+  const dx = drag && drag.id === toast?.id ? drag.dx : 0
+
   if (!toast) return null
+
+  const settle = () => {
+    if (Math.abs(dx) > SWIPE_PX) onDismiss()
+    setDrag(null)
+  }
+
   return (
     <button
       type="button"
       key={toast.id}
-      className={cx('toast sheet-in text-left', TOAST_STYLE[toast.tone])}
+      className={cx('toast sheet-in text-left touch-pan-y', TOAST_STYLE[toast.tone])}
       role="alert"
-      onClick={onDismiss}
+      // Swipe it away in either direction, or tap it. A refusal deliberately
+      // does not fade on its own — it is often the only record that a
+      // booking did NOT happen — so there has to be a way to move it that
+      // does not mean aiming a wet thumb at a small target. A flick works
+      // with gloves on, and it is the gesture a phone user already knows.
+      style={{
+        transform: dx ? `translateX(${dx}px)` : undefined,
+        opacity: dx ? Math.max(0.25, 1 - Math.abs(dx) / 200) : undefined,
+        transition: drag ? undefined : 'transform 150ms, opacity 150ms',
+      }}
+      onPointerDown={(e) => {
+        setDrag({ id: toast.id, from: e.clientX, dx: 0 })
+        e.currentTarget.setPointerCapture(e.pointerId)
+      }}
+      onPointerMove={(e) => {
+        setDrag((d) => (d ? { ...d, dx: e.clientX - d.from } : null))
+      }}
+      onPointerUp={settle}
+      onPointerCancel={settle}
+      onClick={() => {
+        // A drag ends in a click too, so only a real tap dismisses.
+        if (Math.abs(dx) < 4) onDismiss()
+      }}
     >
       {toast.text}
     </button>
   )
 }
+
+/** Thumb travel that counts as "get rid of this". See Toast. */
+const SWIPE_PX = 60

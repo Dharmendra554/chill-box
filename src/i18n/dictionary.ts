@@ -20,7 +20,7 @@ const S = {
   demoTitle: { te: 'డెమో సాధనాలు', en: 'Demo tools' },
   demoBody: { te: 'ఇవి చూపించడానికి మాత్రమే. నిజ వాడకంలో ఇవి ఉండవు.', en: 'For demonstration only. These do not appear in real use.' },
   demoSimulateOn: { te: 'సముద్రంలో 8 km దూరంలో ఉన్నట్టు చూపు', en: 'Pretend I am 8 km out at sea' },
-  demoSimulateOff: { te: 'నిజ GPS కి తిరిగి వెళ్లు', en: 'Back to real GPS' },
+  demoSimulateOff: { te: 'నేను ఉన్న చోటికి తిరిగి', en: 'Back to where I really am' },
   demoSimulateHint: { te: 'రేవులో కూర్చునే దారి, దూరం, దిక్సూచి ఎలా పని చేస్తాయో చూడటానికి.', en: 'Shows how the route, distance and compass work without going to sea.' },
 
   // — Registration ————————————————————————————————
@@ -110,6 +110,15 @@ const S = {
   navTapMap: { te: 'మ్యాప్‌లో బాక్స్ మీద నొక్కి బుక్ చేయండి.', en: 'Tap a box on the map to book it.' },
   navTapMapView: { te: 'బాక్స్ మీద నొక్కితే లోపల ఎవరున్నారో కనిపిస్తుంది.', en: 'Tap a box to see who is inside it.' },
   navMapLabel: { te: 'హార్బర్ మ్యాప్ — మూడు బాక్సుల స్థానాలు', en: 'Harbour map — where the three boxes are' },
+  // — One-line hints, shown on hover. A phone has no hover, so these never
+  // carry anything a touch user needs; they explain a control to someone
+  // meeting the app on a laptop for the first time.
+  hintDeposit: { te: 'చేపలు బాక్స్‌లో పెట్టాక నొక్కండి — హోల్డ్ నిల్వగా మారుతుంది.', en: 'Press once the fish are in the box — turns your hold into storage.' },
+  hintCancelHold: { te: 'బుక్ చేసిన స్థలం వదిలేయండి. వెంటనే వేరేవాళ్లకు దొరుకుతుంది.', en: 'Give the slot back. It becomes available to everyone straight away.' },
+  hintRelease: { te: 'క్రేట్ ఖాళీ చేసి రికార్డులో నమోదు చేస్తుంది.', en: 'Frees the crate and records the trip in the harbour ledger.' },
+  hintSpeak: { te: 'ఏ బాక్స్‌లో ఎన్ని ఖాళీ ఉన్నాయో తెలుగులో చదివి వినిపిస్తుంది.', en: 'Reads out how many crates are free in each box, in Telugu.' },
+  hintLang: { te: 'తెలుగు, ఇంగ్లిష్ మధ్య మార్చు.', en: 'Switch between Telugu and English.' },
+
   crate2Cap: { te: 'ఒక పడవకు రెండు క్రేట్లే. మీకు ఇంకొకటే మిగిలింది.', en: 'Two crates per boat is the limit — you have one left.' },
   crate2Room: { te: 'ఈ బాక్స్‌లో ఒక్క క్రేట్‌కే చోటు ఉంది.', en: 'This box has room for one crate only.' },
   // — Harbour & union ————————————————————————————————
@@ -133,9 +142,9 @@ const S = {
   callNow: { te: 'ఫోన్ చేయి', en: 'Call' },
   saveNumbers: { te: 'నంబర్లు ఫోన్‌లో సేవ్ చేయి', en: 'Save numbers to phone' },
   shareLocation: { te: 'నా లొకేషన్ పంపు', en: 'Send my location' },
-  lastFix: { te: 'లొకేషన్ సమయం {0}', en: 'Position taken {0}' },
+  lastFix: { te: 'ఈ చోటు {0} చూసినది', en: 'This position was taken {0}' },
   fixStale: { te: 'ఈ లొకేషన్ {0} నాటిది — కదిలి ఉంటే మళ్లీ చూడండి', en: 'This position is {0} old — check again if you have moved' },
-  noFix: { te: 'లొకేషన్ ఇంకా రాలేదు', en: 'No location fix yet' },
+  noFix: { te: 'మీరు ఎక్కడ ఉన్నారో ఇంకా చూస్తోంది', en: 'Still working out where you are' },
   contactsSaved: { te: 'నంబర్ల ఫైల్ డౌన్‌లోడ్ అయింది — తెరిచి సేవ్ చేయండి', en: 'Contacts file downloaded — open it to save' },
 
 
@@ -144,10 +153,6 @@ const S = {
   bookedCode: { te: 'బాక్స్ దగ్గర ఈ కోడ్ చూపించండి', en: 'Show this code at the box' },
   bookedBy: { te: '{0} లోపు చేపలు పెట్టండి', en: 'Deposit before {0}' },
   ok: { te: 'సరే', en: 'OK' },
-
-  // — No GPS ——————————————————————————————————————
-  noGpsTitle: { te: 'GPS లేదు? పర్వాలేదు.', en: 'No GPS? No problem.' },
-  noGpsBody: { te: 'కింద ఉన్న పేర్ల నుంచి బాక్స్ ఎంచుకోండి. బుకింగ్‌కు GPS అవసరం లేదు.', en: 'Pick your box by name from the list below. Booking never needs GPS.' },
 
   lmOffice: { te: 'హార్బర్ ఆఫీస్', en: 'Harbour office' },
   navDistance: { te: 'దూరం', en: 'Distance' },
