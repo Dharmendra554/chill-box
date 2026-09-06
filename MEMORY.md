@@ -730,3 +730,39 @@ webfonts and the 124 kB Telugu subset.
 
 **Still open and deliberately untouched:** the 223 kB ledger feed, the
 webfonts, and the demo/live toggle. One subsystem per round.
+
+---
+
+## 19. `scripts/verify-rules.sh` — ask the database, do not read the rules
+
+Nine rounds kept producing rules claims that were true in the file and false
+in the database, or the reverse. This script signs in **two real anonymous
+identities** and puts 36 assertions to the deployed rules: the eight writes
+the app itself must be allowed to make, then every hostile write the header
+says is refused.
+
+```bash
+npx -y firebase-tools deploy --only database --project chill-box-e5d6b
+bash scripts/verify-rules.sh          # must print: all checks passed
+```
+
+**Run it every time the rules change.** A `FAIL` on a `[PASS]` line means the
+harbour is broken for real skippers and the previous rules should go back up.
+
+Two things it has already settled that no amount of reading could:
+
+- **The round-9 auditor was half right about erasing a slot's children.**
+  Nulling `depositedAt` really does make a crate permanently unclearable —
+  reproduced live, with the very next assertion showing the force-release
+  then refused for everyone. Nulling `status`, which the same finding
+  claimed would make a stored crate read as free, is **already refused** by
+  the deployed rules. One of those was worth fixing and one was not, and
+  only the database could say which.
+- **The probe's own first design was wrong.** Run twice under a fixed
+  harbour name it reported fourteen failures that were entirely its own: a
+  boat can never be deleted and its `uid` can never be reassigned, so the
+  second run met a boat bound to a dead identity and every legitimate write
+  was refused. Each run now uses `harbours/probe-<timestamp>`. That residue
+  is unavoidable — it is the price of testing rules whose whole purpose is
+  refusing to forget. Delete `harbours/probe-*` from the console whenever it
+  bothers you; nothing reads it.
