@@ -270,4 +270,6 @@ by `npm test`. Components render; they never decide. Harbour positions live in
 `data/harbours.ts` and nowhere else.
 
 See [TRADEOFFS.md](TRADEOFFS.md) for the anti-hoarding logic and the design
-trade-offs.
+trade-offs, [AGENTS.md](AGENTS.md) for the vision and the rules any
+contributor works to, and [MEMORY.md](MEMORY.md) for where the work stands
+and what is next.

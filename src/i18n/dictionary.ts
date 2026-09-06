@@ -44,7 +44,6 @@ const S = {
   pendingBody: { te: 'హార్బర్ అడ్మిన్ ఆమోదించగానే మీరు బాక్స్ బుక్ చేయవచ్చు. ఇప్పటికీ అందరి స్థలం చూడవచ్చు.', en: 'You can book a box the moment the harbour admin approves you. Until then you can still watch every box.' },
   blockedTitle: { te: 'మీ బోటు ఆపబడింది', en: 'Your boat is on hold' },
   blockedBody: { te: 'హార్బర్ అడ్మిన్‌ను సంప్రదించండి.', en: 'Please speak to the harbour admin.' },
-  signOut: { te: 'బోటు మార్చు', en: 'Switch boat' },
 
   // — Dock ————————————————————————————————————————
   legendFree: { te: 'ఖాళీ', en: 'Free' },
@@ -148,14 +147,11 @@ const S = {
   navEta: { te: 'చేరే సమయం', en: 'ETA' },
   navBearing: { te: 'దిక్కు', en: 'Bearing' },
   navAtBox: { te: 'బాక్స్ చేరుకున్నారు', en: 'You are at the box' },
-  navSimulate: { te: '8 km అనుకరణ', en: 'Simulate 8 km out' },
-  navLive: { te: 'నిజ GPS', en: 'Live GPS' },
   navMapNote: { te: 'ఉచిత OpenStreetMap + OpenSeaMap. ఖాతా అవసరం లేదు.', en: 'Free OpenStreetMap + OpenSeaMap. No account needed.' },
   navOffline: { te: 'మ్యాప్ లోడ్ కాలేదు — దిక్సూచి పని చేస్తోంది.', en: 'Map tiles unavailable — the compass still works.' },
   boxAway: { te: '{0} దూరం', en: '{0} away' },
   offlineTitle: { te: 'నెట్ లేదు', en: 'No signal' },
   syncOffline: { te: 'నెట్ లేకుండా బుక్ చేయలేము. సిగ్నల్ వచ్చాక మళ్లీ చూడండి.', en: 'Cannot book without a signal. Try again when you have one.' },
-  syncLive: { te: 'అన్ని ఫోన్లలో ఒకటే', en: 'Shared live' },
   storageFull: { te: 'ఫోన్ మెమరీ నిండింది — కొత్త మార్పులు సేవ్ కావట్లేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'Phone storage is full — changes are not being saved. Tell someone at the box.' },
   staleNever: { te: 'ఈ సంఖ్యలు ఈ ఫోన్‌లోనివి మాత్రమే. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from this phone only. Check again at the box.' },
   staleBody: { te: 'ఈ సంఖ్యలు {0} నాటివి. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from {0}. Check again at the box.' },
@@ -172,9 +168,6 @@ const S = {
   noPlan: { te: 'సమయం చెప్పలేదు', en: 'No time given' },
   boatsTitle: { te: 'హార్బర్ బోట్లు', en: 'Harbour boats' },
   boatsCount: { te: '{0} బోట్లు', en: '{0} boats' },
-  statusActive: { te: 'ఆమోదం', en: 'Approved' },
-  statusPending: { te: 'వేచి ఉంది', en: 'Pending' },
-  statusBlocked: { te: 'ఆపబడింది', en: 'Blocked' },
   storingNow: { te: 'నిల్వలో', en: 'Storing' },
   idle: { te: 'ఖాళీ', en: 'Idle' },
 
