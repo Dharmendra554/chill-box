@@ -27,13 +27,12 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 66 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 67 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 Entry bundle **96 kB gzipped**; map and Firebase are separate lazy chunks.
 
-**Pushed and deployed.** `25162e6` is on `main`, the Deploy workflow went green
-in 46 s, and the live bundle carries the Firebase config — so the judged link
-is the shared, multi-user build, not a local-only one. Verified by fetching the
-live JS and finding the database URL in it.
+**Pushed and deployed.** `0fbf511` is on `main`, the Deploy workflow is green,
+and the live bundle carries the Firebase config — so the judged link is the
+shared, multi-user build. Verified by fetching the live JS.
 
 The three `VITE_FIREBASE_*` repository secrets are set. They are public by
 design; `firebase/database.rules.json` is what constrains them.
@@ -42,7 +41,9 @@ Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
-| `25162e6` | Multi-user harbour; audit rounds 3–6 fixed; tests 49 → 66 |
+| `0fbf511` | Per-slot writes: the database enforces whose crate it is |
+| `0826f71` | Docs: audit recipe, scale numbers, what is live |
+| `25162e6` | Multi-user harbour; audit rounds 3–6 fixed; tests 49 → 67 |
 | `92f259b` | Second audit round fixed; optional Firebase sync added |
 | `9ccacb3` | Supabase schema (superseded — see §4) |
 | `bb6d8d5` | CSS cascade fix (`@layer components`) |
