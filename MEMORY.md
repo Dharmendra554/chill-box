@@ -19,7 +19,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 - **Repo:** https://github.com/Dharmendra554/chill-box (public, `main`)
 - **Local:** `F:\fish cold storage booking`
-- **Live URL:** not deployed yet — see §4
+- **Live URL:** https://dharmendra554.github.io/chill-box/ (GitHub Pages, auto-deploys on push to main)
 - **Stack:** React 19 · TypeScript · Vite 8 · Tailwind 4 · zustand · Leaflet ·
   vite-plugin-pwa · vitest · oxlint. Firebase is optional and lazy-loaded.
 
@@ -107,12 +107,12 @@ Then:
    same moment and confirm exactly one wins and the loser is told why. This
    path has never been exercised against a real database.
 
-### 4b. Vercel deploy (blocks the submission link)
+### 4b. Deployment — DONE
 
-Vercel needs a browser login that cannot be done from here. The user must
-import the repo at **vercel.com/new** and press Deploy — `vercel.json` already
-pins framework, build command, output, SPA rewrite, cache and security
-headers. Then paste the live URL into `README.md` line 8.
+Vercel blocked the Hobby team on fair-use limits, so the live link moved to
+GitHub Pages. It deploys itself on every push to ; nothing manual is
+needed. If a custom domain is ever wanted, Cloudflare Pages or Netlify both
+build this repo unchanged.
 
 ---
 
@@ -156,22 +156,20 @@ From the second audit, not yet fixed. Roughly in priority order.
 
 ## 6. What to do next — suggested order
 
-1. **Unblock the submission.** Get the Vercel URL and put it in the README.
-   A hackathon entry without a live link scores nothing.
-2. **Finish Firebase** (§4a) once keys arrive, including the two-browser race
+1. **Finish Firebase** (§4a) once keys arrive, including the two-browser race
    test. This is the single biggest gap: without it the app cannot actually
    coordinate two fishermen, which is the problem the brief poses.
-3. **One accessibility pass** — the four items above are quick together and
+2. **One accessibility pass** — the four items above are quick together and
    close a README claim that is currently untrue.
-4. **Fix `nextBoatId`** — small, and it silently corrupts reports.
-5. **Re-audit** with a fresh hostile subagent, then act on it.
-6. Polish list, as time allows.
+3. **Fix `nextBoatId`** — small, and it silently corrupts reports.
+4. **Re-audit** with a fresh hostile subagent, then act on it.
+5. Polish list, as time allows.
 
 ### Deliverables the brief asks for
 
 - [x] Public source repo with a concise README
 - [x] Trade-offs note under 300 words (`TRADEOFFS.md` — currently 297)
-- [ ] **Live published prototype link** ← the only missing one
+- [x] Live published prototype link — https://dharmendra554.github.io/chill-box/
 
 ---
 

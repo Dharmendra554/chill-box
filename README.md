@@ -5,7 +5,7 @@ Andhra Pradesh fishing harbours. No harbour master, patchy signal, twenty
 boats to a society. Mobile-first, Telugu by default, no password.
 
 **Source:** https://github.com/Dharmendra554/chill-box
-**Live demo:** _import on Vercel (below) and paste the URL here_
+**Live demo:** https://dharmendra554.github.io/chill-box/
 
 ---
 
@@ -22,15 +22,23 @@ npm run build   # typecheck, bundle, generate service worker
 npm run lint    # zero warnings
 ```
 
-## Deploy (free tier, no environment variables)
+## Deploy
 
-Import the repo at [vercel.com/new](https://vercel.com/new) and press Deploy,
-or run `npx vercel --prod` from this folder.
+**Live on GitHub Pages**, published by `.github/workflows/deploy.yml` on every
+push to `main`. The workflow runs the same four gates as local — typecheck,
+tests, lint, build — so a red build never publishes. Free, and with no
+fair-use ceiling.
 
-`vercel.json` pins the framework, build command, output directory, the SPA
-rewrite, cache headers (immutable assets, always-revalidate service worker)
-and security headers. The only optional variables are the Firebase config
-below; without them the app builds and runs in local mode.
+Pages serves from `/<repo>/`, so the workflow passes `BASE_PATH` to Vite and
+the PWA `scope` and `start_url` follow it. Unset, everything stays at `/` for
+local dev and any root-served host.
+
+Other hosts work with no changes: Netlify and Cloudflare Pages both build with
+`npm run build` and publish `dist`. `vercel.json` is kept for Vercel, where it
+pins the SPA rewrite, cache headers and security headers.
+
+The only environment variables are the optional Firebase config below; without
+them the app builds and runs in local mode.
 
 ---
 
