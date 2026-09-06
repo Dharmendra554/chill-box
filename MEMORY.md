@@ -97,7 +97,9 @@ VITE_FIREBASE_PROJECT_ID
 ```
 
 Then:
-1. Put them in `.env.local` and in Vercel → Settings → Environment Variables.
+1. Put them in `.env.local` for local dev, and add them as **repository
+   secrets** (`gh secret set VITE_FIREBASE_API_KEY`, etc.) — the deploy
+   workflow already reads them under those names.
 2. Have the user paste `firebase/database.rules.json` into the database's
    **Rules** tab.
 3. Seed the shared copy once — `seedHarbour()` exists but **is not called
@@ -110,9 +112,15 @@ Then:
 ### 4b. Deployment — DONE
 
 Vercel blocked the Hobby team on fair-use limits, so the live link moved to
-GitHub Pages. It deploys itself on every push to ; nothing manual is
-needed. If a custom domain is ever wanted, Cloudflare Pages or Netlify both
-build this repo unchanged.
+GitHub Pages: https://dharmendra554.github.io/chill-box/
+
+It redeploys itself on every push to `main` via
+`.github/workflows/deploy.yml`, which runs typecheck, tests, lint and build
+first — a red build never publishes. Nothing manual is needed.
+
+If a custom domain is ever wanted, Cloudflare Pages and Netlify both build
+this repo unchanged (`npm run build` → `dist`); only `BASE_PATH` is
+Pages-specific.
 
 ---
 
