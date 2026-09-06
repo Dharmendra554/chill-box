@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 6 Sept 2026, after the second hostile audit round.
+**Last updated:** 7 Sept 2026, after the sixth hostile audit round, pushed.
 
 ---
 
@@ -28,17 +28,21 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 ## 2. Current state
 
 **All green:** 66 tests · `tsc` clean · `oxlint` zero warnings · build clean.
-Entry bundle **93 kB gzipped**; map and Firebase are separate lazy chunks.
+Entry bundle **96 kB gzipped**; map and Firebase are separate lazy chunks.
 
-> **The working tree is ahead of `main`.** Everything in §10 and §11 — and the
-> round-5 fixes in §12 — is uncommitted, so the live GitHub Pages link is still
-> serving `806697b`, which predates all of it. **Commit and push is the single
-> highest-value action in this repository.**
+**Pushed and deployed.** `25162e6` is on `main`, the Deploy workflow went green
+in 46 s, and the live bundle carries the Firebase config — so the judged link
+is the shared, multi-user build, not a local-only one. Verified by fetching the
+live JS and finding the database URL in it.
 
-Seven commits on `main`, most recent first:
+The three `VITE_FIREBASE_*` repository secrets are set. They are public by
+design; `firebase/database.rules.json` is what constrains them.
+
+Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
+| `25162e6` | Multi-user harbour; audit rounds 3–6 fixed; tests 49 → 66 |
 | `92f259b` | Second audit round fixed; optional Firebase sync added |
 | `9ccacb3` | Supabase schema (superseded — see §4) |
 | `bb6d8d5` | CSS cascade fix (`@layer components`) |
@@ -59,12 +63,14 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Two hostile audits were run and acted on
+### Six hostile audits were run and acted on
 
-Round 1 scored **4/10**, round 2 scored **4.5/10**. Both reports were correct
-and the findings are fixed except those listed in §5. Notable: round 2 found
-that a *fix from round 1* had deleted one harbour's entire reporting history.
-Assume the next audit will find something too.
+Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5.** Every round found real
+defects with all four gates green, and in five of the six the *previous
+round's fixes* caused the next round's defects. Details in §9–§13; the
+prompting recipe is in `AGENTS.md` §5.
+
+**Assume the seventh will find something too.** That has been true six times.
 
 ---
 
@@ -99,27 +105,18 @@ it deadlocked (§12). Do not read "verified" as "verified everywhere".
 
 ## 4. Blocked — needs the user
 
-### 4a. Repository secrets — the live site is still local-only
+### 4a. Repository secrets and deploy — DONE
 
-Local dev is shared; **the published site is not, until this is done.** The
-workflow reads the three names, but the repo has no secrets set, so the Pages
-build ships with sync off. Only the account owner can set them:
+Secrets set, pushed, deployed, live bundle verified to contain the config.
 
-```
-gh secret set VITE_FIREBASE_API_KEY --body "…"
-gh secret set VITE_FIREBASE_DATABASE_URL --body "…"
-gh secret set VITE_FIREBASE_PROJECT_ID --body "…"
-```
+The only thing that still needs a human is **the rules**: paste
+`firebase/database.rules.json` into the Firebase console → Realtime Database →
+Rules whenever that file changes. It currently must be re-pasted to pick up
+`.indexOn: ["releasedAt"]`; without that index Firebase sorts the ledger feed
+on the client, which means every phone downloads the whole history.
 
-Values are in `.env.local`. They are public by design — a Firebase web config
-always ships in the client; `firebase/database.rules.json` is what constrains
-it. Push after setting them, then open the live URL in two phones and book the
-same crate.
-
-Also: after publishing rules, open `#admin` once on a fresh database and press
-**Publish harbour** to seed the boxes and roster. Without the roster the rules
-refuse every booking, because a slot may not name a boat the database has
-never heard of.
+On a fresh database, open `#admin` once and press **Publish harbour** — it
+seeds boxes, roster and history in that order. It is idempotent.
 
 Background: the user's Supabase account was upgraded to a paid plan, which the
 brief forbids, so we switched to **Firebase Realtime Database (Spark, free, no
@@ -153,9 +150,10 @@ From the second audit, not yet fixed. Roughly in priority order.
 - `SeaMap` uses `role="application"` with a hardcoded English `aria-label`.
 
 **Correctness**
-- `nextBoatId` reuses the lowest free hull number, so a rejected boat's number
-  can be handed to a new registration and inherit its ledger history. Use a
-  monotonic counter.
+- `nextBoatId` reuses the lowest free hull number. Mostly defused: with a
+  shared harbour `claimBoat` allocates by transaction so two phones cannot
+  collide, and a rejected boat is now *blocked* rather than deleted, so its
+  number is never handed out again. Still true in local-only mode.
 - `hourHistogram` uses `en-GB`/`hour12:false`, which can yield `"24"` on older
   ICU; the guard silently drops those rows rather than reporting.
 - `bookingCode` repeats for the same boat+box roughly every 17 h. Harmless
@@ -167,8 +165,8 @@ From the second audit, not yet fixed. Roughly in priority order.
   UI; `formatKm` localises metres but not km; admin dwell shows a bare `h`.
 - `useMarine`'s interval reload passes no `AbortSignal`; on a stalled link
   requests can accumulate.
-- `<dialog>.showModal()` has no feature detection; an ancient WebView would
-  throw into the ErrorBoundary.
+- `touchAdmin` fires on every pointer-down and keystroke in the admin console,
+  and each one re-serialises the whole persisted store. Throttle it. See §14.
 - `SeaMap` tile handling flaps — `tileload` clears the offline banner, so a
   partial failure blinks it on and off.
 - `flushStorage` runs on `visibilitychange` for *show* as well as hide.
@@ -406,3 +404,42 @@ missed, because the verification measured the wrong side of the query.
 
 **Standing lesson, now three rounds old:** verify the side of the system the
 user experiences, not the side that is easy to query.
+
+---
+
+## 14. Scale and efficiency — measured, not assumed
+
+**What travels.** The node every booking transacts over is the harbour's three
+boxes: **3.5 kB**. It is fixed at 30 slots and does **not** grow with the
+number of boats. The roster is 2.7 kB at 20 boats, 27 kB at 200. The ledger
+feed is capped at `LEDGER_LIMIT` rows and Firebase sends only the changed child
+after the first load.
+
+**At 10× users (200 boats per harbour), what actually bites, in order:**
+
+1. **Write contention, not payload.** Booking is one transaction over the whole
+   `boxes` node, so writes to a harbour serialise. Firebase retries a losing
+   transaction, and at high concurrency retries multiply. Twenty boats sharing
+   30 slots is comfortable; two hundred boats racing the same 30 slots is a
+   thundering herd — and the real resource, 30 crates, ran out long before the
+   database did. **Per-slot compare-and-set writes fix both this and the
+   security gap.** One change, two problems; it is the top of the list.
+2. **The Spark plan's 100 simultaneous connections.** 200 phones with the app
+   open exceeds it. That is a plan limit, not a code one — but it is the first
+   hard wall, and it arrives before anything in this repo does.
+3. **Roster download** at 27 kB is still nothing on 2G, once.
+
+**What is already efficient, and why:** the clock lives outside the persisted
+store (a tick in it cost ~11 ms of `JSON.stringify` per second); `applyTick`
+returns the same array when nothing changed, so no re-render; Firebase, the map
+and the admin console are separate lazy chunks, entry bundle **96 kB gzipped**;
+the ledger is capped per harbour in both the store and the feed.
+
+**Known inefficiency, unfixed:** `touchAdmin` fires on every pointer-down and
+keystroke in the admin console and each one is a `set()`, which re-serialises
+the whole persisted store. Harmless for a demo, wrong on a low-end phone.
+Throttle it to once every few seconds.
+
+**Size:** ~7 800 lines of source, 860 of tests. The two biggest files are
+`useDockStore.ts` (1 120) and `harbourSync.ts` (815); both are approaching the
+point where they should be split by concern rather than left to grow.
