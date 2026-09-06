@@ -167,10 +167,19 @@ export function monthInsight(
   const hours = hourHistogram(ledger, key)
   const busiest = hours.reduce((best, n, i) => (n > hours[best] ? i : best), 0)
 
-  // Only compare complete months. Six days of September against all of
-  // August reads as a -83% collapse and means nothing.
+  // Only compare complete months — at BOTH ends. Six days of September
+  // against all of August reads as a -83% collapse and means nothing, and
+  // that half was already guarded. The other half was not: the ledger is
+  // capped at LEDGER_LIMIT rows per harbour, so the OLDEST month in the
+  // window is truncated to however many days survived the cap. Nine days of
+  // July against all of August rendered as **+291%** in the admin console,
+  // three taps from a cold start, when the honest answer from the same data
+  // is −2%. A month is only comparable if the ledger reaches back past its
+  // first day.
   const complete = key !== monthKey(now)
-  const previous = previousKey && complete ? monthTotals(ledger, previousKey) : null
+  const oldest = ledger.reduce((min, e) => (e.releasedAt < min ? e.releasedAt : min), Infinity)
+  const covered = previousKey ? oldest <= Date.parse(`${previousKey}-01T00:00:00+05:30`) : false
+  const previous = previousKey && complete && covered ? monthTotals(ledger, previousKey) : null
   const cratesDelta =
     previous && previous.crates > 0
       ? Math.round(((totals.crates - previous.crates) / previous.crates) * 100)

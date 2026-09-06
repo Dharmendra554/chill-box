@@ -617,9 +617,18 @@ function AuditPanel() {
 
   useEffect(() => {
     let live = true
-    void verifyAudit(audit).then((index) => {
-      if (live) setBroken(index)
-    })
+    // `.catch`, because this is a `crypto.subtle` call and a rejection here
+    // left `broken` at null — which renders NOTHING: no green, no red, on
+    // the one panel whose entire job is to make a claim about the log. A
+    // panel that says nothing is read as a panel that found nothing wrong.
+    // -2 is "we could not check", which the panel says out loud.
+    void verifyAudit(audit)
+      .then((index) => {
+        if (live) setBroken(index)
+      })
+      .catch(() => {
+        if (live) setBroken(-2)
+      })
     return () => {
       live = false
     }
@@ -632,10 +641,18 @@ function AuditPanel() {
         <p
           className={cx(
             'border-3 border-rule px-3 py-2 text-sm font-extrabold',
-            broken === -1 ? 'bg-free text-free-ink' : 'bg-full text-full-ink',
+            broken === -1
+              ? 'bg-free text-free-ink'
+              : broken === -2
+                ? 'bg-late text-late-ink'
+                : 'bg-full text-full-ink',
           )}
         >
-          {broken === -1 ? t('adminAuditIntact') : t('adminAuditBroken', broken + 1)}
+          {broken === -1
+            ? t('adminAuditIntact')
+            : broken === -2
+              ? t('adminAuditUnchecked')
+              : t('adminAuditBroken', broken + 1)}
         </p>
       ) : null}
 

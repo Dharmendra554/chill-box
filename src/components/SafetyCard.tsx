@@ -38,6 +38,7 @@ export function SafetyCard({
   locating,
   seaKnown,
   seaFailed,
+  readingAt,
 }: {
   band: WaveBand | null
   fix: GeoFix | null
@@ -47,6 +48,8 @@ export function SafetyCard({
   seaKnown: boolean
   /** Whether the last attempt to fetch one failed. */
   seaFailed: boolean
+  /** When the reading on screen was taken, in harbour time. */
+  readingAt: number | null
 }) {
   const t = useT()
   const harbour = useDockStore(selectHarbour)
@@ -99,11 +102,24 @@ export function SafetyCard({
       </p>
 
       {rough ? (
-        <ol className="flex list-decimal flex-col gap-1.5 pl-5 font-bold">
-          <li>{t('safetyStepWait')}</li>
-          <li>{t('safetyStepLife')}</li>
-          <li>{t('safetyStepCall')}</li>
-        </ol>
+        <>
+          <ol className="flex list-decimal flex-col gap-1.5 pl-5 font-bold">
+            <li>{t('safetyStepWait')}</li>
+            <li>{t('safetyStepLife')}</li>
+            <li>{t('safetyStepCall')}</li>
+          </ol>
+          {/* A rough band deliberately outlives its own staleness gate,
+              because warning about breakers that may have passed is the safe
+              direction. That is a reason to date it, not a reason not to: a
+              six-hour-old "delay your landing" over a sea that is now flat
+              is still a confident number, and this card is the one a skipper
+              acts on. §2 makes no exception for warnings. */}
+          {readingAt !== null ? (
+            <p className="text-sm font-bold text-ink-2">
+              {t('waveStale', formatClock(readingAt))}
+            </p>
+          ) : null}
+        </>
       ) : null}
 
       <h3 className="text-sm font-extrabold uppercase">{t('emergency')}</h3>

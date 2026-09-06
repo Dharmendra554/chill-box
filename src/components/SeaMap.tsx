@@ -148,7 +148,7 @@ export function SeaMap({
     group.clearLayers()
 
     for (const landmark of harbour.landmarks) {
-      L.marker([landmark.lat, landmark.lon], { icon: dot() })
+      L.marker([landmark.lat, landmark.lon], { icon: dot(), keyboard: false })
         .addTo(group)
         .bindTooltip(landmarkLabel(landmark.key), {
           permanent: true,
@@ -205,7 +205,7 @@ export function SeaMap({
     group.clearLayers()
     if (!fix) return
 
-    L.marker([fix.lat, fix.lon], { icon: boatPin() }).addTo(group)
+    L.marker([fix.lat, fix.lon], { icon: boatPin(), keyboard: false }).addTo(group)
     if (routeTo) {
       L.polyline(routeLegs(fix, harbour, routeTo), {
         color: SEA,

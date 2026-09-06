@@ -53,11 +53,17 @@ jobs:
       # Skipped when the token is absent, so a fork or a clone still builds.
       # Create one with `npx firebase-tools login:ci` and add it as the
       # FIREBASE_TOKEN repository secret.
+      # `env`, NOT `secrets`, in the condition. The `secrets` context is not
+      # available to a step `if:` — GitHub resolves it to an empty context
+      # rather than erroring, so `secrets.FIREBASE_TOKEN != ''` is ALWAYS
+      # false and the step is skipped on every run, including runs where the
+      # secret exists. The build still goes green and nothing says the rules
+      # did not move. A guard that silently never fires is worse than none.
       - name: Deploy database rules
-        if: ${{ secrets.FIREBASE_TOKEN != '' }}
-        run: npx -y firebase-tools deploy --only database --token "$FIREBASE_TOKEN"
+        if: ${{ env.FIREBASE_TOKEN != '' }}
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: npx -y firebase-tools deploy --only database --token "$FIREBASE_TOKEN"
 
       - uses: actions/upload-pages-artifact@v5
         with:

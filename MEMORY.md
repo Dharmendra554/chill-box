@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the eleventh hostile audit round, pushed.
+**Last updated:** 7 Sept 2026, after the twelfth hostile audit round, pushed.
 
 ---
 
@@ -27,7 +27,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 83 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 85 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
 **First paint, measured, all of it:**
 
@@ -35,7 +35,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 | --- | --- |
 | Entry JS | 95 kB gz |
 | CSS | 12 kB gz |
-| Service worker + workbox runtime, first visit | 9 kB gz |
+| Service worker + workbox runtime + workbox-window, first visit | 11 kB gz |
 | **Firebase**, fetched at start-up by `main.tsx` | **88 kB gz** |
 | **Google Fonts** — three families; Noto Sans Telugu alone is 124 kB | **265 kB** |
 | **Total before the app can answer "is there room"** | **~470 kB** |
@@ -105,13 +105,13 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Eleven hostile audit rounds were run and acted on
+### Twelve hostile audit rounds were run and acted on
 
 Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, round 7's pair — **3.5**
 (rules/sync/store) and **4.5** (UI/honesty) — round 8's **3.5 / 3.5**, and
-round 9's **4.0 / 5.0**, round 10's **5.0 / 5.0** and round 11's **5.5 / 6.0**. Every round found real defects with all four gates
-green, and in ten of the eleven the *previous round's fixes* caused the next
-round's defects. Details in §9–§13 and §16–§21; the recipe is `AGENTS.md` §5.
+round 9's **4.0 / 5.0**, round 10's **5.0 / 5.0**, round 11's **5.5 / 6.0** and round 12's **5.5 / 6.0**. Every round found real defects with all four gates
+green, and in eleven of the twelve the *previous round's fixes* caused the next
+round's defects. Details in §9–§13 and §16–§22; the recipe is `AGENTS.md` §5.
 
 Splitting the review in two by concern is worth it: the auditors find
 disjoint sets and then converge on the same root cause.
@@ -125,7 +125,7 @@ sync layer and the score rose a point and a half.
 **So: one subsystem per round.** Not because it is tidier — because nine
 rounds of evidence say a big round buys its own next round's defects.
 
-**Assume the twelfth will find something too.** That has been true eleven times.
+**Assume the thirteenth will find something too.** That has been true twelve times.
 
 ---
 
@@ -561,10 +561,13 @@ NOT done in round 7 — it is a change to the subscription lifecycle, which is
 the exact seam five of six rounds broke, so it gets its own round and its own
 audit.
 
-**Size:** 8 572 lines of source, 1 292 of tests. The two biggest files are
-`useDockStore.ts` (1 224) and `harbourSync.ts` (1 119); both are past the
-point where they should be split by concern rather than left to grow. (These
-numbers drift every round. Re-count them; do not copy them forward.)
+**Size:** 9 037 lines of source, 1 448 of tests. The two biggest files are
+`useDockStore.ts` (1 258) and `harbourSync.ts` (1 219); both are well past
+the point where they should be split by concern rather than left to grow.
+
+**These numbers drift every round and have now gone stale twice** — the
+paragraph told the next agent to re-count them and the next agent copied
+them forward anyway. Do not quote a line count you have not just measured.
 
 ---
 
@@ -750,8 +753,10 @@ webfonts, and the demo/live toggle. One subsystem per round.
 
 Nine rounds kept producing rules claims that were true in the file and false
 in the database, or the reverse. This script signs in **two real anonymous
-identities** and puts **40 assertions** to the deployed rules — 17 writes the
-app itself must be allowed to make, and 23 the rules header says are refused.
+identities** and puts **45 assertions** to the deployed rules — 17 writes the
+app itself must be allowed to make, and 28 the rules header says are refused,
+four of them unauthenticated. (Recount these when you change the script; the
+first version of this line went stale within one round.)
 It writes under `harbours/probe-<timestamp>`, a fresh namespace per run.
 
 Where the app's real write shape differs from a minimal one, the script sends
@@ -884,6 +889,54 @@ how the published rules came to refuse a field the client had started
 writing. `.firebaserc` is in the repo and the Deploy workflow now publishes
 the rules alongside the build, gated on a `FIREBASE_TOKEN` secret so a fork
 still builds without one.
+
+**Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
+of webfonts, the demo/live toggle. One subsystem per round.
+
+---
+
+## 22. Twelfth review — 5.5 and 6.0 → fixed
+
+Both auditors held their scores rather than raising them, and both said why
+in the same words: the round led with a claim that was false. One of them
+called this *"the strongest state this codebase has been in"* and still
+refused to ship it, which is the right instinct.
+
+**The finding that matters most is a lesson about fixes, not about code.**
+
+Round 11 closed the deploy asymmetry with a workflow step gated on
+`if: ${{ secrets.FIREBASE_TOKEN != '' }}`. **The `secrets` context is not
+available in a step `if:`.** GitHub resolves it to an empty context rather
+than erroring, so the condition is always false and the step is skipped on
+every run — *including runs where the secret exists*. The build goes green.
+Nothing anywhere says the rules did not move. A guard that silently never
+fires is worse than no guard, because it also stops anyone looking.
+
+`env` is available in a step `if:`; the secret is hoisted there now.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **The swell staleness gate was inert on a fast-clocked phone, and permanent on a slow one.** `fetchedAt` was `Date.now()` (device) and the age was computed against `serverNow()` (harbour) | The identical defect this project fixed for `position.timestamp` **in the previous round**, one file away, with the helper already written and imported next door. Forty minutes fast and the 25-minute gate never fires: a green "Safe landing" off a two-hour-old figure. Forty minutes slow and every reading is stale the moment it lands |
+| **And the service worker served it stale-while-revalidate for thirty minutes**, so a repeat visit resolved from cache and `Date.now()` stamped a half-hour-old body as brand new. The gate could never fire against a cache hit, because the cache hit reset the clock the gate measures | That one affected *every* phone, not only mis-clocked ones. `fetchedAt` is now Open-Meteo's own `current.time` — when the sea was like this, not when we asked — converted into harbour time |
+| **The admin console showed a fabricated +291% month-on-month trend** | The ledger is capped per harbour, so the oldest month in the window is truncated to whatever survived the cap. Nine days of July against all of August reads as +291% when the honest answer from the same data is −2%. Three taps from a cold start. `monthInsight` guarded the *selected* month being complete and never asked whether the *previous* one was |
+| **A skipper on full bars was still told "No signal."** A transaction that aborts with `maxretry` or `set` carries no error code, so `reasonFor` called it `offline` | An admin pressing Reset demo mid-deposit does exactly this. `unsettled` is its own reason now — nothing was written, the link is fine, tap again — and **the test asserts it positively**. The old test asserted `not stale`, which passes for every other value in the union and could never pin the right one |
+| **A total ledger-write failure was reported as success, silently** | The crates are free, the skipper walks away, and the row the society bills from does not exist — permanently, because nothing retries it. Round 11 gave the *audit* row a message and left the *billing* row mute |
+| **`verifyAudit` was a floating promise**, so a `crypto.subtle` rejection left the integrity panel rendering nothing at all | A panel that says nothing is read as a panel that found nothing wrong. It now says it could not check |
+| **A failed giveback still reported "the box filled up"** | Which tells the skipper he holds nothing and should try elsewhere — while a crate of his blocks that box for four hours with nobody looking for it |
+| The booking receipt called `showModal()` unguarded, alone among the four dialogs | On an old Android WebView that throws — one frame after the booking succeeded. The crate is claimed in the database and the phone shows the crash screen and a **Reset this phone** button |
+| The rough-breakers card carried no age at any age | Being conservative about staleness is a reason to date a warning, not a reason not to |
+| Landmark and boat markers were still keyboard-focusable inside a `role="img"` subtree — round 11 fixed the box pins only | |
+| `toWireBoat` could send `nameTe: undefined`, which the SDK rejects — the `pruneWire` defect in a third wire shape | |
+| `mock.ts` said "90 days of completed cycles"; after `capLedger` the console sees ~45 | |
+| §19's assertion counts were stale within one round of being written; §14's line counts had gone stale a second time, in the paragraph that tells the reader to re-count them | |
+
+**What both auditors verified and could not break**, recorded because it is
+the first time this has been said twice in one round: every write the app
+makes was walked against the rules file and **none is refused**; the byte
+table re-measured to the byte; the 320 px arithmetic re-derived for calm,
+moderate and rough in Telugu with nothing overlapping; the four-state sea
+logic correct in all six reachable combinations; no dead exports left; the
+per-slot security property genuinely holds.
 
 **Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
 of webfonts, the demo/live toggle. One subsystem per round.

@@ -66,6 +66,8 @@ export type BookingError =
   | 'stale'
   | 'unseeded'
   | 'partial'
+  | 'unsettled'
+  | 'ledgerLost'
 
 /**
  * What happened to a shared write. Every caller must be able to tell the
@@ -82,7 +84,17 @@ export type RemoteResult =
  */
 function reasonFor(error: unknown): BookingError {
   const code = (error as { code?: string })?.code ?? (error as Error)?.message ?? ''
-  return /permission|denied/i.test(String(code)) ? 'refused' : 'offline'
+  const text = String(code)
+  if (/permission|denied/i.test(text)) return 'refused'
+  // `maxretry` and `set` are how a transaction reports that it could not
+  // settle: too many re-runs, or a plain write landing on the same path —
+  // which is what an admin pressing Reset demo does to a skipper mid-
+  // deposit. Neither is a dead link, and calling them `offline` told a
+  // skipper on full bars, with a socket this very call had just proved live
+  // by completing a read, to wait for a signal he already had. Its own
+  // reason: nothing was written, and trying again is the right move.
+  if (/maxretry|^set$/i.test(text)) return 'unsettled'
+  return 'offline'
 }
 
 /**
@@ -603,7 +615,13 @@ interface WireBoat {
 function toWireBoat(boat: Boat): WireBoat {
   return {
     name: boat.nameEn,
-    nameTe: boat.nameTe,
+    // Falls back rather than sending `undefined`, which the Firebase SDK
+    // REJECTS rather than dropping — the pruneWire defect, in the boat wire
+    // shape. Nothing else guards it: `writableBoat` checks name, owner,
+    // mobile and registeredAt, `watchRoster`'s filter checks name and
+    // mobileLast4, and `looksValid` does not inspect boats at all. Hard to
+    // reach today; free to close.
+    nameTe: boat.nameTe ?? boat.nameEn,
     owner: boat.owner,
     // Tolerant of a boat that arrived without one. It used to read
     // `boat.mobile.slice(-4)` and threw on the first such record, which took
@@ -895,7 +913,7 @@ export async function reserveRemote(
   boatId: string,
   crates: number,
   species: Species,
-): Promise<{ ok: true } | { ok: false; error: BookingError }> {
+): Promise<RemoteResult> {
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
 
@@ -934,6 +952,10 @@ export async function reserveRemote(
     // on the server while the skipper was told the write had been refused and
     // that he held nothing. That crate then blocked the box for four hours.
     const won: number[] = []
+    // Crates we took and could not give back. The skipper is holding these
+    // whatever we tell him, so the message must not be "the box filled up,
+    // you have nothing" — he has one, and it blocks that box for four hours.
+    let stranded = 0
     try {
       for (const index of candidates) {
         if (won.length === crates) break
@@ -949,18 +971,32 @@ export async function reserveRemote(
           // still left the crate reserved. The skipper needs the first
           // reason, and the crate needs the attempt.
           try {
-            await changeOwnSlot(a, harbourId, boxId, index, boatId, ['reserved'], () => ({
-              status: 'empty',
-            }))
+            const back = await changeOwnSlot(
+              a,
+              harbourId,
+              boxId,
+              index,
+              boatId,
+              ['reserved'],
+              () => ({ status: 'empty' }),
+            )
+            if (!back) stranded += 1
           } catch {
-            /* nothing more we can do; the hold expires in four hours */
+            // Nothing more we can do; the hold expires in four hours. But we
+            // know it is still there, and the skipper must be told he holds
+            // a crate rather than that the box filled up.
+            stranded += 1
           }
         }
       }
     }
 
-    // The box filled up, which is exactly what happened.
-    return won.length === crates ? { ok: true } : { ok: false, error: 'boxFull' }
+    if (won.length === crates) return { ok: true }
+    // "boxFull" tells the skipper he has nothing and should try another box.
+    // That is true only if the giveback worked. If it did not, he IS holding
+    // a crate here, and sending him elsewhere leaves it blocking this box
+    // for four hours with nobody looking for it.
+    return { ok: false, error: stranded > 0 ? 'partial' : 'boxFull', freed: stranded }
   } catch (error) {
     return { ok: false, error: reasonFor(error) }
   }
@@ -1067,10 +1103,12 @@ export async function releaseRemote(
       ),
     )
   } catch {
-    // Same judgement as above: the crate is already free, which is what the
-    // harbour needs. Swallowing it here rather than leaving an unhandled
-    // rejection at the call site — but it must not be reported as failure,
-    // because the release itself did happen.
+    // The crate is free, which is what the harbour needs, so this is NOT a
+    // failed release — but it is not a silent one either. The ledger is what
+    // the society bills from and nothing ever retries this write, so a
+    // swallowed failure means the trip is never billed and nobody is told.
+    // Round 11 gave the AUDIT row a message and left the BILLING row mute.
+    return { ok: false, error: 'ledgerLost', freed: freed.freed.length }
   }
   // Freed some but not all: the skipper has crates still in the box and must
   // be told so, even though the rows for what did come out are written.

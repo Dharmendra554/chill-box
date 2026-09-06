@@ -661,3 +661,35 @@ describe('an overstay must be billed as one', () => {
     expect(isOverdue(slot, NOW)).toBe(false)
   })
 })
+
+describe('the month-on-month trend', () => {
+  const row = (releasedAt: number, crates = 1): LedgerEntry => ({
+    id: `t-${releasedAt}-${crates}`,
+    harbourId: H,
+    boatId: '04',
+    boxId: 'box1',
+    crates,
+    species: 'prawn',
+    depositedAt: releasedAt - HOUR_MS,
+    releasedAt,
+    overstay: false,
+  })
+
+  const AUG = Date.parse('2026-08-15T10:00:00+05:30')
+  const JUL_LATE = Date.parse('2026-07-28T10:00:00+05:30')
+  const JUN = Date.parse('2026-06-20T10:00:00+05:30')
+  const SEP = Date.parse('2026-09-06T10:00:00+05:30')
+
+  it('says nothing when the previous month is only partly in the ledger', () => {
+    // The ledger is capped per harbour, so the OLDEST month in the window is
+    // whatever survived the cap. Nine days of July against all of August
+    // rendered as +291% in the admin console when the honest answer was -2%.
+    const truncated = [row(JUL_LATE), row(AUG, 4)]
+    expect(monthInsight(truncated, '2026-08', '2026-07', SEP).cratesDelta).toBeNull()
+  })
+
+  it('reports the trend once the previous month is fully covered', () => {
+    const full = [row(JUN), row(JUL_LATE, 5), row(AUG, 4)]
+    expect(monthInsight(full, '2026-08', '2026-07', SEP).cratesDelta).toBe(-20)
+  })
+})

@@ -457,9 +457,14 @@ describe('a transaction that aborts without a code', () => {
     expect(held.length).toBe(1)
     abort.add(held[0])
 
-    const outcome = await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)
-    expect(outcome.ok).toBe(false)
-    expect(outcome).not.toMatchObject({ error: 'stale' })
+    // Asserted POSITIVELY.  passed for every other value in the
+    // union, so it could never pin the right one — and the right one was
+    // 'offline', which tells a skipper on full bars to wait for a signal he
+    // already has.
+    expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toMatchObject({
+      ok: false,
+      error: 'unsettled',
+    })
   })
 })
 

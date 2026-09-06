@@ -159,7 +159,8 @@ transaction on its own slot, so when two boats tap the last crate at the same
 moment the server settles it: exactly one wins and the other is told why.
 Two crates are two writes and either can lose, so a booking that cannot win
 both gives back the one it took rather than leaving you holding half a
-booking. The 2-crate cap is checked on the client — no rule can count across
+booking — and if that giveback is itself refused, the app says you are still
+holding a crate rather than telling you the box filled up. The 2-crate cap is checked on the client — no rule can count across
 boxes. Free Spark plan, no card. Setup:
 
 1. Create a project at [firebase.google.com](https://firebase.google.com) →
@@ -292,7 +293,7 @@ The skipper is never asked whether they have signal — the app works it out:
   are local maths.
 - The map, the database client and the admin console are separate chunks —
   though only the map and the console are genuinely off the critical path.
-  Measured, gzipped: entry **95 kB**, CSS **12 kB**, service worker **9 kB**,
+  Measured, gzipped: entry **95 kB**, CSS **12 kB**, service worker **11 kB**,
   and **88 kB of Firebase**, which is fetched at start-up because the
   "numbers are still coming" banner cannot clear until the first snapshot
   arrives through it. That is **~205 kB of our own code** before the app can

@@ -60,6 +60,7 @@ export function DockScreen({
   band,
   seaKnown,
   seaFailed,
+  readingAt,
   onChangeHarbour,
   onResetDemo,
 }: {
@@ -68,6 +69,8 @@ export function DockScreen({
   seaKnown: boolean
   /** Whether the last attempt to fetch one failed. */
   seaFailed: boolean
+  /** When the reading on screen was taken, in harbour time. */
+  readingAt: number | null
   onChangeHarbour: () => void
   onResetDemo: () => void | Promise<void>
 }) {
@@ -219,7 +222,7 @@ export function DockScreen({
       {/* `geo.status` was computed, documented and read by nothing at all —
           so the safety card could never tell "no position yet" from "no
           position ever". */}
-      <SafetyCard band={band} fix={geo.fix} locating={geo.status !== "unavailable"} seaKnown={seaKnown} seaFailed={seaFailed} />
+      <SafetyCard band={band} fix={geo.fix} locating={geo.status !== "unavailable"} seaKnown={seaKnown} seaFailed={seaFailed} readingAt={readingAt} />
 
       <DemoTools
         simulating={simulated !== null}
@@ -395,7 +398,16 @@ function BookingConfirmed({
   // second one somewhere else. A screen-reader user was never told it had
   // appeared at all.
   useEffect(() => {
-    ref.current?.showModal()
+    const el = ref.current
+    // Feature-detected, like the other three dialogs. An unguarded
+    // showModal() throws on an old Android WebView — and it would throw
+    // exactly ONE FRAME after a booking succeeded, so a skipper whose crate
+    // was already claimed in the shared database would get the crash screen
+    // and its "Reset this phone" button instead of the code he came for.
+    if (el && !el.open) {
+      if (typeof el.showModal === 'function') el.showModal()
+      else el.setAttribute('open', '')
+    }
   }, [])
 
   return (

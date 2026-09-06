@@ -461,6 +461,18 @@ export const useDockStore = create<DockState>()(
           set({ toast: toast('error', t(lang, 'syncUnseeded')) })
           return
         }
+        if (result.error === 'ledgerLost') {
+          // The crates ARE free — this is not a failed release. What was
+          // lost is the row the society bills from, and nothing retries it.
+          set({ toast: toast('warn', t(lang, 'syncLedgerLost')) })
+          return
+        }
+        if (result.error === 'unsettled') {
+          // Nothing was written and the link is fine. Trying again is the
+          // right move, and "no signal" on full bars is not.
+          set({ toast: toast('warn', t(lang, 'syncBusy')) })
+          return
+        }
         if (result.error === 'partial') {
           // Some of this boat's crates moved and some did not. Silence here
           // is the dangerous one: the skipper walks away believing both

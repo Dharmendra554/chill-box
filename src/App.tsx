@@ -31,7 +31,7 @@ import {
 /**
  * The harbour master's console, off the skipper's critical path.
  *
- * It is 659 lines, and it pulls in the reporting maths, the CSV writer and
+ * It is ~680 lines, and it pulls in the reporting maths, the CSV writer and
  * the PBKDF2 verifier behind it. Twenty skippers on 2G were downloading all
  * of it to look at three boxes, and never opening it — while MEMORY.md
  * claimed it was already a separate chunk. It lives at #admin only, so
@@ -258,6 +258,7 @@ export default function App() {
                 band={band}
                 seaKnown={marine.reading !== null}
                 seaFailed={marine.error}
+                readingAt={marine.reading?.fetchedAt ?? null}
                 onChangeHarbour={signOut}
                 onResetDemo={resetDemo}
               />
