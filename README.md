@@ -133,6 +133,15 @@ Excel on Windows. It copies the controls a government portal uses:
   an unkeyed chain cannot, and an HMAC would not help because the key would
   ship in the same bundle. Only a server-held log is tamper-proof.
 
+  **And it lives only on the phone that wrote it.** Unlike the crates, the
+  roster and the ledger, the action log is never shared. Two officials with
+  two phones build two separate chains, each of which verifies as intact,
+  and neither can see the other's entries — so "who took my crate out?" has
+  two partial answers and the console vouches for both. That is a real limit
+  of a client-only design and the reason the log is a receipt for honest
+  mistakes rather than an audit trail. Moving it behind the same API route
+  as `verifyPin` fixes it and nothing else in the app would move.
+
 **What it is not:** enforcement. Authorisation runs on the client, so anyone
 with developer tools can edit this device's own state. Real enforcement needs a
 server — moving `verifyPin` and `appendAudit` behind an API route is the only
@@ -283,10 +292,10 @@ The skipper is never asked whether they have signal — the app works it out:
   are local maths.
 - The map, the database client and the admin console are separate chunks —
   though only the map and the console are genuinely off the critical path.
-  Measured, gzipped: entry **94 kB**, CSS **12 kB**, service worker **9 kB**,
+  Measured, gzipped: entry **95 kB**, CSS **12 kB**, service worker **9 kB**,
   and **88 kB of Firebase**, which is fetched at start-up because the
   "numbers are still coming" banner cannot clear until the first snapshot
-  arrives through it. That is **~203 kB of our own code** before the app can
+  arrives through it. That is **~205 kB of our own code** before the app can
   stand behind a figure, plus **265 kB of webfonts** on a cold visit — Noto
   Sans Telugu alone is 124 kB. **~470 kB in total**, and the fonts are the
   largest single item. Self-hosting and subsetting them is the next real

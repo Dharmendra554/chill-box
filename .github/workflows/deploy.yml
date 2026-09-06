@@ -41,6 +41,24 @@ jobs:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+      # The database rules, with the same push that deploys the client.
+      #
+      # Every push has always deployed new client code; the rules only moved
+      # when a human remembered. That asymmetry is not a process problem, it
+      # is a defect generator: it once left the published rules refusing a
+      # field the client had started writing, which bricked registration and
+      # made the app blame the network (MEMORY §16). A client and the rules
+      # it assumes have to travel together.
+      #
+      # Skipped when the token is absent, so a fork or a clone still builds.
+      # Create one with `npx firebase-tools login:ci` and add it as the
+      # FIREBASE_TOKEN repository secret.
+      - name: Deploy database rules
+        if: ${{ secrets.FIREBASE_TOKEN != '' }}
+        run: npx -y firebase-tools deploy --only database --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist

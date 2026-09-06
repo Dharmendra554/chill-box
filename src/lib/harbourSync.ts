@@ -142,6 +142,21 @@ export function serverNow(): number {
 }
 
 /**
+ * A device-clock instant, expressed in harbour time.
+ *
+ * The one timestamp the app does not mint itself is `position.timestamp`,
+ * which the browser stamps from the device clock. Ageing it against
+ * `serverNow()` compared two different clocks: a phone twenty minutes slow
+ * showed a permanent "this position is 20 minutes old" over a fix one second
+ * old, and a phone twenty minutes fast clamped to zero and never warned at
+ * all, however stale the fix really was — on the distress panel, where the
+ * age of a position is the difference between a search area and a wrong one.
+ */
+export function toHarbourTime(deviceMs: number): number {
+  return deviceMs + serverOffset
+}
+
+/**
  * A server-issued identity for this phone, before anything touches the data.
  *
  * Anonymous sign-in, so nothing changes for the skipper: no account, no
@@ -927,11 +942,19 @@ export async function reserveRemote(
     } finally {
       if (won.length !== crates) {
         for (const index of won) {
-          // Best effort: if this throws too, the outer catch reports the
-          // original failure, which is the one the skipper needs.
-          await changeOwnSlot(a, harbourId, boxId, index, boatId, ['reserved'], () => ({
-            status: 'empty',
-          }))
+          // Caught HERE, not left to the outer catch. A throw inside a
+          // `finally` REPLACES the pending exception, so a giveback that
+          // failed for the same reason the claim did — an admin's Reset demo
+          // landing on both paths — would have hidden the original error and
+          // still left the crate reserved. The skipper needs the first
+          // reason, and the crate needs the attempt.
+          try {
+            await changeOwnSlot(a, harbourId, boxId, index, boatId, ['reserved'], () => ({
+              status: 'empty',
+            }))
+          } catch {
+            /* nothing more we can do; the hold expires in four hours */
+          }
         }
       }
     }

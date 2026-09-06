@@ -76,6 +76,29 @@ EXPIRED=$(( NOW - 5*3600*1000 ))      # reserved 5 h ago: past the 4 h hold
 BOAT='{"name":"Probe","owner":"Probe Owner","mobileLast4":"1234","status":"active","registeredAt":'"$NOW"'}'
 SLOT_R='{"status":"reserved","boatId":"01","species":"prawn","reservedAt":'"$NOW"'}'
 
+# The rules header's FIRST enforcement claim, and until now the only one
+# with no assertion behind it: the web config ships in the bundle, so anyone
+# can read it, and what stops them writing is `auth != null`. `noauth` sends
+# the same requests with the token omitted.
+noauth() {
+  want=$1; label=$2; method=$3; path=$4; body=${5:-}
+  out=$(curl -s -X "$method" -H 'Content-Type: application/json' \
+    ${body:+-d "$body"} "$H/$path.json")
+  denied=$(echo "$out" | grep -c "Permission denied")
+  if [ "$want" = DENY ] && [ "$denied" = 1 ]; then
+    echo "  ok   [$want] $label"
+  else
+    fails=$((fails + 1))
+    echo "  FAIL [$want] $label -> $(echo "$out" | tr -d '\n' | head -c 160)"
+  fi
+}
+
+echo "== the public web config alone grants nothing =="
+noauth DENY "a signed-out client cannot create a boat"  PUT "boats/99" "$BOAT"
+noauth DENY "…cannot take a crate"                      PUT "boxes/box1/9" '{"status":"reserved","boatId":"01","reservedAt":'"$NOW"'}'
+noauth DENY "…cannot empty one"                         PUT "boxes/box1/9" '{"status":"empty"}'
+noauth DENY "…cannot append a ledger row"               PUT "ledger/anon" '{"boatId":"01","boxId":"box1","crates":1,"depositedAt":1,"releasedAt":2,"overstay":false}'
+
 echo "== what the app itself must be allowed to do =="
 check PASS "register a boat bound to this phone"   PUT   "boats/01" "$TA" "${BOAT%\}},\"uid\":\"$UA\"}"
 check PASS "register a boat with no binding"       PUT   "boats/02" "$TB" "$BOAT"
@@ -92,13 +115,20 @@ check PASS "approve a boat, as putBoat sends it"   PATCH "boats/01" "$TA" "${BOA
 # write, and `resetDemo`'s correctness argument rests on it being atomic.
 check PASS "publish a harbour: 30 slots at once"   PATCH "boxes" "$TA" "$(
   printf '{'
+  printf '"box1/0":{"status":"occupied","boatId":"01","species":"prawn","depositedAt":%d},' "$OLD"
+  printf '"box1/1":{"status":"overstay","boatId":"01","depositedAt":%d},' "$OLD"
+  printf '"box1/2":{"status":"reserved","boatId":"01","reservedAt":%d}' "$NOW"
+  # The remaining 27, empty. Distinct keys: the first version emitted all 30
+  # empties and THEN the interesting three, so box1/0-2 appeared twice and
+  # which value the server kept was undefined — the assertion may have been
+  # testing thirty empty slots and passing for the wrong reason.
   for b in 1 2 3; do
     for s in 0 1 2 3 4 5 6 7 8 9; do
-      printf '"box%d/%d":{"status":"empty"},' "$b" "$s"
+      [ "$b" = 1 ] && [ "$s" -le 2 ] && continue
+      printf ',"box%d/%d":{"status":"empty"}' "$b" "$s"
     done
   done
-  printf '"box1/0":{"status":"occupied","boatId":"01","species":"prawn","depositedAt":%d},' "$OLD"
-  printf '"box1/1":{"status":"overstay","boatId":"01","depositedAt":%d}}' "$OLD"
+  printf '}'
 )"
 
 echo "== a crate belongs to a boat, and a boat to a phone =="
@@ -108,7 +138,14 @@ check PASS "A holds a crate again"                 PUT   "boxes/box1/0" "$TA" "$
 check DENY "B cannot claim a slot for A's boat"    PUT   "boxes/box1/1" "$TB" "$SLOT_R"
 check DENY "B cannot overwrite A's live hold"      PUT   "boxes/box1/0" "$TB" '{"status":"empty"}'
 check DENY "B cannot delete A's slot"              DELETE "boxes/box1/0" "$TB"
-check DENY "B cannot empty the boxes node"         PATCH "boxes" "$TB" '{"box1/0":{"status":"empty"}}'
+# Labelled for what it proves. The old label said "B cannot empty the boxes
+# node", but box1/0 holds A's live crate, so the refusal was "that is A's" —
+# and the rules header says in capitals that a client CAN empty a harbour of
+# unclaimed boats one slot at a time, which is the shipped demo state. The
+# genuinely absolute claim is the one below it: there is no write permission
+# at the node itself, whatever the slots underneath say.
+check DENY "B cannot bulk-write over A's crate"    PATCH "boxes" "$TB" '{"box1/0":{"status":"empty"}}'
+check DENY "nobody may write the boxes node itself" PUT  "boxes" "$TB" '{"box1":{"0":{"status":"empty"}}}'
 check DENY "B cannot invent box9"                  PUT   "boxes/box9/0" "$TB" '{"status":"empty"}'
 check DENY "B cannot invent slot 47"               PUT   "boxes/box1/47" "$TB" '{"status":"empty"}'
 check DENY "…nor by writing one child of it"       PUT   "boxes/box1/47/status" "$TB" '"empty"'

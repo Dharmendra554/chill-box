@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNow } from '../hooks/useClock'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { BOX_SHORT, type StringKey } from '../i18n/dictionary'
@@ -59,12 +59,15 @@ const PLAN_HOURS = [2, 4, 5]
 export function DockScreen({
   band,
   seaKnown,
+  seaFailed,
   onChangeHarbour,
   onResetDemo,
 }: {
   band: WaveBand | null
   /** Whether a swell reading has EVER landed for this harbour. */
   seaKnown: boolean
+  /** Whether the last attempt to fetch one failed. */
+  seaFailed: boolean
   onChangeHarbour: () => void
   onResetDemo: () => void | Promise<void>
 }) {
@@ -216,7 +219,7 @@ export function DockScreen({
       {/* `geo.status` was computed, documented and read by nothing at all —
           so the safety card could never tell "no position yet" from "no
           position ever". */}
-      <SafetyCard band={band} fix={geo.fix} locating={geo.status !== "unavailable"} seaKnown={seaKnown} />
+      <SafetyCard band={band} fix={geo.fix} locating={geo.status !== "unavailable"} seaKnown={seaKnown} seaFailed={seaFailed} />
 
       <DemoTools
         simulating={simulated !== null}
@@ -382,10 +385,28 @@ function BookingConfirmed({
   onClose: () => void
 }) {
   const t = useT()
+  const ref = useRef<HTMLDialogElement>(null)
+
+  // A real <dialog>, like every other overlay in the app. It was a bare
+  // <div>: no focus move, no Escape, no trap, and the page behind it still
+  // tabbable. This is the LAST step of the booking flow and it carries the
+  // code a skipper reads out at the box — the whole reason it exists is to
+  // make him certain the slot is his, so he does not hedge by taking a
+  // second one somewhere else. A screen-reader user was never told it had
+  // appeared at all.
+  useEffect(() => {
+    ref.current?.showModal()
+  }, [])
+
   return (
-    <div className="fixed inset-0 z-[400] grid place-items-center bg-[var(--c-scrim)] p-4">
-      <section className="sheet-in card flex w-full max-w-md flex-col gap-3 border-free bg-free-wash p-5">
-        <h2 className="flex items-center gap-2 text-2xl">
+    <dialog
+      ref={ref}
+      className="m-auto w-full max-w-md bg-transparent p-4 backdrop:bg-[var(--c-scrim)]"
+      aria-labelledby="booked-title"
+      onCancel={onClose}
+    >
+      <section className="sheet-in card flex w-full flex-col gap-3 border-free bg-free-wash p-5">
+        <h2 id="booked-title" className="flex items-center gap-2 text-2xl">
           <CrateIcon size={28} />
           {t('bookedTitle')}
         </h2>
@@ -401,7 +422,7 @@ function BookingConfirmed({
           {t('ok')}
         </button>
       </section>
-    </div>
+    </dialog>
   )
 }
 

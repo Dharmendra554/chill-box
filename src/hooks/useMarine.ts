@@ -5,6 +5,17 @@ import type { MarineReading } from '../types'
 /** Refresh interval for the swell reading. */
 const EVERY_MS = 10 * 60 * 1000
 
+/**
+ * Older than this and the reading is not a current sea state any more.
+ *
+ * Freshness used to rest entirely on the interval above, and Android freezes
+ * timers in a backgrounded tab. Pocket the phone in calm water at 02:00 and
+ * reopen it on the approach at 04:00, and the strip still painted a green
+ * "Safe landing" off a two-hour-old figure with no date on it. Two missed
+ * cycles is generous and still bounded.
+ */
+export const MARINE_STALE_MS = 25 * 60 * 1000
+
 interface Cached {
   lat: number
   lon: number
@@ -35,9 +46,17 @@ export function useMarine(
   useEffect(() => {
     const ac = new AbortController()
 
-    const load = (signal?: AbortSignal) =>
-      fetchWaveHeight(lat, lon, signal)
-        .then((reading) => setCache({ lat, lon, reading, error: false }))
+    // Every fetch carries the SAME signal, including the interval's. Without
+    // it, a request started at harbour A that resolved after the switch to B
+    // wrote A's reading back under A's coordinates — the render guard then
+    // correctly refused to show it, so nothing wrong appeared, but B's sea
+    // state vanished until the next ten-minute tick. If B's was rough, the
+    // red breakers card and its three landing steps went with it.
+    const load = () =>
+      fetchWaveHeight(lat, lon, ac.signal)
+        .then((reading) => {
+          if (!ac.signal.aborted) setCache({ lat, lon, reading, error: false })
+        })
         .catch(() => {
           if (ac.signal.aborted) return
           // KEEP the last reading only if it came from HERE. `{...prev, lat,
@@ -54,7 +73,7 @@ export function useMarine(
           )
         })
 
-    void load(ac.signal)
+    void load()
     const id = window.setInterval(() => void load(), EVERY_MS)
 
     return () => {

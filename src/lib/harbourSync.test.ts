@@ -116,8 +116,16 @@ describe('expireHolds', () => {
     // The whole point of passing a clock in: this runs against the harbour's
     // time, so one phone with a six-hour-fast clock cannot empty every
     // reserved slot in the harbour the moment its owner books anything.
-    const wire = at(Date.now())
-    expireHolds(wire, Date.now() - 6 * 60 * 60 * 1000)
+    //
+    // The hold must be OLD by the device clock and YOUNG by the harbour's,
+    // which is the only arrangement the two implementations disagree about.
+    // The first version reserved at `Date.now()` and passed a clock six
+    // hours earlier — where a `Date.now()` implementation says "0 elapsed"
+    // and the correct one says "negative elapsed", and both leave the hold
+    // alone. It asserted a direction in which the defect does not show.
+    const fiveHoursAgo = Date.now() - 5 * 60 * 60 * 1000
+    const wire = at(fiveHoursAgo)
+    expireHolds(wire, fiveHoursAgo + 60_000) // the harbour says one minute in
     expect(wire.box1[0].status).toBe('reserved')
   })
 })

@@ -846,8 +846,23 @@ export const useDockStore = create<DockState>()(
 
         lockAdmin: () => set({ adminUnlocked: false, tab: 'dock' }),
 
+        /**
+         * Append to the action log, and say so if it fails.
+         *
+         * Caught HERE rather than at each call site, because every caller
+         * writes `void record(...)` — the log must never block an admin
+         * action — and a rejected `crypto.subtle` digest was therefore
+         * silent. A MISSING row does not break the hash chain; only an
+         * altered one does. So the console went on reporting "Audit intact"
+         * in green over a log with a hole in it, which is worse than an
+         * obviously broken log: it is a receipt that vouches for itself.
+         */
         record: async (action, target, detail = '') => {
-          set({ audit: await appendAudit(get().audit, action, target, detail) })
+          try {
+            set({ audit: await appendAudit(get().audit, action, target, detail) })
+          } catch {
+            set({ toast: toast('warn', t(get().lang, 'auditFailed')) })
+          }
         },
 
         approveBoat: async (id) => {
@@ -1228,9 +1243,4 @@ export function selectMyBoat(state: DockState): Boat | null {
       (b) => b.harbourId === state.harbourId && b.id === state.myBoatId,
     ) ?? null
   )
-}
-
-export function selectMyBoxId(state: DockState): BoxId | null {
-  if (!state.myBoatId) return null
-  return activeBoxId(selectBoxes(state), state.myBoatId)
 }

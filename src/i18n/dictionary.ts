@@ -174,6 +174,7 @@ const S = {
   syncNoChange: { te: 'ఇది ఇప్పటికే జరిగిపోయింది. హార్బర్ రికార్డు ప్రకారం మార్చడానికి ఏమీ లేదు.', en: 'That is already done — the harbour record has nothing left to change.' },
   syncUnseeded: { te: 'ఈ హార్బర్ ఇంకా సెటప్ కాలేదు. అడ్మిన్‌ను ఒకసారి అడగండి.', en: 'This harbour is not set up yet. Ask the harbour admin.' },
   syncRefused: { te: 'హార్బర్ రికార్డు దీన్ని ఒప్పుకోలేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'The harbour record refused that. Tell someone at the box.' },
+  auditFailed: { te: 'ఈ చర్య రికార్డు కాలేదు. లాగ్‌లో ఇది కనిపించదు.', en: 'That action was not recorded. It will not appear in the log.' },
   syncPartial: { te: 'మీ క్రేట్లలో ఒకటి మాత్రమే మారింది. బాక్స్ దగ్గరకు వెళ్లి చూడండి.', en: 'Only one of your crates changed. Go to the box and check.' },
   loadingTitle: { te: 'సంఖ్యలు వస్తున్నాయి…', en: 'Getting the numbers…' },
   loadingBody: { te: 'కింద కనిపిస్తున్నది ఇంకా పాతది.', en: 'What is below is not current yet.' },

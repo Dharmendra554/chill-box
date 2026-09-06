@@ -12,7 +12,7 @@ import { HarbourScreen } from './components/HarbourScreen'
 import { RegisterScreen } from './components/RegisterScreen'
 import { useNow } from './hooks/useClock'
 import { vibrate } from './hooks/useHaptics'
-import { useMarine } from './hooks/useMarine'
+import { MARINE_STALE_MS, useMarine } from './hooks/useMarine'
 import { STALE_MS, SYNC_STALE_MS, useConnectivity } from './hooks/useConnectivity'
 import { useT } from './i18n/useT'
 import { syncEnabled } from './lib/harbourSync'
@@ -31,7 +31,7 @@ import {
 /**
  * The harbour master's console, off the skipper's critical path.
  *
- * It is 619 lines, and it pulls in the reporting maths, the CSV writer and
+ * It is 659 lines, and it pulls in the reporting maths, the CSV writer and
  * the PBKDF2 verifier behind it. Twenty skippers on 2G were downloading all
  * of it to look at three boxes, and never opening it — while MEMORY.md
  * claimed it was already a separate chunk. It lives at #admin only, so
@@ -175,11 +175,18 @@ export default function App() {
    * reading only keeps its band if that band is `rough`, which is the
    * conservative direction; anything else becomes unknown.
    */
-  const band = !marine.reading
-    ? null
-    : marine.error && waveBand(marine.reading.waveHeight) !== 'rough'
-      ? null
-      : waveBand(marine.reading.waveHeight)
+  const band = (() => {
+    if (!marine.reading) return null
+    const of = waveBand(marine.reading.waveHeight)
+    if (of === 'rough') return of
+    // An old reading is not a current sea state, whether or not the last
+    // fetch reported an error — a backgrounded tab simply stops polling,
+    // and the figure ages silently. `rough` is exempt above because
+    // warning about breakers that may have passed is the safe direction;
+    // `calm` is the one a skipper comes in on.
+    const old = now - marine.reading.fetchedAt > MARINE_STALE_MS
+    return marine.error || old ? null : of
+  })()
 
   return (
     <div className="min-h-dvh bg-paper text-ink">
@@ -250,6 +257,7 @@ export default function App() {
               <DockScreen
                 band={band}
                 seaKnown={marine.reading !== null}
+                seaFailed={marine.error}
                 onChangeHarbour={signOut}
                 onResetDemo={resetDemo}
               />

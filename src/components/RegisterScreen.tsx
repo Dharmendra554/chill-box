@@ -1,4 +1,4 @@
-import { useState, type InputHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type InputHTMLAttributes } from 'react'
 import { boatName, boatsAt } from '../data/boats'
 import { HARBOUR_IDS, HARBOURS } from '../data/harbours'
 import { useT } from '../i18n/useT'
@@ -218,6 +218,17 @@ function ClaimBoat({
   const [digits, setDigits] = useState('')
   const [wrong, setWrong] = useState(false)
   const [checking, setChecking] = useState(false)
+  const box = useRef<HTMLInputElement>(null)
+
+  // Bring the form to the skipper. It renders ABOVE the roster grid, and the
+  // roster is twenty-one 70 px buttons — so tapping boat #18 opened a form
+  // roughly six hundred pixels off the top of the screen and the viewport
+  // did not move. As far as he could see, the button did nothing. Every
+  // rehearsal tapped #01, which is at the top.
+  useEffect(() => {
+    box.current?.scrollIntoView({ block: 'center' })
+    box.current?.focus()
+  }, [])
 
   return (
     <form
@@ -242,6 +253,7 @@ function ClaimBoat({
       <h4 className="text-lg">{t('claimTitle', label)}</h4>
       <p className="text-sm font-bold text-ink-2">{t('claimBody')}</p>
       <input
+        ref={box}
         className="field tabular"
         inputMode="numeric"
         autoComplete="off"

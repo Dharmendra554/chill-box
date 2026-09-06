@@ -162,7 +162,11 @@ export function SeaMap({
       const site = harbour.boxes[marker.id]
       const pin = L.marker([site.lat, site.lon], {
         icon: boxPin(marker, marker.id === selectedId),
-        keyboard: true,
+        // Not keyboard-focusable: the chart is `role="img"`, so its subtree
+        // is presentational to a screen reader. A focusable child inside it
+        // takes a tab stop and announces nothing. The box cards below carry
+        // the same action with a real name.
+        keyboard: false,
         title: marker.label,
       }).addTo(group)
       pin.bindTooltip(`${marker.label} · ${marker.full ? '0' : marker.free}`, {

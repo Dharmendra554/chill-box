@@ -462,3 +462,35 @@ describe('a transaction that aborts without a code', () => {
     expect(outcome).not.toMatchObject({ error: 'stale' })
   })
 })
+
+describe('a booking that cannot win every crate', () => {
+  it('gives back the crate it took, even when the second write throws', async () => {
+    // Half a booking is worse than none. A rules refusal REJECTS, and the
+    // giveback used to sit after the loop where a throw jumped straight past
+    // it — so the skipper was told the write was refused, believed he held
+    // nothing, and held one crate that blocked the box for four hours. An
+    // admin pressing Reset demo mid-booking does exactly this.
+    await publishedHarbour()
+
+    const free = Object.keys(db)
+      .filter(
+        (path) =>
+          path.startsWith('harbours/nizampatnam/boxes/box3/') &&
+          (db[path] as { status?: string })?.status === 'empty',
+      )
+      .sort()
+    expect(free.length).toBeGreaterThanOrEqual(2)
+    // The FIRST candidate commits; the second throws.
+    abort.add(free[1])
+
+    const outcome = await sync.reserveRemote('nizampatnam', 'box3', '04', 2, 'prawn')
+    expect(outcome.ok).toBe(false)
+
+    const stillHeld = Object.keys(db).filter(
+      (path) =>
+        path.startsWith('harbours/nizampatnam/boxes/box3/') &&
+        (db[path] as { boatId?: string })?.boatId === '04',
+    )
+    expect(stillHeld).toEqual([])
+  })
+})

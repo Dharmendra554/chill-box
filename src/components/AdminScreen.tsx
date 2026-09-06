@@ -240,9 +240,9 @@ function Console() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={busy !== null}
+                  disabled={busy === boat.id}
                   onClick={async () => {
-                    if (busy) return
+                    if (busy === boat.id) return
                     setBusy(boat.id)
                     try {
                       await approveBoat(boat.id)
@@ -253,7 +253,12 @@ function Console() {
                 >
                   {t('approve')}
                 </button>
-                <ConfirmButton className="btn btn-danger" label={t('reject')} onConfirm={() => rejectBoat(boat.id)} />
+                <ConfirmButton
+                  className="btn btn-danger"
+                  label={t('reject')}
+                  disabled={busy === boat.id}
+                  onConfirm={() => rejectBoat(boat.id)}
+                />
               </div>
             </div>
           ))

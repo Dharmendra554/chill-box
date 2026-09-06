@@ -168,15 +168,23 @@ export function WaveStrip({
       <WaveIcon size={18} />
       {t(band === 'calm' ? 'waveCalm' : band === 'moderate' ? 'waveModerate' : 'waveRough')}
       <span className="tabular">{reading.waveHeight.toFixed(1)} m</span>
-      {/* A rough band survives staleness, because warning about breakers
-          that may have passed is the safe direction — but it must still
-          carry its age, and it keeps its landing advice, which is the
-          reason it survived. */}
-      <span className="ml-auto truncate font-bold">
-        {t(
-          band === 'calm' ? 'waveCalmHint' : band === 'moderate' ? 'waveModerateHint' : 'waveRoughHint',
-        )}
-        {error ? ` · ${formatClock(reading.fetchedAt)}` : ''}
+      {/* The age is ALWAYS shown, not only when the last fetch errored. A
+          backgrounded tab stops polling without erroring, so a two-hour-old
+          "calm" looked exactly like a live one. Every other figure in this
+          app carries its age; the one a skipper comes in on now does too.
+          The hint is dropped at narrow widths rather than the time, because
+          in a rough sea the time is what decides whether to trust it. */}
+      <span className="ml-auto flex min-w-0 items-baseline gap-2 font-bold">
+        <span className="hidden truncate min-[380px]:inline">
+          {t(
+            band === 'calm'
+              ? 'waveCalmHint'
+              : band === 'moderate'
+                ? 'waveModerateHint'
+                : 'waveRoughHint',
+          )}
+        </span>
+        <span className="tabular shrink-0">{formatClock(reading.fetchedAt)}</span>
       </span>
     </p>
   )

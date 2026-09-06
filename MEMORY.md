@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the tenth hostile audit round, pushed.
+**Last updated:** 7 Sept 2026, after the eleventh hostile audit round, pushed.
 
 ---
 
@@ -27,13 +27,13 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 82 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 83 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
 **First paint, measured, all of it:**
 
 | | |
 | --- | --- |
-| Entry JS | 96 kB gz |
+| Entry JS | 95 kB gz |
 | CSS | 12 kB gz |
 | Service worker + workbox runtime, first visit | 9 kB gz |
 | **Firebase**, fetched at start-up by `main.tsx` | **88 kB gz** |
@@ -57,10 +57,23 @@ typecheck, tests, lint and build before publishing.
 The three `VITE_FIREBASE_*` repository secrets are set. They are public by
 design; `firebase/database.rules.json` is what constrains them.
 
-**The rules now deploy from a shell**, not by hand: `firebase.json` is in the
-repo, so `npx firebase-tools deploy --only database --project chill-box-e5d6b`
-publishes them. Seven rounds of hand-pasting is how the published rules came
-to sit behind the client — see §16.
+**The rules deploy with the client now.** `firebase.json` and `.firebaserc`
+are in the repo, and the Deploy workflow publishes the rules alongside the
+build — gated on a `FIREBASE_TOKEN` secret, so a fork still builds without
+one. Create it with `npx firebase-tools login:ci`.
+
+Until that secret exists the rules still need a human:
+
+```bash
+npx -y firebase-tools deploy --only database --project chill-box-e5d6b
+bash scripts/verify-rules.sh          # must print: all checks passed
+```
+
+Every push has always shipped new client code while the rules moved only
+when someone remembered. That asymmetry is not a process problem, it is a
+defect generator — it is exactly how the published rules came to refuse a
+field the client had started writing, bricking registration and making the
+app blame the network (§16).
 
 Commits on `main`, most recent first:
 
@@ -92,13 +105,13 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Ten hostile audit rounds were run and acted on
+### Eleven hostile audit rounds were run and acted on
 
 Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, round 7's pair — **3.5**
 (rules/sync/store) and **4.5** (UI/honesty) — round 8's **3.5 / 3.5**, and
-round 9's **4.0 / 5.0** and round 10's **5.0 / 5.0**. Every round found real defects with all four gates
-green, and in nine of the ten the *previous round's fixes* caused the next
-round's defects. Details in §9–§13 and §16–§20; the recipe is `AGENTS.md` §5.
+round 9's **4.0 / 5.0**, round 10's **5.0 / 5.0** and round 11's **5.5 / 6.0**. Every round found real defects with all four gates
+green, and in ten of the eleven the *previous round's fixes* caused the next
+round's defects. Details in §9–§13 and §16–§21; the recipe is `AGENTS.md` §5.
 
 Splitting the review in two by concern is worth it: the auditors find
 disjoint sets and then converge on the same root cause.
@@ -112,7 +125,7 @@ sync layer and the score rose a point and a half.
 **So: one subsystem per round.** Not because it is tidier — because nine
 rounds of evidence say a big round buys its own next round's defects.
 
-**Assume the eleventh will find something too.** That has been true ten times.
+**Assume the twelfth will find something too.** That has been true eleven times.
 
 ---
 
@@ -823,6 +836,54 @@ number in this project's history to do that.
 `maxEmpty`, `findBoat`, `DEFAULT_BOAT_ID`, `MOCK_CLEARED_TODAY`. `oxlint`
 cannot see across module boundaries, so all four gates stayed green over all
 of them.
+
+**Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
+of webfonts, the demo/live toggle. One subsystem per round.
+
+---
+
+## 21. Eleventh review — 5.5 and 6.0 → fixed
+
+Highest yet on both sides, and both auditors said so unprompted: *"up from
+5.0, and it is earned rather than granted"*, and *"the rise from 5.0 is
+earned."* The trend across the paired rounds is now **3.5/3.5 → 4.0/5.0 →
+5.0/5.0 → 5.5/6.0**, and §18's rule is the reason: the narrowly-scoped
+claims keep coming back clean.
+
+Two of the round's own claims were falsified, both at seams:
+
+| Defect | Why it mattered |
+| --- | --- |
+| **The safety card said "Getting the swell reading…" when the fetch had already failed** — while the strip directly above it said "Swell data offline" | The card asked only whether a reading had ever landed, which is false while waiting AND after the first attempt fails. On a cold start on 2G where the swell API does not answer — the default on this coast, not the edge case — a skipper reads that the sea state is on its way, and waits for something that is not coming, on the one screen that exists for a boat in trouble. This card has now got the same split wrong twice in opposite directions; it takes both questions |
+| **The `finally` that gives a crate back could mask the error that caused it** | A throw inside a `finally` REPLACES the pending exception, and the causes that make a claim throw — an admin's Reset demo landing on the same path — make the giveback throw too. The comment said the outer catch would report the original failure. It would have reported the giveback's. Now caught locally, and there is a test that forces a mid-loop failure and asserts the crate came back |
+| **A test that could not fail**, in the file that tests the clock the whole harbour depends on | It reserved at `Date.now()` and passed a clock six hours earlier — a direction where a `Date.now()` implementation and the correct one agree. It now reserves five hours ago and passes a clock one minute after that, which is the only arrangement that separates them. Mutation-checked against a `Date.now()` implementation |
+| **No age gate on the swell reading** — freshness rested entirely on a 10-minute interval, and Android freezes timers in a backgrounded tab | Pocket the phone in calm water at 02:00, reopen it on the approach at 04:00: a green "Safe landing" off a two-hour-old figure, with no date on it. The strip now always carries the reading's time, and a non-rough band older than 25 minutes is no band at all |
+| **The booking receipt was a bare `<div>`** — no dialog, no focus, no Escape, and the page behind it still tabbable | It is the last step of the primary flow and it carries the code a skipper reads out at the box. Its whole purpose is to make him certain the slot is his so he does not hedge by taking a second one. A screen-reader user was never told it had appeared |
+| **Claiming an existing boat rendered the PIN form ~600 px off the top of the screen** | It sits above a twenty-one-button roster. Tap boat #18 and the viewport does not move: as far as the skipper can see, the button did nothing. This is the only path an already-registered skipper takes, and it is the same path whose *other* defect hid for eight rounds because every rehearsal tapped boat #01, which is at the top |
+| Two `void record(...)` calls with no rejection handler — and a missing row does not break a hash chain, only an altered one does | So the console reported **"Audit intact"** in green over a log with a hole in it: a receipt that vouches for itself. Caught inside `record` now, once, for every call site |
+| The GPS fix was aged against the harbour clock while `position.timestamp` comes from the device clock | A phone twenty minutes slow showed a permanent "this position is 20 minutes old" over a fix one second old; one twenty minutes fast never warned at all. `toHarbourTime` normalises it |
+| The approve button's guard and its `disabled` disagreed — round 10 fixed the pair by inverting it rather than aligning it, so approving one boat disabled every other Approve in the queue | Both are per-boat now, and Reject on the same row is held with them |
+| Leaflet markers were keyboard-focusable inside a `role="img"` subtree | Three tab stops that announce nothing |
+| The interval swell fetch carried no abort signal | A request started at harbour A that resolved after a switch to B blanked B's sea state for ten minutes — including, if it was rough, the red breakers card |
+| One dead export survived the round that claimed nine were gone; the round's own table said nine and named eight | |
+| `App.tsx` said the admin console is "619 lines". It is 659 | |
+
+**The probe audited itself again.** Its `[PASS]` publish assertion emitted
+32 keys with three duplicated, so which values the server kept was undefined
+— it may have been testing thirty empty slots and passing for the wrong
+reason. One assertion was labelled "B cannot empty the boxes node" while what
+it actually proved was "that crate is A's"; the rules header says in capitals
+that a client *can* empty a harbour of unclaimed boats. And in eleven rounds
+nothing had ever tested the rules header's **first** claim — that the public
+web config alone grants no writes. Four unauthenticated assertions now do,
+and they pass.
+
+**The deploy asymmetry is closed.** Every push has always shipped new client
+code while the rules moved only when a human remembered — which is exactly
+how the published rules came to refuse a field the client had started
+writing. `.firebaserc` is in the repo and the Deploy workflow now publishes
+the rules alongside the build, gated on a `FIREBASE_TOKEN` secret so a fork
+still builds without one.
 
 **Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
 of webfonts, the demo/live toggle. One subsystem per round.

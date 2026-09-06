@@ -4,6 +4,7 @@ import { saveContacts, type Contact } from '../lib/download'
 import type { WaveBand } from '../lib/marine'
 import { formatClock, formatElapsed, MINUTE_MS } from '../lib/time'
 import { cx } from '../lib/ui'
+import { toHarbourTime } from '../lib/harbourSync'
 import { selectHarbour, useDockStore } from '../store/useDockStore'
 import type { GeoFix } from '../types'
 import { AnchorIcon, WaveIcon } from '../icons/marine'
@@ -36,6 +37,7 @@ export function SafetyCard({
   fix,
   locating,
   seaKnown,
+  seaFailed,
 }: {
   band: WaveBand | null
   fix: GeoFix | null
@@ -43,6 +45,8 @@ export function SafetyCard({
   locating: boolean
   /** Whether a swell reading has ever landed for this harbour. */
   seaKnown: boolean
+  /** Whether the last attempt to fetch one failed. */
+  seaFailed: boolean
 }) {
   const t = useT()
   const harbour = useDockStore(selectHarbour)
@@ -71,19 +75,24 @@ export function SafetyCard({
       </h2>
 
       {/* Four states, not two. `band === null` means we cannot stand behind
-          a figure — and telling a skipper the sea is calm on that basis is
+          a figure, and telling a skipper the sea is calm on that basis is
           the most expensive lie this app could tell. But "we asked and the
           answer is too old" and "we have not finished asking" are different
-          sentences, and collapsing them made this card assert "no current
-          swell reading" for the whole first fetch, while the strip directly
-          above it said it was still fetching. */}
+          sentences, and this card has now got the split wrong twice in
+          opposite directions: first by collapsing them, then by asking only
+          whether a reading had ever landed — which is false while we wait
+          AND after the first fetch fails. On a cold start on 2G where the
+          swell API does not answer, the strip said "Swell data offline"
+          while this card, one scroll below, said it was on its way. A
+          skipper waits for something that is not coming. It takes both
+          questions: has one ever landed, and did the last attempt fail. */}
       <p className="font-bold">
         {t(
           rough
             ? 'safetyRough'
             : band !== null
               ? 'safetyCalm'
-              : seaKnown
+              : seaKnown || seaFailed
                 ? 'safetyUnknown'
                 : 'safetyLoading',
         )}
@@ -158,7 +167,16 @@ function ShareLocation({ fix, locating }: { fix: GeoFix | null; locating: boolea
   // A position is only useful if you know how old it is. Under a shed roof
   // a fix can be an hour stale, and in a distress call that is the
   // difference between a search area and a wrong one.
-  const stale = now - fix.at > STALE_FIX_MS
+  //
+  // The fix carries a DEVICE-clock timestamp — `position.timestamp` is the
+  // one instant this app does not mint itself — so it is converted into
+  // harbour time before being aged against the harbour's clock. Comparing
+  // the two directly made a phone twenty minutes slow show a permanent
+  // "this position is 20 minutes old" over a fix one second old, and a
+  // phone twenty minutes fast never warn at all, however stale it really
+  // was. On the one screen that exists for a boat in trouble.
+  const age = Math.max(0, now - toHarbourTime(fix.at))
+  const stale = age > STALE_FIX_MS
   const text = `${fix.lat.toFixed(5)}, ${fix.lon.toFixed(5)}`
   const message = `${text}\nhttps://www.openstreetmap.org/?mlat=${fix.lat.toFixed(5)}&mlon=${fix.lon.toFixed(5)}#map=15/${fix.lat.toFixed(5)}/${fix.lon.toFixed(5)}`
 
@@ -167,10 +185,10 @@ function ShareLocation({ fix, locating }: { fix: GeoFix | null; locating: boolea
       <p className="tabular border-3 border-rule bg-paper-2 px-3 py-2 text-center text-lg font-extrabold">
         {text}
       </p>
-      <p className="text-xs font-bold text-ink-2">{t('lastFix', formatClock(fix.at))}</p>
+      <p className="text-xs font-bold text-ink-2">{t('lastFix', formatClock(toHarbourTime(fix.at)))}</p>
       {stale ? (
         <p className="border-3 border-rule bg-late px-2 py-1 text-sm font-extrabold text-late-ink">
-          {t('fixStale', formatElapsed(now - fix.at, lang))}
+          {t('fixStale', formatElapsed(age, lang))}
         </p>
       ) : null}
       <button
