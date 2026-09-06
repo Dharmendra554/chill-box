@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useNow } from '../hooks/useClock'
 import { boatName, boatsAt } from '../data/boats'
 import { BOX_SHORT } from '../i18n/dictionary'
 import { useT } from '../i18n/useT'
@@ -45,7 +46,7 @@ function PinGate() {
   const t = useT()
   const unlockAdmin = useDockStore((s) => s.unlockAdmin)
   const lockedUntil = useDockStore((s) => s.adminLockedUntil)
-  const now = useDockStore((s) => s.now)
+  const now = useNow()
 
   const [pin, setPin] = useState('')
   const [problem, setProblem] = useState<'wrong' | 'unavailable' | null>(null)
@@ -111,7 +112,7 @@ function Console() {
   const allBoats = useDockStore((s) => s.boats)
   const boxes = useDockStore(selectBoxes)
   const allLedger = useDockStore((s) => s.ledger)
-  const now = useDockStore((s) => s.now)
+  const now = useNow()
   const approveBoat = useDockStore((s) => s.approveBoat)
   const rejectBoat = useDockStore((s) => s.rejectBoat)
   const setBoatStatus = useDockStore((s) => s.setBoatStatus)
@@ -136,9 +137,10 @@ function Console() {
   const perSpecies = useMemo(() => speciesSplit(ledger, active), [ledger, active])
   const perBoat = useMemo(() => boatUsage(ledger, active), [ledger, active])
   const previous = months[months.indexOf(active) + 1]
+  const today = new Date(now).toDateString()
   const insight = useMemo(
-    () => monthInsight(ledger, active, previous, now),
-    [ledger, active, previous, now],
+    () => monthInsight(ledger, active, previous, Date.parse(today)),
+    [ledger, active, previous, today],
   )
   const perHour = useMemo(() => hourHistogram(ledger, active), [ledger, active])
 
@@ -364,7 +366,7 @@ function Console() {
           <table className="w-full min-w-[28rem] border-collapse text-sm">
             <thead>
               <tr className="border-b-3 border-rule text-left">
-                <th className="py-1 pr-2">{t('tabHarbour')}</th>
+                <th className="py-1 pr-2">{t('boatsTitle')}</th>
                 <th className="py-1 pr-2 text-right">{t('adminTrips')}</th>
                 <th className="py-1 pr-2 text-right">{t('adminCrates')}</th>
                 <th className="py-1 pr-2 text-right">{t('adminCrateHours')}</th>

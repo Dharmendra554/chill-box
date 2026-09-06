@@ -265,6 +265,13 @@ textarea {
   background: var(--color-paper-3);
   font-family: var(--font-body);
   outline: none;
+
+  /* Leaflet gives its own panes z-index 200-700. Without a stacking
+     context of its own, those escape the map and paint over the fixed
+     tab bar and the toast — the map appears to leak down the page.
+     Isolating it keeps every Leaflet layer inside the chart. */
+  isolation: isolate;
+  z-index: 0;
 }
 
 .leaflet-control-zoom a {

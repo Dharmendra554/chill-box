@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import {
-  DEFAULT_BOAT_ID,
   isValidMobile,
   nextBoatId,
   normaliseMobile,
@@ -12,6 +11,14 @@ import { DEFAULT_HARBOUR_ID, harbour } from '../data/harbours'
 import { seedAllBoxes, seedAllLedgers } from '../data/mock'
 import { t } from '../i18n/dictionary'
 import { ADMIN_IDLE_MS, appendAudit, lockoutMs, verifyPin, type PinResult } from '../lib/adminAuth'
+import {
+  cancelRemote,
+  depositRemote,
+  releaseRemote,
+  reserveRemote,
+  syncEnabled,
+  watchHarbour,
+} from '../lib/harbourSync'
 import { HOUR_MS } from '../lib/time'
 import type {
   AuditEntry,
@@ -49,29 +56,42 @@ const STORAGE_VERSION = 4
  *    must be *announced*, because silently losing a booking is worse than
  *    erroring. `setStorageErrorHandler` is how the UI hears about it.
  *
- * 2. The clock ticks once a second, and zustand's persist middleware
- *    serialises the entire store on every `set`. Unthrottled that is a
- *    multi-megabyte `JSON.stringify` plus a synchronous write every second:
- *    gigabytes of flash writes an hour and visible jank on exactly the
- *    low-end Android this is built for. Writes are therefore coalesced, and
- *    flushed on the events that mean "there may be no later".
+ * 2. zustand's persist middleware serialises the WHOLE store on every
+ *    `set`, not just on the disk write. Two things keep that off the hot
+ *    path: the clock lives outside this store entirely (hooks/useClock.ts),
+ *    so a quiet second causes no `set` at all; and the write itself is
+ *    coalesced, then flushed on the events that mean "there may be no
+ *    later". Throttling only the write was not enough — the expensive half
+ *    runs before it.
  */
 
 /** Coalesce persist writes to at most one per this interval. */
 const WRITE_EVERY_MS = 5_000
 
 /**
- * Newest ledger rows to keep on the device.
+ * Newest ledger rows to keep, PER HARBOUR.
  *
- * The ledger only ever grows, and the persisted store shares a ~5 MB
- * browser quota. Four months of a busy harbour is well inside the cap and
- * covers every report the console offers; older rows are dropped rather
- * than allowed to fill the quota and start failing writes silently.
+ * The ledger only grows and the persisted store shares a ~5 MB quota, so it
+ * has to be bounded. Per harbour, not overall: the rows arrive grouped by
+ * harbour, so a global `slice(-N)` silently deleted the FIRST harbour's
+ * entire history, and its admin console then reported — with a straight
+ * face — that the harbour had never stored a crate. Each society keeps its
+ * own months.
  */
-const LEDGER_LIMIT = 4_000
+const LEDGER_LIMIT_PER_HARBOUR = 1_500
 
 function capLedger(rows: LedgerEntry[]): LedgerEntry[] {
-  return rows.length > LEDGER_LIMIT ? rows.slice(-LEDGER_LIMIT) : rows
+  const kept = new Map<HarbourId, LedgerEntry[]>()
+  for (const row of rows) {
+    const list = kept.get(row.harbourId) ?? []
+    list.push(row)
+    kept.set(row.harbourId, list)
+  }
+  return [...kept.values()].flatMap((list) =>
+    list.length > LEDGER_LIMIT_PER_HARBOUR
+      ? [...list].sort((a, b) => a.releasedAt - b.releasedAt).slice(-LEDGER_LIMIT_PER_HARBOUR)
+      : list,
+  )
 }
 
 let pendingWrite: { key: string; value: string } | null = null
@@ -83,6 +103,8 @@ export function setStorageErrorHandler(fn: () => void): void {
   onStorageError = fn
 }
 
+let storageFailed = false
+
 function commitWrite(): void {
   writeTimer = null
   const write = pendingWrite
@@ -90,8 +112,15 @@ function commitWrite(): void {
   if (!write) return
   try {
     localStorage.setItem(write.key, write.value)
+    storageFailed = false
   } catch {
-    onStorageError?.()
+    // Report the first failure only. Telling the user costs a state
+    // change, which schedules another doomed write — an unlatched handler
+    // here spams a toast every 5 s for the rest of the session.
+    if (!storageFailed) {
+      storageFailed = true
+      onStorageError?.()
+    }
   }
 }
 
@@ -145,16 +174,33 @@ const safeStorage: Storage = {
   },
 }
 
-/** Persisted state can be hand-edited or half-written. Trust nothing. */
-function looksValid(byHarbour: unknown): boolean {
-  if (!byHarbour || typeof byHarbour !== 'object') return false
-  const groups = Object.values(byHarbour as Record<string, ColdBox[]>)
+/**
+ * Persisted state can be hand-edited, truncated by a full disk, or written
+ * by an older build. Trust nothing: check every collection the app will
+ * immediately index into, and that the harbour we are about to render
+ * actually has boxes. Anything short of that surfaces as a crash on the
+ * first render instead of a clean reseed.
+ */
+function looksValid(state: Partial<DockState>): boolean {
+  const { boxesByHarbour, harbourId, boats, ledger, audit } = state
+  if (!boxesByHarbour || typeof boxesByHarbour !== 'object') return false
+  if (!Array.isArray(boats) || !Array.isArray(ledger) || !Array.isArray(audit)) return false
+
+  const groups = Object.entries(boxesByHarbour)
   if (groups.length === 0) return false
+  if (harbourId && !boxesByHarbour[harbourId]) return false
+
   return groups.every(
-    (boxes) =>
+    ([, boxes]) =>
       Array.isArray(boxes) &&
       boxes.length === 3 &&
-      boxes.every((box) => Array.isArray(box.slots) && box.slots.length === 10),
+      boxes.every(
+        (box) =>
+          box &&
+          Array.isArray(box.slots) &&
+          box.slots.length === 10 &&
+          box.slots.every((slot) => typeof slot?.status === 'string'),
+      ),
   )
 }
 
@@ -191,7 +237,6 @@ export interface DockState {
 
   // ui
   toast: ToastMessage | null
-  now: number
 
   setLang: (lang: Lang) => void
   setTheme: (theme: Theme) => void
@@ -235,7 +280,6 @@ function seed(now: number) {
     boxesByHarbour: seedAllBoxes(now),
     ledger: capLedger(seedAllLedgers(now)),
     toast: null,
-    now,
   }
 }
 
@@ -350,7 +394,7 @@ export const useDockStore = create<DockState>()(
 
         tick: (now) => {
           const prev = get()
-          const patch: Partial<DockState> = { now }
+          const patch: Partial<DockState> = {}
 
           // Every harbour ages, not just the one on screen. Otherwise a hold
           // at the harbour you switched away from never expires and keeps
@@ -378,7 +422,7 @@ export const useDockStore = create<DockState>()(
           if (prev.adminUnlocked && now - prev.adminTouchedAt > ADMIN_IDLE_MS) {
             patch.adminUnlocked = false
           }
-          set(patch)
+          if (Object.keys(patch).length > 0) set(patch)
         },
 
         register: ({ boatName, owner, mobile }) => {
@@ -454,6 +498,32 @@ export const useDockStore = create<DockState>()(
             return false
           }
 
+          // With a shared database the claim is settled there, atomically,
+          // and the realtime listener brings the result back. The checks
+          // above still run first so an obvious refusal is instant and free.
+          if (syncEnabled) {
+            void reserveRemote(harbourId, boxId, myBoatId, crates, species).then((result) => {
+              if (result.ok) return
+              // 'notActive' cannot reach here — the guard above already
+              // refused an unapproved boat before we touched the network.
+              const key =
+                result.error === 'quota'
+                  ? 'errQuota'
+                  : result.error === 'boxFull'
+                    ? 'raceLost'
+                    : 'syncOffline'
+              set({
+                toast: toast(
+                  'error',
+                  key === 'errQuota'
+                    ? t(get().lang, 'errQuota', QUOTA, quota)
+                    : t(get().lang, key),
+                ),
+              })
+            })
+            return true
+          }
+
           let left: number = crates
           const now = Date.now()
           putBoxes(
@@ -487,6 +557,10 @@ export const useDockStore = create<DockState>()(
           const myBoatId = activeBoatId()
           if (!myBoatId) return
           const { boxesByHarbour, harbourId } = get()
+          if (syncEnabled) {
+            void cancelRemote(harbourId, myBoatId)
+            return
+          }
           putBoxes(
             boxesByHarbour[harbourId].map((box) => ({
               ...box,
@@ -512,6 +586,10 @@ export const useDockStore = create<DockState>()(
 
           const now = Date.now()
           const plannedOutAt = now + plannedHours * HOUR_MS
+          if (syncEnabled) {
+            void depositRemote(harbourId, myBoatId, plannedOutAt)
+            return true
+          }
           putBoxes(
             boxes.map((box) => ({
               ...box,
@@ -542,6 +620,16 @@ export const useDockStore = create<DockState>()(
             Date.now(),
           )
           if (result.entries.length === 0) return
+          if (syncEnabled) {
+            // The ledger rows are computed from what we can see, then the
+            // shared copy frees the slots and appends them together.
+            void releaseRemote(
+              harbourId,
+              myBoatId,
+              result.entries.map(({ id: _id, harbourId: _h, ...row }) => row),
+            )
+            return
+          }
           putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
         },
 
@@ -619,7 +707,10 @@ export const useDockStore = create<DockState>()(
           set({
             ...seed(Date.now()),
             harbourId: DEFAULT_HARBOUR_ID,
-            myBoatId: DEFAULT_BOAT_ID,
+            // Signed out, not signed in as #04: this button sits on the
+            // ordinary booking screen, and handing out an approved boat
+            // here would make the last-4 check pointless.
+            myBoatId: null,
             adminUnlocked: false,
             audit: [],
             adminFailures: 0,
@@ -651,7 +742,7 @@ export const useDockStore = create<DockState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return
         // A corrupt or truncated write must not brick the app on a dock.
-        if (!looksValid(state.boxesByHarbour)) Object.assign(state, seed(Date.now()))
+        if (!looksValid(state)) Object.assign(state, seed(Date.now()))
         state.tick(Date.now())
       },
     },
@@ -659,6 +750,37 @@ export const useDockStore = create<DockState>()(
 )
 
 /* -- Derived reads ----------------------------------------------------- */
+
+/**
+ * Follow the shared harbour, if there is one.
+ *
+ * Called once at startup and again whenever the harbour changes. The
+ * listener overwrites this device's boxes with the shared copy, which is
+ * what makes two phones agree; with no Firebase configured it does nothing
+ * and the app stays local, exactly as before.
+ */
+export function startHarbourSync(): () => void {
+  if (!syncEnabled) return () => {}
+  let stop: (() => void) | null = null
+
+  const follow = (harbourId: HarbourId) => {
+    stop?.()
+    stop = watchHarbour(harbourId, (boxes) => {
+      const { boxesByHarbour } = useDockStore.getState()
+      useDockStore.setState({ boxesByHarbour: { ...boxesByHarbour, [harbourId]: boxes } })
+    })
+  }
+
+  follow(useDockStore.getState().harbourId)
+  const unsubscribe = useDockStore.subscribe((state, previous) => {
+    if (state.harbourId !== previous.harbourId) follow(state.harbourId)
+  })
+
+  return () => {
+    stop?.()
+    unsubscribe()
+  }
+}
 
 export function selectHarbour(state: DockState): Harbour {
   return harbour(state.harbourId)

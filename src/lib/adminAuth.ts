@@ -106,9 +106,12 @@ export async function verifyPin(pin: string): Promise<PinResult> {
 
 /* -- Audit trail ------------------------------------------------------- */
 
-async function sha256(text: string): Promise<string> {
+async function sha256(text: string): Promise<string | null> {
   const api = subtle()
-  if (!api) return ''
+  // Null, never a placeholder: a chain of identical empty hashes would
+  // verify as intact and fail open on the one control meant to detect
+  // tampering.
+  if (!api) return null
   return toHex(await api.digest('SHA-256', new TextEncoder().encode(text)))
 }
 
@@ -131,7 +134,10 @@ export async function appendAudit(
 ): Promise<AuditEntry[]> {
   const prevHash = log.at(-1)?.hash ?? 'genesis'
   const base = { id: `A${log.length + 1}`, at: Date.now(), actor, action, target, detail, prevHash }
-  return [...log, { ...base, hash: await sha256(canonical(base)) }]
+  const hash = await sha256(canonical(base))
+  // Without Web Crypto there is no chain to extend, so the action is
+  // recorded unhashed and marked as such rather than faked.
+  return [...log, { ...base, hash: hash ?? 'unhashed' }]
 }
 
 /** Index of the first broken link, or -1 when the chain is intact. */
@@ -140,7 +146,8 @@ export async function verifyAudit(log: AuditEntry[]): Promise<number> {
   for (let i = 0; i < log.length; i += 1) {
     const entry = log[i]
     if (entry.prevHash !== prevHash) return i
-    if (entry.hash !== (await sha256(canonical({ ...entry, prevHash })))) return i
+    const expected = await sha256(canonical({ ...entry, prevHash }))
+    if (expected === null || entry.hash !== expected) return i
     prevHash = entry.hash
   }
   return -1

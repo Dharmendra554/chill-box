@@ -78,7 +78,9 @@ export function holdRemainingMs(
   const reserved = slotsForBoat(boxes, boatId).filter((s) => s.status === 'reserved')
   if (reserved.length === 0) return 0
   const start = Math.min(...reserved.map((s) => s.reservedAt ?? now))
-  return Math.max(0, HOLD_MS - (now - start))
+  // Clamped at both ends: a device clock that jumps backwards would
+  // otherwise show more time remaining than a hold can ever have.
+  return Math.min(HOLD_MS, Math.max(0, HOLD_MS - (now - start)))
 }
 
 export function storageElapsedMs(
@@ -250,8 +252,10 @@ export function suggestedBoxId(boxes: ColdBox[], needed: number): BoxId | null {
 /**
  * A short booking reference the skipper reads out at the box, such as
  * `N3-04-217`: harbour initial, box number, hull number, and the minute of
- * the reservation. Derived rather than stored — nothing to keep in sync,
- * and no counter that could collide.
+ * the reservation. Derived rather than stored, so there is nothing to keep
+ * in sync. It is a reference to read out, not an identifier: the same boat
+ * and box repeat a code roughly every 17 hours, which is far longer than a
+ * 4-hour hold can live.
  */
 export function bookingCode(
   harbourId: string,

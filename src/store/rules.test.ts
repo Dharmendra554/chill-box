@@ -12,6 +12,7 @@ import {
   crateCountForBoat,
   emptyCount,
   emptySlot,
+  holdRemainingMs,
   occupancyRows,
   QUOTA,
   remainingQuota,
@@ -200,17 +201,17 @@ describe('monthly report', () => {
 describe('navigation', () => {
   it('routes via the harbour mouth from offshore and direct from inside', () => {
     // Derived from the harbour, so a corrected survey cannot break the test.
-    const offshore = { ...destinationPoint(HARBOUR.lat, HARBOUR.lon, 6, HARBOUR.mouthBearing), accuracy: 10 }
+    const offshore = { ...destinationPoint(HARBOUR.lat, HARBOUR.lon, 6, HARBOUR.mouthBearing), accuracy: 10, at: NOW }
     expect(routeLegs(offshore, HARBOUR, 'box1')).toHaveLength(3)
 
-    const inBasin = { lat: HARBOUR.lat, lon: HARBOUR.lon, accuracy: 10 }
+    const inBasin = { lat: HARBOUR.lat, lon: HARBOUR.lon, accuracy: 10, at: NOW }
     expect(routeLegs(inBasin, HARBOUR, 'box1')).toHaveLength(2)
   })
 
   it('derives distance, bearing and ETA from the fix', () => {
     const box1 = HARBOUR.boxes.box1
     // Exactly 2 km due west of the box: bearing back to it must read east.
-    const fix = { ...destinationPoint(box1.lat, box1.lon, 2, 270), accuracy: 8 }
+    const fix = { ...destinationPoint(box1.lat, box1.lon, 2, 270), accuracy: 8, at: NOW }
     const nav = navigateTo(fix, HARBOUR, 'box1')
 
     expect(nav.km).toBeCloseTo(2, 1)
@@ -497,5 +498,31 @@ describe('a blocked boat cannot move crates', () => {
     useDockStore.getState().cancelHold()
     useDockStore.getState().release()
     expect(held()).toBe(before)
+  })
+})
+
+describe('regressions the audit caught', () => {
+  it('keeps history for every harbour when the ledger is capped', () => {
+    useDockStore.getState().resetDemo()
+    const ledger = useDockStore.getState().ledger
+    for (const id of ['vizag', 'kakinada', 'nizampatnam'] as const) {
+      const rows = ledger.filter((e) => e.harbourId === id)
+      // A global slice kept only the tail and wiped the first harbour.
+      expect(rows.length, id).toBeGreaterThan(100)
+    }
+  })
+
+  it('leaves you signed out after a demo reset, not signed in as #04', () => {
+    useDockStore.getState().signInAs('04', '2004')
+    useDockStore.getState().resetDemo()
+    expect(useDockStore.getState().myBoatId).toBeNull()
+  })
+
+  it('never shows more hold remaining than a hold can have', () => {
+    const boxes = [
+      // A device clock that jumped backwards puts the reservation ahead of now.
+      box('box1', [{ index: 0, status: 'reserved', boatId: '04', reservedAt: NOW + HOUR_MS }]),
+    ]
+    expect(holdRemainingMs(boxes, '04', NOW)).toBe(HOLD_MS)
   })
 })

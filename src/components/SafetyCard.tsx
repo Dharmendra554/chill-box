@@ -1,7 +1,8 @@
 import { useT } from '../i18n/useT'
+import { useNow } from '../hooks/useClock'
 import { saveContacts, type Contact } from '../lib/download'
 import type { WaveBand } from '../lib/marine'
-import { formatClock } from '../lib/time'
+import { formatClock, formatElapsed, MINUTE_MS } from '../lib/time'
 import { cx } from '../lib/ui'
 import { selectHarbour, useDockStore } from '../store/useDockStore'
 import type { GeoFix } from '../types'
@@ -20,6 +21,9 @@ import { AnchorIcon, WaveIcon } from '../icons/marine'
  * district disaster control room. The harbour office line is per-harbour
  * demo data and is the one entry a real deployment must replace.
  */
+/** Older than this and the position is labelled as what it is: old. */
+const STALE_FIX_MS = 5 * MINUTE_MS
+
 const NATIONAL = [
   { key: 'emCoastGuard', number: '1554' },
   { key: 'emAll', number: '112' },
@@ -106,11 +110,16 @@ export function SafetyCard({ band, fix }: { band: WaveBand | null; fix: GeoFix |
  */
 function ShareLocation({ fix }: { fix: GeoFix | null }) {
   const t = useT()
-  const now = useDockStore((s) => s.now)
+  const now = useNow()
+  const lang = useDockStore((s) => s.lang)
   const harbour = useDockStore(selectHarbour)
 
   if (!fix) return <p className="text-sm font-bold text-ink-2">{t('noFix')}</p>
 
+  // A position is only useful if you know how old it is. Under a shed roof
+  // a fix can be an hour stale, and in a distress call that is the
+  // difference between a search area and a wrong one.
+  const stale = now - fix.at > STALE_FIX_MS
   const text = `${fix.lat.toFixed(5)}, ${fix.lon.toFixed(5)}`
   const message = `${text}\nhttps://www.openstreetmap.org/?mlat=${fix.lat.toFixed(5)}&mlon=${fix.lon.toFixed(5)}#map=15/${fix.lat.toFixed(5)}/${fix.lon.toFixed(5)}`
 
@@ -119,7 +128,12 @@ function ShareLocation({ fix }: { fix: GeoFix | null }) {
       <p className="tabular border-3 border-rule bg-paper-2 px-3 py-2 text-center text-lg font-extrabold">
         {text}
       </p>
-      <p className="text-xs font-bold text-ink-2">{t('lastFix', formatClock(now))}</p>
+      <p className="text-xs font-bold text-ink-2">{t('lastFix', formatClock(fix.at))}</p>
+      {stale ? (
+        <p className="border-3 border-rule bg-late px-2 py-1 text-sm font-extrabold text-late-ink">
+          {t('fixStale', formatElapsed(now - fix.at, lang))}
+        </p>
+      ) : null}
       <button
         type="button"
         className="btn btn-block btn-warn"

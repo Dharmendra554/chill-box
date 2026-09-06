@@ -48,6 +48,7 @@ export function useGeolocation(override: GeoFix | null): {
           lat: position.coords.latitude,
           lon: position.coords.longitude,
           accuracy: position.coords.accuracy,
+          at: position.timestamp,
         })
         setStatus('ready')
       },

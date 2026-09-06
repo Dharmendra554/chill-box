@@ -3,6 +3,8 @@ import L from 'leaflet'
 import { routeLegs } from '../lib/nav'
 import type { BoxId, GeoFix, Harbour } from '../types'
 
+const boxIds: BoxId[] = ['box1', 'box2', 'box3']
+
 export interface BoxMarker {
   id: BoxId
   label: string
@@ -33,7 +35,6 @@ export function SeaMap({
   routeTo,
   landmarkLabel,
   offlineLabel,
-  seamarkLabel,
   onPick,
 }: {
   harbour: Harbour
@@ -43,13 +44,21 @@ export function SeaMap({
   routeTo: BoxId | null
   landmarkLabel: (key: string) => string
   offlineLabel: string
-  seamarkLabel: string
   onPick?: (id: BoxId) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const overlay = useRef<L.LayerGroup | null>(null)
   const [tilesFailed, setTilesFailed] = useState(false)
+  // Latest props, readable from effects that must NOT re-run when they
+  // change: the fix moves every few seconds and must not re-frame the map
+  // under the user's hand. Assigned in an effect, not during render.
+  const fixRef = useRef(fix)
+  const harbourRef = useRef(harbour)
+  useEffect(() => {
+    fixRef.current = fix
+    harbourRef.current = harbour
+  }, [fix, harbour])
 
   // Create once. Everything after this is a layer update.
   useEffect(() => {
@@ -67,7 +76,7 @@ export function SeaMap({
       scrollWheelZoom: !touch,
       touchZoom: true,
 
-    }).setView([harbour.lat, harbour.lon], 15)
+    }).setView([harbourRef.current.lat, harbourRef.current.lon], 15)
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
@@ -80,7 +89,7 @@ export function SeaMap({
     L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
       maxZoom: 18,
       opacity: 0.9,
-      attribution: `&copy; OpenSeaMap (${seamarkLabel})`,
+      attribution: '&copy; OpenSeaMap',
     }).addTo(instance)
 
     overlay.current = L.layerGroup().addTo(instance)
@@ -112,8 +121,6 @@ export function SeaMap({
       map.current = null
       overlay.current = null
     }
-    // Seeded once; every later change is handled by the layer effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Redraw pins, landmarks and route whenever anything moves.
@@ -135,11 +142,8 @@ export function SeaMap({
         })
     }
 
-    const points: Array<[number, number]> = []
-
     for (const marker of boxes) {
       const site = harbour.boxes[marker.id]
-      points.push([site.lat, site.lon])
       const pin = L.marker([site.lat, site.lon], {
         icon: boxPin(marker, marker.id === selectedId),
         keyboard: true,
@@ -159,12 +163,10 @@ export function SeaMap({
     if (fix && routeTo) {
       const legs = routeLegs(fix, harbour, routeTo)
       L.polyline(legs, {
-        color: cssVar('--c-sea', '#1c6ea4'),
+        color: SEA,
         weight: 6,
         dashArray: '10 8',
       }).addTo(group)
-      instance.fitBounds(L.latLngBounds(legs).pad(0.3))
-      instance.fire('zoomend')
       return
     }
 
@@ -173,9 +175,23 @@ export function SeaMap({
     // offshore would zoom out until all three pins sat on the same pixel and
     // none of them could be tapped. Distance to each box is on its card, and
     // the boat and its route take over the view once one is booked.
-    instance.fitBounds(L.latLngBounds(points).pad(0.45), { maxZoom: 16 })
-    instance.fire('zoomend')
   }, [harbour, fix, boxes, selectedId, routeTo, landmarkLabel, onPick])
+
+  // Frame the view only when WHAT is being framed changes — the harbour, or
+  // which box the route runs to. Refitting on every redraw would snap a
+  // pinch-zoom back within a second and make the chart impossible to explore.
+  useEffect(() => {
+    const instance = map.current
+    if (!instance) return
+
+    if (fixRef.current && routeTo) {
+      instance.fitBounds(L.latLngBounds(routeLegs(fixRef.current, harbour, routeTo)).pad(0.3))
+    } else {
+      const points = boxIds.map((id) => [harbour.boxes[id].lat, harbour.boxes[id].lon] as [number, number])
+      instance.fitBounds(L.latLngBounds(points).pad(0.45), { maxZoom: 16 })
+    }
+    instance.fire('zoomend')
+  }, [harbour, routeTo])
 
   return (
     <div className="relative">
@@ -196,18 +212,19 @@ export function SeaMap({
 
 /*
  * Markers are inline HTML in the app's own slab language rather than the
- * default bitmap pins, so the chart matches every other surface.
+ * default bitmap pins.
  *
- * Colours are resolved to concrete values instead of being passed through
- * as `var(--c-…)`. Leaflet puts some of them into SVG presentation
- * attributes, where custom-property support is inconsistent on the older
- * Android WebViews this must run on — and a route line that silently fails
- * to draw is the worst possible bug in a navigation feature.
+ * Colours are plain hex, deliberately. They sit on a raster sea chart, not
+ * on the app's themed surfaces, so they do not need to follow day/night —
+ * and reading them from CSS tokens would hand Leaflet an oklch() string,
+ * which the old Android WebViews cannot parse in an SVG attribute. Hex is
+ * the one form every engine understands.
  */
-function cssVar(name: string, fallback: string): string {
-  if (typeof window === 'undefined') return fallback
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
-}
+const INK = '#111111'
+const FREE = '#1f7a4d'
+const FULL = '#b3271e'
+const SEA = '#1c6ea4'
+const PAPER = '#ffffff'
 
 /**
  * Box pins are deliberately oversized. From 8 km out this is how a skipper
@@ -215,15 +232,14 @@ function cssVar(name: string, fallback: string): string {
  * the free-crate count is large enough to read at arm's length.
  */
 function boxPin({ free, full }: BoxMarker, selected: boolean): L.DivIcon {
-  const bg = full ? cssVar('--c-full', '#c0392b') : cssVar('--c-free', '#1f7a4d')
-  const ink = cssVar('--c-ink', '#111111')
+  const bg = full ? FULL : FREE
   return L.divIcon({
     className: '',
     iconSize: [56, 56],
     iconAnchor: [28, 28],
     html:
       `<span style="display:grid;place-items:center;width:56px;height:56px;` +
-      `border:${selected ? 6 : 4}px solid ${ink};background:${bg};` +
+      `border:${selected ? 6 : 4}px solid ${INK};background:${bg};` +
       `color:#fff;font-weight:800;font-size:24px;line-height:1">${full ? '×' : free}</span>`,
   })
 }
@@ -235,8 +251,8 @@ function boatPin(): L.DivIcon {
     iconAnchor: [17, 17],
     html:
       `<span style="display:grid;place-items:center;width:34px;height:34px;` +
-      `border:4px solid ${cssVar('--c-ink', '#111111')};` +
-      `background:${cssVar('--c-sea', '#1c6ea4')};color:#fff;` +
+      `border:4px solid ${INK};` +
+      `background:${SEA};color:#fff;` +
       `font-weight:800;font-size:16px;line-height:1">&#9650;</span>`,
   })
 }
@@ -248,7 +264,7 @@ function dot(): L.DivIcon {
     iconAnchor: [6, 6],
     html:
       `<span style="display:block;width:12px;height:12px;` +
-      `border:3px solid ${cssVar('--c-ink', '#111111')};` +
-      `background:${cssVar('--c-paper', '#ffffff')}"></span>`,
+      `border:3px solid ${INK};` +
+      `background:${PAPER}"></span>`,
   })
 }

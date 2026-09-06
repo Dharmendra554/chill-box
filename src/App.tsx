@@ -4,7 +4,7 @@ import { OfflineBanner, TabBar, Toast, TopBar, WaveStrip } from './components/Ch
 import { DockScreen } from './components/DockScreen'
 import { HarbourScreen } from './components/HarbourScreen'
 import { RegisterScreen } from './components/RegisterScreen'
-import { useClock } from './hooks/useClock'
+import { useNow } from './hooks/useClock'
 import { vibrate } from './hooks/useHaptics'
 import { useMarine } from './hooks/useMarine'
 import { useConnectivity } from './hooks/useConnectivity'
@@ -30,7 +30,6 @@ import {
  * they have no reason to open.
  */
 export default function App() {
-  useClock()
 
   const t = useT()
   const lang = useDockStore((s) => s.lang)
@@ -51,7 +50,7 @@ export default function App() {
 
   const [speaking, setSpeaking] = useState(false)
 
-  const now = useDockStore((s) => s.now)
+  const now = useNow()
   const marine = useMarine(harbour.lat, harbour.lon)
   // Reachability is proven by the swell poll landing, not assumed from
   // navigator.onLine — see useConnectivity.

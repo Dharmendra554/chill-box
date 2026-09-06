@@ -58,6 +58,8 @@ export interface GeoFix {
   lat: number
   lon: number
   accuracy: number
+  /** When the sensor produced this fix — NOT when it was read. */
+  at: number
 }
 
 export interface MarineReading {

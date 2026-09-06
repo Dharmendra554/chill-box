@@ -1,0 +1,87 @@
+{
+  "//": [
+    "Chill-Box security rules. Paste into Firebase console → Realtime Database → Rules.",
+    "",
+    "There is no login, so these rules are the only thing standing between a",
+    "public web config and the harbour's data. They constrain SHAPE and",
+    "IDENTITY, which is what rules can do well:",
+    "",
+    "  * anyone may read — the boxes are public information, that is the point",
+    "  * a slot must always be a well-formed slot: a known status, a slot index",
+    "    in range, and a boat that actually exists at that harbour",
+    "  * a boat may register itself, but only as 'pending'. Approval flips the",
+    "    status, and that is the admin's job",
+    "  * ledger rows are append-only: once written they cannot be edited or",
+    "    deleted, so the monthly report cannot be quietly rewritten",
+    "",
+    "What rules CANNOT do here is count a boat's crates across three boxes to",
+    "enforce the 2-crate cap, or decide who is really the admin. Those run in",
+    "the client (see lib/harbourSync.ts) inside a transaction, which makes them",
+    "correct against two honest boats racing — the case that actually happens —",
+    "but not against someone deliberately editing their own requests. Enforcing",
+    "that needs server-side code; see README, 'What this cannot do yet'."
+  ],
+
+  "rules": {
+    ".read": true,
+    ".write": false,
+
+    "harbours": {
+      "$harbour": {
+        "boxes": {
+          ".read": true,
+          ".write": true,
+          ".validate": "newData.hasChildren()",
+
+          "$box": {
+            "$slot": {
+              ".validate": "newData.hasChildren(['status'])",
+              "status": {
+                ".validate": "newData.isString() && (newData.val() === 'empty' || newData.val() === 'reserved' || newData.val() === 'occupied' || newData.val() === 'overstay')"
+              },
+              "boatId": {
+                ".validate": "newData.val() === null || root.child('harbours').child($harbour).child('boats').child(newData.val()).exists()"
+              },
+              "species": { ".validate": "newData.val() === null || newData.isString()" },
+              "reservedAt": { ".validate": "newData.val() === null || newData.isNumber()" },
+              "depositedAt": { ".validate": "newData.val() === null || newData.isNumber()" },
+              "plannedOutAt": { ".validate": "newData.val() === null || newData.isNumber()" },
+              "$other": { ".validate": false }
+            }
+          }
+        },
+
+        "boats": {
+          ".read": true,
+          "$boat": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['name', 'owner', 'mobile', 'status'])",
+            "name": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 40" },
+            "owner": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 60" },
+            "mobile": { ".validate": "newData.isString() && newData.val().matches(/^[6-9][0-9]{9}$/)" },
+            "status": { ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'active' || newData.val() === 'blocked')" },
+            "registeredAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "ledger": {
+          ".read": true,
+          "$entry": {
+            "//": "Append-only: writable once, never edited or deleted.",
+            ".write": "!data.exists() && newData.exists()",
+            ".validate": "newData.hasChildren(['boatId', 'boxId', 'crates', 'depositedAt', 'releasedAt'])",
+            "boatId": { ".validate": "newData.isString()" },
+            "boxId": { ".validate": "newData.isString()" },
+            "crates": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 2" },
+            "species": { ".validate": "newData.val() === null || newData.isString()" },
+            "depositedAt": { ".validate": "newData.isNumber()" },
+            "releasedAt": { ".validate": "newData.isNumber()" },
+            "overstay": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}

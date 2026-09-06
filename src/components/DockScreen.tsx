@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { useNow } from '../hooks/useClock'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { BOX_SHORT, type StringKey } from '../i18n/dictionary'
 import { useT } from '../i18n/useT'
@@ -65,7 +66,7 @@ export function DockScreen({
   const lang = useDockStore((s) => s.lang)
   const harbour = useDockStore(selectHarbour)
   const boxes = useDockStore(selectBoxes)
-  const now = useDockStore((s) => s.now)
+  const now = useNow()
   const myBoatId = useDockStore((s) => s.myBoatId)
   const boat = useDockStore(selectMyBoat)
   const reserve = useDockStore((s) => s.reserve)
@@ -82,22 +83,30 @@ export function DockScreen({
 
   const landmarkLabel = useCallback((key: string) => t(key as StringKey), [t])
 
+  // Memoised: a new array every render would make the chart tear down and
+  // rebuild every second, which also undid any pinch-zoom.
+  const markers = useMemo(
+    () =>
+      boxes.map((box) => ({
+        id: box.id,
+        label: t(BOX_SHORT[box.id]),
+        free: emptyCount(box),
+        full: isFull(box),
+      })),
+    [boxes, t],
+  )
+
+  // Every hook above this line: the guard must not change hook order.
   if (!myBoatId || !boat) return null
 
   const state = boatState(boxes, myBoatId)
   const myBoxId = activeBoxId(boxes, myBoatId)
   const quota = remainingQuota(boxes, myBoatId)
   const mySlots = slotsForBoat(boxes, myBoatId)
-  const canBook = boat.status === 'active' && state === 'idle' && quota > 0
+  const approved = boat.status === 'active'
+  const canBook = approved && state === 'idle' && quota > 0
   const suggested = suggestedBoxId(boxes, 1)
   const nav = geo.fix && myBoxId ? navigateTo(geo.fix, harbour, myBoxId) : null
-
-  const markers = boxes.map((box) => ({
-    id: box.id,
-    label: t(BOX_SHORT[box.id]),
-    free: emptyCount(box),
-    full: isFull(box),
-  }))
 
   return (
     <div className="flex flex-col gap-4">
@@ -119,6 +128,7 @@ export function DockScreen({
           elapsedMs={storageElapsedMs(boxes, myBoatId, now)}
           plannedOutAt={plannedOutAtForBoat(boxes, myBoatId)}
           now={now}
+          approved={approved}
           onDeposit={() => setPlanOpen(true)}
           onCancel={cancelHold}
           onRelease={release}
@@ -144,7 +154,6 @@ export function DockScreen({
           routeTo={myBoxId}
           landmarkLabel={landmarkLabel}
           offlineLabel={t('navOffline')}
-          seamarkLabel={t('navSeamarks')}
           onPick={canBook ? setBookingFor : undefined}
         />
       </Suspense>
@@ -196,6 +205,7 @@ export function DockScreen({
               : {
                   ...simulateApproachFix(harbour.lat, harbour.lon, harbour.mouthBearing),
                   accuracy: 12,
+                  at: Date.now(),
                 },
           )
         }
@@ -345,6 +355,7 @@ function BookingConfirmed({
  */
 function MyStatusCard({
   state,
+  approved,
   boxId,
   crates,
   holdMs,
@@ -356,6 +367,8 @@ function MyStatusCard({
   onRelease,
 }: {
   state: 'hold' | 'stored' | 'overstay'
+  /** A blocked or pending boat may look, but not move crates. */
+  approved: boolean
   boxId: BoxId | null
   crates: number
   holdMs: number
@@ -382,14 +395,22 @@ function MyStatusCard({
           <span className="text-sm font-extrabold uppercase">{t('holdLeft')}</span>
           <span className="tabular text-3xl font-extrabold">{formatCountdown(holdMs)}</span>
         </p>
-        <button type="button" className="btn btn-lg btn-primary btn-block" onClick={onDeposit}>
+        <button
+          type="button"
+          className="btn btn-lg btn-primary btn-block"
+          disabled={!approved}
+          onClick={onDeposit}
+        >
           {t('deposited')}
         </button>
-        <ConfirmButton
-          className="btn btn-ghost btn-block"
-          label={t('cancelHold')}
-          onConfirm={onCancel}
-        />
+        {!approved ? <BlockedNote /> : null}
+        {approved ? (
+          <ConfirmButton
+            className="btn btn-ghost btn-block"
+            label={t('cancelHold')}
+            onConfirm={onCancel}
+          />
+        ) : null}
       </section>
     )
   }
@@ -424,11 +445,15 @@ function MyStatusCard({
       {plannedOutAt !== null ? (
         <p className="tabular text-sm font-extrabold">{formatGap(plannedOutAt - now, lang)}</p>
       ) : null}
-      <ConfirmButton
-        className={cx('btn btn-lg btn-block', late ? 'btn-warn' : 'btn-primary')}
-        label={t('release')}
-        onConfirm={onRelease}
-      />
+      {approved ? (
+        <ConfirmButton
+          className={cx('btn btn-lg btn-block', late ? 'btn-warn' : 'btn-primary')}
+          label={t('release')}
+          onConfirm={onRelease}
+        />
+      ) : (
+        <BlockedNote />
+      )}
     </section>
   )
 }
@@ -478,5 +503,18 @@ function DemoTools({
         </button>
       </div>
     </section>
+  )
+}
+
+/**
+ * Why a control is dead. A disabled button with no reason is just a broken
+ * app; the skipper needs to know the admin blocked the boat, not guess.
+ */
+function BlockedNote() {
+  const t = useT()
+  return (
+    <p className="border-3 border-rule bg-full px-3 py-2 font-extrabold text-full-ink" role="status">
+      {t('blockedBody')}
+    </p>
   )
 }

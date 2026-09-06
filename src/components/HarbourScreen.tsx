@@ -1,4 +1,5 @@
 import { boatName, boatsAt } from '../data/boats'
+import { useNow } from '../hooks/useClock'
 import { useT } from '../i18n/useT'
 import { formatClock, formatGap } from '../lib/time'
 import { cx, STATUS_STYLE } from '../lib/ui'
@@ -20,7 +21,7 @@ export function HarbourScreen() {
   const boxes = useDockStore(selectBoxes)
   const harbourId = useDockStore((s) => s.harbourId)
   const allBoats = useDockStore((s) => s.boats)
-  const now = useDockStore((s) => s.now)
+  const now = useNow()
 
   // Approved boats only. A pending registration is between that skipper and
   // the admin, and every remaining row would carry the same 'Approved' chip.
@@ -46,51 +47,55 @@ export function HarbourScreen() {
             {rows.map((row) => {
               const boat = byId.get(row.boatId)
               return (
-                <li
-                  key={`${row.boatId}-${row.boxId}`}
-                  className="card flex items-center gap-3 p-3"
-                >
-                  <span
-                    className={cx(
-                      'grid h-12 w-12 shrink-0 place-items-center border-3 border-rule font-display text-sm font-extrabold',
-                      STATUS_STYLE[row.status],
-                    )}
-                  >
-                    #{row.boatId}
-                  </span>
+                // Two rows, not three columns. Telugu box names are long and
+                // the catch tag is a fixed-width chip, so squeezing name,
+                // box, tag and time onto one line made them overlap on a
+                // narrow phone. The identity line sits above its details.
+                <li key={`${row.boatId}-${row.boxId}`} className="card flex flex-col gap-2 p-3">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={cx(
+                        'grid h-11 w-11 shrink-0 place-items-center border-3 border-rule font-display text-sm font-extrabold',
+                        STATUS_STYLE[row.status],
+                      )}
+                    >
+                      #{row.boatId}
+                    </span>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-display text-lg font-extrabold">
+                    <p className="min-w-0 flex-1 truncate font-display text-lg font-extrabold">
                       {boat ? boatName(boat, lang) : `#${row.boatId}`}
                     </p>
-                    <p className="flex items-center gap-1 text-sm font-bold text-ink-2">
-                      {t(row.boxId)} · {row.crates} {t('crates')}
-                      {row.species ? <CatchTag t={t} species={row.species} /> : null}
-                    </p>
+
+                    <div className="shrink-0 text-right">
+                      <p className="text-[0.65rem] font-extrabold uppercase leading-tight text-ink-2">
+                        {t('outIn')}
+                      </p>
+                      {row.plannedOutAt === null ? (
+                        <p className="text-sm font-bold">{t('noPlan')}</p>
+                      ) : (
+                        <>
+                          <p className="tabular text-lg font-extrabold leading-tight">
+                            {formatClock(row.plannedOutAt)}
+                          </p>
+                          <p
+                            className={cx(
+                              'tabular text-xs font-extrabold leading-tight',
+                              row.plannedOutAt < now && 'text-full',
+                            )}
+                          >
+                            {formatGap(row.plannedOutAt - now, lang)}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs font-extrabold uppercase text-ink-2">
-                      {t('outIn')}
-                    </p>
-                    {row.plannedOutAt === null ? (
-                      <p className="text-sm font-bold">{t('noPlan')}</p>
-                    ) : (
-                      <>
-                        <p className="tabular text-lg font-extrabold">
-                          {formatClock(row.plannedOutAt)}
-                        </p>
-                        <p
-                          className={cx(
-                            'tabular text-xs font-extrabold',
-                            row.plannedOutAt < now && 'text-full',
-                          )}
-                        >
-                          {formatGap(row.plannedOutAt - now, lang)}
-                        </p>
-                      </>
-                    )}
-                  </div>
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold text-ink-2">
+                    <span>
+                      {t(row.boxId)} · {row.crates} {t('crates')}
+                    </span>
+                    {row.species ? <CatchTag t={t} species={row.species} /> : null}
+                  </p>
                 </li>
               )
             })}

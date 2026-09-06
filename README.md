@@ -17,7 +17,7 @@ npm run dev
 ```
 
 ```bash
-npm test        # 46 rule, edge-case, analytics and security tests
+npm test        # 49 rule, edge-case, analytics and security tests
 npm run build   # typecheck, bundle, generate service worker
 npm run lint    # zero warnings
 ```
@@ -29,8 +29,8 @@ or run `npx vercel --prod` from this folder.
 
 `vercel.json` pins the framework, build command, output directory, the SPA
 rewrite, cache headers (immutable assets, always-revalidate service worker)
-and security headers — so there is nothing to fill in. No API keys, no
-database, no auth provider, no environment variables.
+and security headers. The only optional variables are the Firebase config
+below; without them the app builds and runs in local mode.
 
 ---
 
@@ -131,19 +131,33 @@ server — moving `verifyPin` and `appendAudit` behind an API route is the only
 change required. Claiming client-side security is unbreakable would be false,
 so we don't.
 
-## What this cannot do yet
+## Multi-user: shared, or local
 
-**There is no server, so there is no shared truth.** Each phone keeps its own
-copy of the harbour and they never merge. Two skippers on two phones can each
-believe they hold the same slot; the commit-time re-check that refuses a race
-only protects one device. Everything else here — the quota, the hold clock, the
-overstay flag, the reports — is correct on the device you are holding.
+The app runs in one of two modes, decided by whether a Firebase config is
+present at build time.
 
-That is the honest cost of the brief's "no paid database" rule, and it is the
-first thing to fix for real use: one table and a websocket behind `reserve` and
-`release` would make the guarantee real without changing a single rule. Until
-then the booking code you show at the box, not the app, is what settles a
-dispute.
+**Shared (set `VITE_FIREBASE_*`).** Every phone reads and writes one copy of
+the harbour, and changes arrive live. Booking runs inside a Firebase
+transaction over the whole harbour node, so the capacity check, the 2-crate cap
+and the expiry of stale holds all commit together — when two boats tap the last
+crate at the same moment, exactly one wins and the other is told why. Free
+Spark plan, no card. Setup:
+
+1. Create a project at [firebase.google.com](https://firebase.google.com) →
+   **Realtime Database** → start in **locked mode**.
+2. Paste `firebase/database.rules.json` into the database's **Rules** tab.
+   These are what constrain the public web config — read the header comment.
+3. Copy the web app config into `.env.local` (see `.env.example`), or into
+   Vercel → Settings → Environment Variables.
+
+**Local (no config).** Exactly the old behaviour: one device, no sync, useful
+for an offline demo. The booking rules still hold on that device, but two
+phones will disagree, and the app says so rather than pretending.
+
+Either way, the client is the last word on policy. Firebase rules check the
+*shape* of the data, not the harbour's rules, so a determined user editing
+their own requests is not stopped. Server-side code is what fixes that, and
+nothing else in the app would have to move.
 
 ## Free, no-account services
 
@@ -171,11 +185,13 @@ The skipper is never asked whether they have signal — the app works it out:
   confidently wrong "2 free" is worse than an honest "possibly stale".
 - Nothing blocks on the network. Bearing, distance, ETA and every harbour rule
   are local maths.
-- The map is a lazy chunk — the booking flow ships in ~87 kB gzipped — and
+- The map and the database client are lazy chunks — the booking flow ships in
+  ~93 kB gzipped — and
   tiles are cached first-hit, so a route drawn once redraws with no signal.
 - Browser storage is wrapped: private mode and a full quota both throw, and the
-  app falls back to memory rather than white-screening. Corrupt or truncated
-  saved state is detected on load and reseeded.
+  app falls back to memory rather than white-screening — and *says so*, once,
+  rather than losing a booking in silence. Saved state is schema-checked on
+  load and reseeded if it does not hold up.
 
 ## Edge cases handled
 

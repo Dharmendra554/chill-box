@@ -10,8 +10,9 @@ function save(filename: string, mime: string, body: BlobPart[]): void {
   link.href = url
   link.download = filename
   link.click()
-  // Revoke on the next frame so the click has taken the URL.
-  requestAnimationFrame(() => URL.revokeObjectURL(url))
+  // A timer, not requestAnimationFrame: rAF never fires in a hidden tab,
+  // which would leak the object URL for the life of the page.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
 /**

@@ -4,8 +4,9 @@ import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { startClock } from './hooks/useClock'
 import { primeVoices } from './lib/speech'
-import { useDockStore } from './store/useDockStore'
+import { startHarbourSync, useDockStore } from './store/useDockStore'
 
 // Voices load asynchronously; warm the list before the first tap.
 primeVoices()
@@ -15,6 +16,10 @@ primeVoices()
 const { theme, lang } = useDockStore.getState()
 document.documentElement.dataset.theme = theme
 document.documentElement.lang = lang
+
+// One clock and one harbour subscription for the whole app.
+startClock()
+startHarbourSync()
 
 registerSW({ immediate: true })
 
