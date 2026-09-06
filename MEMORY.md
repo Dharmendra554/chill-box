@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the sixth hostile audit round, pushed.
+**Last updated:** 7 Sept 2026, after the seventh hostile audit round (two auditors), pushed.
 
 ---
 
@@ -27,20 +27,30 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 67 tests · `tsc` clean · `oxlint` zero warnings · build clean.
-Entry bundle **96 kB gzipped**; map and Firebase are separate lazy chunks.
+**All green:** 74 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+Entry bundle **95 kB gzipped**, plus 12 kB of CSS and 2 kB of workbox — the
+honest first-paint figure is **~110 kB**, and quoting only the JS number was
+a round-7 finding. Map, Firebase and the admin console are separate lazy
+chunks. (§14 claimed the admin console already was; it was a static import
+until round 7.)
 
-**Pushed and deployed.** `0fbf511` is on `main`, the Deploy workflow is green,
-and the live bundle carries the Firebase config — so the judged link is the
-shared, multi-user build. Verified by fetching the live JS.
+**Pushed and deployed.** `240bcd9` is on `main` and the Deploy workflow runs
+typecheck, tests, lint and build before publishing.
 
 The three `VITE_FIREBASE_*` repository secrets are set. They are public by
 design; `firebase/database.rules.json` is what constrains them.
+
+**The rules now deploy from a shell**, not by hand: `firebase.json` is in the
+repo, so `npx firebase-tools deploy --only database --project chill-box-e5d6b`
+publishes them. Seven rounds of hand-pasting is how the published rules came
+to sit behind the client — see §16.
 
 Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
+| `240bcd9` | GPS out of the interface, swipeable toast, hover hints, firebase.json |
+| `af506e3` | Round 7: the seams between the per-slot rewrite and everything else |
 | `0fbf511` | Per-slot writes: the database enforces whose crate it is |
 | `0826f71` | Docs: audit recipe, scale numbers, what is live |
 | `25162e6` | Multi-user harbour; audit rounds 3–6 fixed; tests 49 → 67 |
@@ -64,14 +74,18 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Six hostile audits were run and acted on
+### Seven hostile audit rounds were run and acted on
 
-Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5.** Every round found real
-defects with all four gates green, and in five of the six the *previous
-round's fixes* caused the next round's defects. Details in §9–§13; the
+Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5, and round 7's pair — 3.5
+(rules/sync/store) and 4.5 (UI/honesty/performance).** Every round found real
+defects with all four gates green, and in six of the seven the *previous
+round's fixes* caused the next round's defects. Details in §9–§13 and §16; the
 prompting recipe is in `AGENTS.md` §5.
 
-**Assume the seventh will find something too.** That has been true six times.
+Round 7 split the review in two by concern, which was worth it — the two
+auditors found disjoint sets and then converged on the same root cause.
+
+**Assume the eighth will find something too.** That has been true seven times.
 
 ---
 
@@ -102,6 +116,11 @@ refusal were each exercised against the real database. The *bootstrap* path —
 an empty database, before anything is published — was not, and round 5 found
 it deadlocked (§12). Do not read "verified" as "verified everywhere".
 
+**And "force-release verified" was worth nothing**, because every boat in the
+demo roster is unbound, which is the one case where the rule permits it. It
+failed for every claimed boat and no rehearsal could have shown that (§16).
+When verifying anything the rules touch, **bind a boat first**.
+
 ---
 
 ## 4. Blocked — needs the user
@@ -110,11 +129,19 @@ it deadlocked (§12). Do not read "verified" as "verified everywhere".
 
 Secrets set, pushed, deployed, live bundle verified to contain the config.
 
-The only thing that still needs a human is **the rules**: paste
-`firebase/database.rules.json` into the Firebase console → Realtime Database →
-Rules whenever that file changes. It currently must be re-pasted to pick up
-`.indexOn: ["releasedAt"]`; without that index Firebase sorts the ledger feed
-on the client, which means every phone downloads the whole history.
+**The rules deploy from a shell now** — `firebase.json` is in the repo:
+
+```bash
+npx -y firebase-tools login --no-localhost
+npx -y firebase-tools deploy --only database --project chill-box-e5d6b
+```
+
+They were hand-pasted for seven rounds, and that is exactly how the published
+copy came to sit behind the client — with the client writing a `uid` field
+the published rules refused, which bricked registration and blamed the
+network for it (§16). **Deploy after any change to that file.** Until it is
+deployed, none of the per-slot ownership enforcement and none of the
+force-release fix is real.
 
 On a fresh database, open `#admin` once and press **Publish harbour** — it
 seeds boxes, roster and history in that order. It is idempotent.
@@ -140,15 +167,18 @@ Pages-specific.
 
 ## 5. Known outstanding issues
 
-From the second audit, not yet fixed. Roughly in priority order.
+Not yet fixed. Roughly in priority order. **The accessibility group, the
+`touchAdmin` throttle and the `letter-spacing` problem were closed in round 7
+(§16); what is left is below.**
 
-**Accessibility (a group worth one focused pass)**
-- `DockScreen` `Stat` renders `<dt>`/`<dd>` outside any `<dl>` — invalid HTML.
+**Biggest single win, measured:** the 223 kB ledger feed every phone
+downloads at startup to render a 2.6 kB answer. See §14 — this is the top of
+the list and it is deliberately its own round.
+
+**Accessibility**
 - `BookSheet` species picker: `role="radiogroup"` with `<li>` wrappers breaks
-  the ownership relation; no arrow-key roving tabindex.
-- `AdminScreen` `Bars` compact charts have no accessible text — this
-  contradicts the README's "never colour alone" claim.
-- `SeaMap` uses `role="application"` with a hardcoded English `aria-label`.
+  the ownership relation; no arrow-key roving tabindex. Cosmetic for this
+  population — six tab stops instead of one — but still wrong.
 
 **Correctness**
 - `nextBoatId` reuses the lowest free hull number. Mostly defused: with a
@@ -166,8 +196,16 @@ From the second audit, not yet fixed. Roughly in priority order.
   UI; `formatKm` localises metres but not km; admin dwell shows a bare `h`.
 - `useMarine`'s interval reload passes no `AbortSignal`; on a stalled link
   requests can accumulate.
-- `touchAdmin` fires on every pointer-down and keystroke in the admin console,
-  and each one re-serialises the whole persisted store. Throttle it. See §14.
+- The GPS fix is aged against the *server* clock (`SafetyCard`) while
+  `position.timestamp` is the *device* clock, so the distress panel's
+  staleness warning is wrong on a phone with a wrong clock — the exact bug
+  class `useClock` documents fixing for holds.
+- `monthInsight`'s "days elapsed" derives from the device timezone, so the
+  admin utilisation figure is quietly device-dependent outside IST.
+- The three Google Fonts families, including Noto Sans Telugu at four
+  weights, are fetched from a third-party origin and are **not** counted in
+  any bundle figure we quote. Plausibly larger than the whole JS entry on a
+  first visit. Self-host and subset before believing the ~110 kB number.
 - `SeaMap` tile handling flaps — `tileload` clears the offline banner, so a
   partial failure blinks it on and off.
 - `flushStorage` runs on `visibilitychange` for *show* as well as hide.
@@ -179,15 +217,18 @@ From the second audit, not yet fixed. Roughly in priority order.
 
 ## 6. What to do next — suggested order
 
-1. **Set the repository secrets and push** (§4a). Until then the *live* link —
-   the thing being judged — runs local-only while local dev is shared.
-2. **One accessibility pass** — the four items above are quick together and
-   close a README claim that is currently untrue.
+1. **Deploy the rules** — `npx firebase-tools deploy --only database`. None of
+   the per-slot enforcement, and none of the force-release fix, is real until
+   the published rules match the file.
+2. **Move the ledger feed off the startup path** (§14). The single biggest
+   measured win in the app, and the one change worth its own audit round
+   because it touches the subscription lifecycle.
 3. **Fix `nextBoatId`** — small, and it silently corrupts reports.
-4. **Re-audit** with a fresh hostile subagent, then act on it. Sync is new and
-   has never been audited; the failure modes worth attacking are a phone that
-   sleeps mid-hold, two admins force-releasing at once, and a clock skewed far
-   enough to expire holds early.
+4. **Self-host and subset the Telugu webfont**, then re-measure first paint.
+5. **Re-audit**, split by concern as in round 7. Worth attacking next: a
+   phone that sleeps mid-hold, two admins acting at once, a boat bound to a
+   phone that is then wiped, and the half-committed write paths now that
+   `settle` exists.
 5. Polish list, as time allows.
 
 ### Deliverables the brief asks for
@@ -433,13 +474,47 @@ after the first load.
 **What is already efficient, and why:** the clock lives outside the persisted
 store (a tick in it cost ~11 ms of `JSON.stringify` per second); `applyTick`
 returns the same array when nothing changed, so no re-render; Firebase, the map
-and the admin console are separate lazy chunks, entry bundle **96 kB gzipped**;
-the ledger is capped per harbour in both the store and the feed.
+and (since round 7) the admin console are separate lazy chunks; the ledger is
+capped per harbour in both the store and the feed. All four were re-verified
+against `dist/` in round 7 and hold.
 
-**Known inefficiency, unfixed:** `touchAdmin` fires on every pointer-down and
-keystroke in the admin console and each one is a `set()`, which re-serialises
-the whole persisted store. Harmless for a demo, wrong on a low-end phone.
-Throttle it to once every few seconds.
+**Corrected in round 7, because three of the claims above were wrong:**
+
+- The admin console was **not** a lazy chunk — it was a static import in
+  `App.tsx`, so every skipper on 2G downloaded the reporting maths, the CSV
+  writer and the PBKDF2 path. It is lazy now (4.6 kB gz of its own).
+- "96 kB gzipped" counted only the JS. First paint is ~110 kB with CSS and
+  workbox. Quote the honest number or none.
+- `touchAdmin` was described as re-serialising the whole store on every
+  keystroke. Persist writes were already coalesced to one per 5 s, and the
+  console has no text field — it was every *tap*, and it cost a render, not a
+  serialisation. Now throttled to once per 10 s. Overstating a defect is the
+  same class of error as understating one.
+
+**The real bottleneck, measured against the live database on 7 Sept 2026:**
+
+| Node | Bytes |
+| --- | --- |
+| Ledger feed, `limitToLast(LEDGER_LIMIT)` | **228 370** |
+| `boxes` — the answer to "is there room" | 2 666 |
+| `boats` | 2 974 |
+
+`watchRoster` subscribes that ledger feed at startup **for every phone**
+(`useDockStore.ts`), not just in the admin console. So a skipper downloads
+223 kB of ninety days of other people's release history to render a 2.6 kB
+answer about thirty crates — an 84× ratio, roughly a minute of a 2G link, and
+real money on a prepaid pack. Only `#admin` reads that history.
+
+§14 previously ranked write contention as the number-one scale problem. On
+measured evidence it is not; this is, by about eighty times. "Firebase sends
+only the changed child after the first load" is true and does not help: the
+web SDK has no disk persistence, so **every cold start is a first load**.
+
+Fix: subscribe the ledger when the admin console mounts, not at startup, and
+give the skipper-side window the size the UI actually renders. Deliberately
+NOT done in round 7 — it is a change to the subscription lifecycle, which is
+the exact seam five of six rounds broke, so it gets its own round and its own
+audit.
 
 **Size:** ~7 800 lines of source, 860 of tests. The two biggest files are
 `useDockStore.ts` (1 120) and `harbourSync.ts` (815); both are approaching the
@@ -491,6 +566,56 @@ older rules still published, say — the boat stays unbound and the harbour
 behaves exactly as it did before binding existed. A rules deployment lagging a
 code deployment must never lock a skipper out.
 
-**The rules must be re-pasted for any of the enforcement to be real.** Until
-then the new client runs correctly under the old rules, with the old (weaker)
-guarantees.
+**The rules must be deployed for any of the enforcement to be real.**
+
+**That last sentence used to read "the new client runs correctly under the old
+rules". It was false, and round 7 proved it** — see §16. Registration wrote
+`uid`, the old rules refused the unknown child, and the skipper was told "No
+signal" on full bars. It degrades correctly now, and the rules deploy from a
+shell rather than by hand.
+
+---
+
+## 16. Seventh review — two auditors, 3.5 and 4.5, both DO NOT SHIP → fixed
+
+Split by concern this time: one on the rules, the sync layer and the store;
+one on UI, honesty, accessibility and performance. Both landed on the same
+wound from opposite sides — **the per-slot rewrite changed the code and left
+every document describing it untouched.**
+
+| Defect | Why it mattered |
+| --- | --- |
+| **Force release could never work against a claimed boat.** The rule cleared a crate only when its stored status was `overstay`, and nothing ever writes that: `applyTick` raises the flag on each phone's own copy, and the watcher overwrites it from the wire on the next snapshot | A skipper claims a boat, stores a crate, loses the phone. Six hours later the crate is flagged, the harbour master taps Force release, and the write is refused. That crate — with a catch rotting in it — is unclearable by **every phone in the harbour, the harbour master included**, for the life of the deployment. Every rehearsal passed because every seeded boat is unbound. The rule now derives the overstay from `depositedAt`, the same timestamp the screen counts from |
+| The Force release button was offered on every stored crate | A dead button whose failure only ever appears in production. `forceReleasable` now gates it, and the row says why when it is not offered |
+| **Registration was bricked under the published rules and blamed the network** | `claimBoat` wrote `uid` unconditionally; rules predating that field refuse the unknown child, a bare catch ate the throw, and a new skipper on full bars was told "No signal. Nothing was saved". It falls back to registering unbound now — `claimForThisDevice` already did, and the fix had been generalised to one call site and not the other |
+| **A two-crate deposit reported success when one crate committed** | `mutateOwnSlots` returned ok on `some`. The skipper walks away believing both crates are stored; the second sits on a four-hour hold with fish in it and is handed to the next boat. Verbatim the round-3 defect, reintroduced by per-slot writes through a different door. `settle` now refuses to call a partial change a success, and release writes one ledger row per crate **actually freed** — the ledger is what the society bills off and no rule can delete a row |
+| **Twenty seconds of every cold start showed fabricated capacity** | `reach === 'checking'` rendered the wave strip, so the boxes showed the last snapshot or, on a fresh install, `mock.ts`'s hand-tuned demo occupancy — pixel-identical to live data, undated. It fails in the dangerous direction: crates that do not exist, not "0 free". A third banner state now says the numbers are still coming |
+| **The spoken readout never carried the staleness warning** | The one channel a non-reading skipper has, and the whole staleness contract was on-screen text. He taps the speaker on a frozen snapshot and hears a flat, confident "four crates" |
+| **The rules file's 49-line header was byte-identical to its pre-rewrite version** | It denied protections that now exist and claimed a ten-slot shape rule that had been deleted — in the file the README tells an operator to read before publishing. Rewritten from the rules underneath it |
+| README described the whole-node transaction and claimed an atomicity per-slot writes cannot give; `harbourSync.ts` contradicted itself 660 lines apart | The judge-facing document described the wrong architecture |
+| `$box`'s `.validate` never runs — Firebase evaluates validate on the written node and its descendants, never its ancestors | The comment claimed `box9` was refused; it was quietly stored. The box name is checked in the slot's `.write` now |
+| **AGENTS.md asserted a dead-key check that did not exist** | A rule nothing enforces has already drifted. It is a test now, in the gate |
+| Reset demo replaced roster and ledger for **all three harbours** while its own text promised both were kept, and applied locally before a shared write it could not know had failed | A registration not yet in the shared copy, destroyed silently. Multi-path `update()` is atomic, so one claimed boat makes the whole reset fail — the admin saw an empty harbour, then a refusal, then the watcher putting it back |
+| The compass told a screen reader "You are at the box" from 8 km out | |
+| Map pins ignored taps on a full box, and every pin for an unapproved boat, under copy telling the skipper to tap them | The box cards fixed this and the map did not. A new skipper taps every pin, nothing happens, and concludes the app is broken |
+| The 2-crate button was disabled at ~2:1 contrast with no reason — and one crate available is the *common* case | |
+| Slot status was fill colour plus an inert `title`; `STATUS_LABEL` sat unused | "Colour AND shape AND text" is stated in the README and AGENTS. `title` never renders on a dock phone |
+| `SeaMap` was `role="application"` with `aria-label="chart"` | The one hardcoded English string in a Telugu-first app, on an element that blackboxes itself to a screen reader |
+| `letter-spacing` on Telugu in 16 places | Tracking detaches matras from their consonant, for low-literacy readers |
+| The crash screen's Reset walked into AGENTS §6's own documented trap | `localStorage.clear()` plus reload does not reset this app — the running page writes back first. `resetStorage` latches the writer shut |
+
+**Three tests could not fail**, including the one guarding the security
+property. The Firebase stub refused every read, so `reserve`, `deposit` and
+`release` returned at their first guard and the assertions ran over writes
+that came entirely from `publishHarbour` — every slot function could have
+been deleted. Replaced with a small in-memory database. Its auth stub then
+called `onAuthStateChanged` **synchronously**, which the real SDK never does,
+so `signIn` threw into its own catch and every test in the file had been
+running with no identity at all. Both fixed; each new regression test was
+mutation-checked by breaking the fix and watching it fail.
+
+**Standing lesson, now four rounds old, and it keeps arriving in a new
+costume:** verify the side of the system the user experiences. Round 5
+counted rows instead of running the query. Round 6 measured the wrong side of
+the ledger feed. Round 7 verified force-release against a roster where every
+boat was unbound, which is the only case where it works.
