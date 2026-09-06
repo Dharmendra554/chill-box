@@ -4,7 +4,8 @@ Slot reservation and catch checkout for the community solar chill-boxes at
 Andhra Pradesh fishing harbours. No harbour master, patchy signal, twenty
 boats to a society. Mobile-first, Telugu by default, no password.
 
-**Live demo:** _deploy to Vercel/Netlify (below) and paste the URL here_
+**Source:** https://github.com/Dharmendra554/chill-box
+**Live demo:** _import on Vercel (below) and paste the URL here_
 
 ---
 
@@ -23,10 +24,13 @@ npm run lint    # zero warnings
 
 ## Deploy (free tier, no environment variables)
 
-Static SPA — `vercel.json` already rewrites all routes to `index.html`. Push
-the repo and import it on Vercel or Netlify: build command `npm run build`,
-output directory `dist`. Nothing to configure — no API keys, no database, no
-auth provider.
+Import the repo at [vercel.com/new](https://vercel.com/new) and press Deploy,
+or run `npx vercel --prod` from this folder.
+
+`vercel.json` pins the framework, build command, output directory, the SPA
+rewrite, cache headers (immutable assets, always-revalidate service worker)
+and security headers — so there is nothing to fill in. No API keys, no
+database, no auth provider, no environment variables.
 
 ---
 

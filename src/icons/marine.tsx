@@ -192,3 +192,22 @@ export function SpeakerStopIcon(props: IconProps) {
     </Icon>
   )
 }
+
+/** Sun — switch to the daylight theme. */
+export function SunIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="4.4" />
+      <path d="M12 2.4v2.6M12 19v2.6M4.6 4.6l1.9 1.9M17.5 17.5l1.9 1.9M2.4 12H5M19 12h2.6M4.6 19.4l1.9-1.9M17.5 6.5l1.9-1.9" />
+    </Icon>
+  )
+}
+
+/** Crescent moon — switch to the night theme for pre-dawn landings. */
+export function MoonIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20.4 14.6A8.6 8.6 0 0 1 9.4 3.6a8.8 8.8 0 1 0 11 11Z" />
+    </Icon>
+  )
+}

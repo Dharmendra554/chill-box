@@ -16,9 +16,11 @@ import {
   AnchorIcon,
   BoatIcon,
   ChartIcon,
+  MoonIcon,
   ShoalIcon,
   SpeakerIcon,
   SpeakerStopIcon,
+  SunIcon,
   WaveIcon,
 } from '../icons/marine'
 
@@ -56,7 +58,7 @@ export function TopBar({
       <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2">
         <AnchorIcon size={30} className="shrink-0" />
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg">
+          <h1 className="truncate text-base">
             {lang === 'te' ? here.nameTe : here.nameEn}
           </h1>
           {boat ? (
@@ -75,7 +77,7 @@ export function TopBar({
             it is reachable without scrolling to wherever the boxes are. */}
         <button
           type="button"
-          className={cx('btn h-11 min-h-11 px-3', speaking && 'btn-armed')}
+          className={cx('btn h-11 min-h-11 px-2.5', speaking && 'btn-armed')}
           aria-pressed={speaking}
           aria-label={t(speaking ? 'voiceStop' : 'voiceRead')}
           title={t(speaking ? 'voiceStop' : 'voiceRead')}
@@ -83,16 +85,21 @@ export function TopBar({
         >
           {speaking ? <SpeakerStopIcon size={22} /> : <SpeakerIcon size={22} />}
         </button>
+        {/* Icons, not words: three labelled buttons crowd the harbour name
+            off a 360 px screen. The language toggle keeps its text because
+            "EN" is the clearest possible label for what it does. */}
         <button
           type="button"
-          className="btn h-11 min-h-11 px-3 text-sm"
+          className="btn h-11 min-h-11 px-2.5"
+          aria-label={t(theme === 'day' ? 'night' : 'day')}
+          title={t(theme === 'day' ? 'night' : 'day')}
           onClick={() => onTheme(theme === 'day' ? 'night' : 'day')}
         >
-          {t(theme === 'day' ? 'night' : 'day')}
+          {theme === 'day' ? <MoonIcon size={20} /> : <SunIcon size={20} />}
         </button>
         <button
           type="button"
-          className="btn h-11 min-h-11 px-3 text-sm"
+          className="btn h-11 min-h-11 px-2.5 text-sm"
           onClick={() => onLang(lang === 'te' ? 'en' : 'te')}
         >
           {lang === 'te' ? 'EN' : 'తె'}
