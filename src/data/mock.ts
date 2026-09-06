@@ -196,5 +196,3 @@ export function seedAllBoxes(now: number): Record<HarbourId, ColdBox[]> {
 export function seedAllLedgers(now: number): LedgerEntry[] {
   return HARBOUR_IDS.flatMap((id) => createMockLedger(id, now))
 }
-
-export const MOCK_CLEARED_TODAY = 14

@@ -51,6 +51,8 @@ const db: Record<string, unknown> = {}
  * sibling write that had already committed.
  */
 const refuse = new Set<string>()
+/** Slot paths whose transaction aborts with a bare, code-less Error. */
+const abort = new Set<string>()
 
 /** Whether writing a boat that carries a `uid` throws, as old rules do. */
 let rejectUid = false
@@ -95,6 +97,11 @@ vi.mock('firebase/database', () => ({
     if (refuse.has(r.path)) {
       throw Object.assign(new Error('permission_denied'), { code: 'PERMISSION_DENIED' })
     }
+    // The SDK's OTHER rejections: a bare Error with no `code`, thrown after
+    // 25 re-runs (`maxretry`) or when a plain write lands on the same path
+    // mid-transaction (`set`) — which is what Reset demo does to a skipper
+    // who is depositing. Modelling only the coded one hid a live defect.
+    if (abort.has(r.path)) throw new Error('maxretry')
     const current = readPath(r.path)
     const next = fn(current)
     if (next === undefined) {
@@ -116,6 +123,7 @@ let seed: (now: number) => object
 async function publishedHarbour() {
   for (const key of Object.keys(db)) delete db[key]
   refuse.clear()
+  abort.clear()
   rejectUid = false
   writes.length = 0
   // A clean local store too: `publishHarbour` publishes this phone's boxes,
@@ -427,5 +435,30 @@ describe('a database that says no', () => {
       ok: false,
       error: 'refused',
     })
+  })
+})
+
+describe('a transaction that aborts without a code', () => {
+  it('is not reported as "already done" either', async () => {
+    // `runTransaction` rejects with a bare `Error('maxretry')` after 25
+    // re-runs, and `Error('set')` when a plain write lands on the same path
+    // — which is exactly what an admin pressing Reset demo does to a
+    // skipper mid-deposit. Neither carries a code, so checking only for a
+    // permission denial let both fall through to "That is already done" —
+    // and the crate stayed a four-hour hold with the catch inside it.
+    await publishedHarbour()
+    await sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn')
+
+    const held = Object.keys(db).filter(
+      (path) =>
+        path.startsWith('harbours/nizampatnam/boxes/box3/') &&
+        (db[path] as { boatId?: string })?.boatId === '04',
+    )
+    expect(held.length).toBe(1)
+    abort.add(held[0])
+
+    const outcome = await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)
+    expect(outcome.ok).toBe(false)
+    expect(outcome).not.toMatchObject({ error: 'stale' })
   })
 })

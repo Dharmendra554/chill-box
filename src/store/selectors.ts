@@ -67,10 +67,6 @@ export function boatState(boxes: ColdBox[], boatId: string): BoatState {
   return 'idle'
 }
 
-export function boxById(boxes: ColdBox[], id: BoxId): ColdBox | undefined {
-  return boxes.find((b) => b.id === id)
-}
-
 export function activeBoxId(boxes: ColdBox[], boatId: string): BoxId | null {
   for (const box of boxes) {
     if (box.slots.some((s) => s.boatId === boatId && s.status !== 'empty')) {
@@ -115,13 +111,6 @@ export function plannedOutAtForBoat(
     .map((s) => s.plannedOutAt)
     .filter((t): t is number => t !== null)
   return times.length ? Math.min(...times) : null
-}
-
-export function overstayCount(boxes: ColdBox[]): number {
-  return boxes.reduce(
-    (n, b) => n + b.slots.filter((s) => s.status === 'overstay').length,
-    0,
-  )
 }
 
 export interface Occupancy {
@@ -236,20 +225,6 @@ export function occupancyRows(boxes: ColdBox[]): Occupancy[] {
   })
 }
 
-/** Slots expected to free up inside `windowMs` — the "plan ahead" list. */
-export function freeingSoon(
-  boxes: ColdBox[],
-  now: number,
-  windowMs: number,
-): Occupancy[] {
-  return occupancyRows(boxes).filter(
-    (r) =>
-      r.plannedOutAt !== null &&
-      r.plannedOutAt >= now - windowMs &&
-      r.plannedOutAt <= now + windowMs,
-  )
-}
-
 /**
  * Age every slot: expire 4-hour holds, raise and clear the 6-hour overstay
  * flag.
@@ -299,10 +274,6 @@ export function applyTick(
   })
 
   return { boxes: moved ? next : boxes, expiredHolds }
-}
-
-export function maxEmpty(boxes: ColdBox[]): number {
-  return Math.max(0, ...boxes.map(emptyCount))
 }
 
 /** The box with the most room — a hint on the picker, never a decision. */

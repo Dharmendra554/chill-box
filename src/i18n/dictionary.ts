@@ -131,6 +131,7 @@ const S = {
   safetyTitle: { te: 'ల్యాండింగ్ భద్రత', en: 'Landing safety' },
   safetyRough: { te: 'అలలు ప్రమాదకరంగా ఉన్నాయి. ల్యాండింగ్ ఆలస్యం చేయండి.', en: 'Breakers are dangerous. Delay your landing.' },
   safetyUnknown: { te: 'అలల సమాచారం ఇప్పుడు రావట్లేదు. మీ కళ్లతో చూసి నిర్ణయించండి.', en: 'No current swell reading. Judge the sea with your own eyes.' },
+  safetyLoading: { te: 'అలల సమాచారం వస్తోంది…', en: 'Getting the swell reading…' },
   safetyStepWait: { te: 'ముఖద్వారం వద్ద ఆగి, అలల వరుస చూడండి — పెద్ద అల తర్వాత లోపలికి రండి.', en: 'Hold off the mouth, watch the wave sets, and come in behind a big one.' },
   safetyStepLife: { te: 'లైఫ్ జాకెట్లు వేసుకోండి. డెక్ మీద ఉన్నవన్నీ కట్టేయండి.', en: 'Life jackets on. Lash everything loose on deck.' },
   safetyStepCall: { te: 'ఇబ్బంది ఉంటే వెంటనే ఫోన్ చేయండి — ఆలస్యం చేయకండి.', en: 'In trouble, call straight away — do not wait it out.' },

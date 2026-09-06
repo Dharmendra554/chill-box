@@ -5,6 +5,7 @@ import type { Occupancy } from '../store/selectors'
 import type { T } from '../i18n/dictionary'
 import type { Boat, Lang, Species } from '../types'
 import { SPECIES_ICON } from '../icons/species'
+import { TideClockIcon } from '../icons/marine'
 
 /**
  * One boat's hold on one box: who, what, and when it frees.
@@ -43,14 +44,34 @@ export function CrateRow({
             overdue crate and a stored one then differed by hue only, in
             direct sun, on the whole Harbour tab and in every full box's
             detail sheet. */}
+        {/* `role="img"` because a bare <span> is role `generic`, where an
+            author-supplied accessible name is PROHIBITED and conforming
+            screen readers drop it — so the first version of this label
+            reached nobody at all. */}
         <span
           className={cx(
-            'grid h-11 w-11 shrink-0 place-items-center border-3 border-rule font-display text-sm font-extrabold leading-none',
+            'grid h-11 w-11 shrink-0 place-items-center gap-0 border-3 border-rule font-display text-sm font-extrabold leading-none',
             STATUS_STYLE[row.status],
           )}
+          role="img"
           aria-label={`#${row.boatId} · ${t(STATUS_LABEL[row.status])}`}
         >
-          <span aria-hidden>{row.status === 'overstay' ? '!' : ''}#{row.boatId}</span>
+          <span aria-hidden className="flex items-center gap-0.5">
+            {/* The same marks the crate grid uses, for all three statuses a
+                row can hold — not just the overdue one. A hold and a stored
+                crate differed by hue alone, and that is the distinction that
+                matters most here: a hold is an EMPTY crate someone has
+                claimed; occupied has fish in it. Reversing those at 4 a.m.
+                is a dispute at the quay. */}
+            {row.status === 'overstay' ? (
+              '!'
+            ) : row.status === 'reserved' ? (
+              <TideClockIcon size={12} />
+            ) : row.species ? (
+              <SpeciesMark species={row.species} />
+            ) : null}
+            #{row.boatId}
+          </span>
         </span>
 
         <p className="min-w-0 flex-1 truncate font-display text-lg font-extrabold">
@@ -111,4 +132,10 @@ export function CatchTag({ t, species }: { t: T; species: Species }) {
       {t(species)}
     </span>
   )
+}
+
+/** The catch's own icon, which is what a stored crate shows in the grid. */
+function SpeciesMark({ species }: { species: Species }) {
+  const Icon = SPECIES_ICON[species]
+  return <Icon size={12} />
 }

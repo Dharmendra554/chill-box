@@ -35,11 +35,14 @@ export function SafetyCard({
   band,
   fix,
   locating,
+  seaKnown,
 }: {
   band: WaveBand | null
   fix: GeoFix | null
   /** Whether a position may still arrive. False once we know none will. */
   locating: boolean
+  /** Whether a swell reading has ever landed for this harbour. */
+  seaKnown: boolean
 }) {
   const t = useT()
   const harbour = useDockStore(selectHarbour)
@@ -67,12 +70,23 @@ export function SafetyCard({
         {t('safetyTitle')}
       </h2>
 
-      {/* Three states, not two. `band === null` means we do not know — the
-          swell fetch has failed and the last figure is too old to stand
-          behind — and telling a skipper the sea is calm on that basis is the
-          most expensive lie this app could tell. */}
+      {/* Four states, not two. `band === null` means we cannot stand behind
+          a figure — and telling a skipper the sea is calm on that basis is
+          the most expensive lie this app could tell. But "we asked and the
+          answer is too old" and "we have not finished asking" are different
+          sentences, and collapsing them made this card assert "no current
+          swell reading" for the whole first fetch, while the strip directly
+          above it said it was still fetching. */}
       <p className="font-bold">
-        {t(rough ? 'safetyRough' : band === null ? 'safetyUnknown' : 'safetyCalm')}
+        {t(
+          rough
+            ? 'safetyRough'
+            : band !== null
+              ? 'safetyCalm'
+              : seaKnown
+                ? 'safetyUnknown'
+                : 'safetyLoading',
+        )}
       </p>
 
       {rough ? (

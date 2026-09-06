@@ -115,20 +115,28 @@
               //
               // 14400000 is HOLD_MS and 21600000 is OVERSTAY_MS, both from
               // src/lib/time.ts. They must match.
-              ".write": "auth != null && $box.matches(/^box[1-3]$/) && $slot.matches(/^[0-9]$/) && (!newData.exists() || (newData.hasChild('status') && (newData.child('status').val() === 'empty' || newData.hasChild('boatId')) && (newData.child('status').val() !== 'occupied' || newData.hasChild('depositedAt')))) && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.hasChild('reservedAt') && data.child('reservedAt').val() + 14400000 <= now) || (data.child('status').val() === 'occupied' && data.hasChild('depositedAt') && data.child('depositedAt').val() + 21600000 <= now))",
+              ".write": "auth != null && $box.matches(/^box[1-3]$/) && $slot.matches(/^[0-9]$/) && (!newData.exists() || (newData.hasChild('status') && (newData.child('status').val() === 'empty' || newData.hasChild('boatId')) && (newData.child('status').val() !== 'occupied' || newData.hasChild('depositedAt')) && (newData.child('status').val() !== 'reserved' || newData.hasChild('reservedAt')))) && (!newData.exists() || !newData.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(newData.child('boatId').val()).child('uid').val() === auth.uid) && (!data.exists() || !data.hasChild('boatId') || !root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').exists() || root.child('harbours').child($harbour).child('boats').child(data.child('boatId').val()).child('uid').val() === auth.uid || data.child('status').val() === 'overstay' || (data.child('status').val() === 'reserved' && data.hasChild('reservedAt') && data.child('reservedAt').val() + 14400000 <= now) || (data.child('status').val() === 'occupied' && data.hasChild('depositedAt') && data.child('depositedAt').val() + 21600000 <= now))",
               // A typo, or a client inventing 'box9' or slot 47, is refused
               // rather than quietly stored — and so is a crate with no boat
               // on it, which the reader skips and the console cannot show,
               // leaving a slot permanently full and invisible.
               //
-              // A stored crate must also keep its `depositedAt`. Erasing
-              // that one child left the crate `occupied` with no timestamp:
-              // no phone could ever flag it as an overstay, and the rule
-              // below could never let anyone else clear it — a rotting
-              // crate its owner had abandoned, unclearable by the whole
-              // harbour. Erasing `status` was worse: the reader defaults a
-              // missing status to `empty`, so the crate read as free to
-              // everyone while the fish were still in it.
+              // A crate must also keep the timestamp its deadline is
+              // measured from — `depositedAt` when stored, `reservedAt`
+              // while held. Erasing one left a crate no clock could ever
+              // reach: nothing could flag it overdue, and clause 3 below
+              // could never let anyone else clear it. A crate abandoned by
+              // its owner, unclearable by the whole harbour, one of thirty
+              // gone for the life of the deployment.
+              //
+              // BOTH statuses, deliberately. The first fix covered
+              // `occupied` and left the identical construction on
+              // `reserved`, where a hold with no `reservedAt` shows a
+              // frozen 4:00:00 that never counts down and never expires.
+              //
+              // Erasing `status` is refused for its own reason: the reader
+              // defaults a missing status to `empty`, so the crate would
+              // read as free to everyone while the fish were still in it.
               //
               // All three checks live in the .write above, not only here.
               // Firebase evaluates validate rules on the node written and

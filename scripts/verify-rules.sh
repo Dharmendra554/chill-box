@@ -11,11 +11,16 @@
 # rehearsal passed because every seeded boat is unbound. This asks the
 # database.
 #
-# It writes only under `harbours/ruletest`, which the app never loads — the
-# three real harbour ids are fixed in src/data/harbours.ts. Delete that node
-# whenever you like; nothing reads it. Note it leaves three ledger rows that
-# nobody can delete, because the ledger is append-only by rule, which is
-# itself one of the things this checks.
+# It writes only under `harbours/probe-<timestamp>`, which the app never
+# loads — the three real harbour ids are fixed in src/data/harbours.ts.
+# Delete `harbours/probe-*` whenever you like; nothing reads it. Each run
+# leaves ONE ledger row that nobody can delete, because the ledger is
+# append-only by rule, which is itself one of the things this checks.
+#
+# A [PASS] here means "not refused". It does not read the value back, so it
+# proves permission and not persistence. Where the app's real write shape
+# differs from a minimal one, this sends the real shape — a minimal write
+# that passes proves nothing about the write the app actually makes.
 #
 # Needs .env.local for the web API key and the database URL. Neither is a
 # secret — both ship in the bundle — but neither is echoed here.
@@ -78,8 +83,23 @@ check PASS "claim an unbound boat"                 PUT   "boats/02/uid" "$TB" "\
 check PASS "hold a crate"                          PUT   "boxes/box1/0" "$TA" "$SLOT_R"
 check PASS "deposit into it"                       PUT   "boxes/box1/0" "$TA" '{"status":"occupied","boatId":"01","species":"prawn","depositedAt":'"$NOW"',"plannedOutAt":'"$NOW"'}'
 check PASS "release it"                            PUT   "boxes/box1/0" "$TA" '{"status":"empty"}'
-check PASS "approve a boat (a child write)"        PATCH "boats/01" "$TA" '{"status":"active"}'
-check PASS "seed several slots at once"            PATCH "boxes" "$TA" '{"box2/0":{"status":"empty"},"box2/1":{"status":"empty"}}'
+# The shape `putBoat` actually sends — every field, including the
+# `mobileLast4` the immutability clause now compares. A minimal
+# `{"status":"active"}` passed while the write the admin makes would not have.
+check PASS "approve a boat, as putBoat sends it"   PATCH "boats/01" "$TA" "${BOAT%\}},\"nameTe\":\"ప్రోబ్\"}"
+# And the shape `slotPaths` sends: thirty paths at once, mixed statuses,
+# including the seeded overstay. Publish harbour and Reset demo are both this
+# write, and `resetDemo`'s correctness argument rests on it being atomic.
+check PASS "publish a harbour: 30 slots at once"   PATCH "boxes" "$TA" "$(
+  printf '{'
+  for b in 1 2 3; do
+    for s in 0 1 2 3 4 5 6 7 8 9; do
+      printf '"box%d/%d":{"status":"empty"},' "$b" "$s"
+    done
+  done
+  printf '"box1/0":{"status":"occupied","boatId":"01","species":"prawn","depositedAt":%d},' "$OLD"
+  printf '"box1/1":{"status":"overstay","boatId":"01","depositedAt":%d}}' "$OLD"
+)"
 
 echo "== a crate belongs to a boat, and a boat to a phone =="
 check DENY "B cannot reassign A's boat"            PUT   "boats/01/uid" "$TB" "\"$UB\""
@@ -101,6 +121,16 @@ check PASS "A stores a crate on box3"              PUT   "boxes/box3/0" "$TA" '{
 check DENY "even A cannot erase its timestamp"     DELETE "boxes/box3/0/depositedAt" "$TA"
 check DENY "even A cannot erase its status"        DELETE "boxes/box3/0/status" "$TA"
 check DENY "a crate cannot be stored with no boat" PUT   "boxes/box2/0" "$TB" '{"status":"occupied","depositedAt":'"$NOW"'}'
+# A hold with no `reservedAt` can never expire and can never be force
+# released: a frozen 4:00:00 and one of thirty crates gone for good. The
+# first version of this rule guarded `occupied` and left `reserved` open.
+check DENY "a hold cannot be written with no clock" PUT  "boxes/box3/1" "$TA" '{"status":"reserved","boatId":"01"}'
+check PASS "A holds a crate on box3"               PUT   "boxes/box3/2" "$TA" '{"status":"reserved","boatId":"01","reservedAt":'"$NOW"'}'
+check DENY "…nor by erasing the clock afterwards"  DELETE "boxes/box3/2/reservedAt" "$TA"
+# The rule the seeding ORDER depends on: boxes name boats, so a slot naming a
+# boat the database has never heard of must be refused. `seedHarbour` writes
+# the roster first because of this, and that ordering was once a shipped bug.
+check DENY "a slot cannot name a boat that is not there" PUT "boxes/box3/3" "$TA" '{"status":"reserved","boatId":"99","reservedAt":'"$NOW"'}'
 
 echo "== the harbour can take back what it has given up on =="
 check PASS "A stores a crate, 7 h ago"             PUT   "boxes/box1/0" "$TA" '{"status":"occupied","boatId":"01","depositedAt":'"$OLD"'}'

@@ -322,7 +322,14 @@ The skipper is never asked whether they have signal — the app works it out:
   border survives when fills and shadows wash out.
 - 60–72 px targets for every primary action, 44 px for top-bar utilities, one
   primary action per screen, bottom tab bar.
-- Every status is colour **and** shape **and** text — never colour alone.
+- No status is ever colour alone. Each of the four carries a **mark** as well
+  as a fill — an empty slot is a dot in a dashed border, a hold carries a
+  clock, a stored crate carries its catch, an overdue one carries `!` — and
+  the legend above the boxes teaches exactly those four marks. In the crate
+  grid the status *word* is on the cell's accessible label rather than on the
+  cell itself, because a 48 px square already carries a hull number and a
+  collection hour; the word is on every row of the Harbour tab, where there
+  is room for it.
 - Times are 12-hour with am/pm, the way the dock reads a clock.
 - Hand-drawn SVG marine and species icons, not emoji: emoji render differently
   on every Android build in the harbour and cannot be recoloured for contrast.

@@ -37,19 +37,6 @@ function Icon({ size = 24, title, children, ...rest }: IconProps) {
   )
 }
 
-/** Side-view fish: leaf body, forked tail, dorsal fin, gill, eye. */
-export function FishIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M7.1 12c1.5-4.9 6.5-6.9 12.4-.9a1.3 1.3 0 0 1 0 1.8C13.6 18.9 8.6 16.9 7.1 12Z" />
-      <path d="M7.1 12 3 8.1l1.7 3.9L3 15.9Z" />
-      <path d="M11.2 7.1c.9-2 2.8-2.9 4.4-2.7-.5 1-.8 1.8-.9 2.6" />
-      <path d="M15.1 8.1c-1.2 1.5-1.2 6.3 0 7.8" />
-      <path d="M17.9 11.1h.01" strokeWidth={2.6} />
-    </Icon>
-  )
-}
-
 /** Two fish nose-to-tail — the community / shoal mark. */
 export function ShoalIcon(props: IconProps) {
   return (

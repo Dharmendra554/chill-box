@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the ninth hostile audit round, pushed.
+**Last updated:** 7 Sept 2026, after the tenth hostile audit round, pushed.
 
 ---
 
@@ -27,7 +27,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 81 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 82 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
 **First paint, measured, all of it:**
 
@@ -92,13 +92,13 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Nine hostile audit rounds were run and acted on
+### Ten hostile audit rounds were run and acted on
 
 Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, round 7's pair — **3.5**
 (rules/sync/store) and **4.5** (UI/honesty) — round 8's **3.5 / 3.5**, and
-round 9's **4.0 / 5.0**. Every round found real defects with all four gates
-green, and in eight of the nine the *previous round's fixes* caused the next
-round's defects. Details in §9–§13 and §16–§18; the recipe is `AGENTS.md` §5.
+round 9's **4.0 / 5.0** and round 10's **5.0 / 5.0**. Every round found real defects with all four gates
+green, and in nine of the ten the *previous round's fixes* caused the next
+round's defects. Details in §9–§13 and §16–§20; the recipe is `AGENTS.md` §5.
 
 Splitting the review in two by concern is worth it: the auditors find
 disjoint sets and then converge on the same root cause.
@@ -112,7 +112,7 @@ sync layer and the score rose a point and a half.
 **So: one subsystem per round.** Not because it is tidier — because nine
 rounds of evidence say a big round buys its own next round's defects.
 
-**Assume the tenth will find something too.** That has been true nine times.
+**Assume the eleventh will find something too.** That has been true ten times.
 
 ---
 
@@ -737,9 +737,20 @@ webfonts, and the demo/live toggle. One subsystem per round.
 
 Nine rounds kept producing rules claims that were true in the file and false
 in the database, or the reverse. This script signs in **two real anonymous
-identities** and puts 36 assertions to the deployed rules: the eight writes
-the app itself must be allowed to make, then every hostile write the header
-says is refused.
+identities** and puts **40 assertions** to the deployed rules — 17 writes the
+app itself must be allowed to make, and 23 the rules header says are refused.
+It writes under `harbours/probe-<timestamp>`, a fresh namespace per run.
+
+Where the app's real write shape differs from a minimal one, the script sends
+the real shape: `putBoat`'s whole six-field object, and `slotPaths`' atomic
+thirty-path publish. A minimal write that passes proves nothing about the
+write the admin actually makes, and the first version made exactly that
+mistake on both.
+
+It does **not** cover everything. The rules header's permissive disclosures —
+any signed-in phone can set any boat's status, exceed the 2-crate cap, or
+append invented ledger rows — have no assertion, and a `[PASS]` means "not
+refused", not "read back and correct".
 
 ```bash
 npx -y firebase-tools deploy --only database --project chill-box-e5d6b
@@ -749,15 +760,25 @@ bash scripts/verify-rules.sh          # must print: all checks passed
 **Run it every time the rules change.** A `FAIL` on a `[PASS]` line means the
 harbour is broken for real skippers and the previous rules should go back up.
 
-Two things it has already settled that no amount of reading could:
+**Always say which rules a result came from.** The first version of this
+section did not, and round 10 caught it: the two results below were obtained
+against the rules deployed at the time — the file as of `240bcd9` — and were
+written up as facts about "the deployed rules" while the working tree already
+contained `1b34f32`'s hardening, under which both writes are refused. A
+result with no version attached is a claim, not evidence.
+
+Two things it settled against **the `240bcd9` rules**, on 7 Sept 2026, that
+no amount of reading could:
 
 - **The round-9 auditor was half right about erasing a slot's children.**
-  Nulling `depositedAt` really does make a crate permanently unclearable —
+  Nulling `depositedAt` really did make a crate permanently unclearable —
   reproduced live, with the very next assertion showing the force-release
   then refused for everyone. Nulling `status`, which the same finding
-  claimed would make a stored crate read as free, is **already refused** by
-  the deployed rules. One of those was worth fixing and one was not, and
-  only the database could say which.
+  claimed would make a stored crate read as free, was **already refused**.
+  One was worth fixing and one was not, and only the database could say
+  which. Both are now closed in the file, for `reserved` as well as
+  `occupied` — and that will not be true of the live harbour until someone
+  deploys and re-runs the probe.
 - **The probe's own first design was wrong.** Run twice under a fixed
   harbour name it reported fourteen failures that were entirely its own: a
   boat can never be deleted and its `uid` can never be reassigned, so the
@@ -766,3 +787,42 @@ Two things it has already settled that no amount of reading could:
   is unavoidable — it is the price of testing rules whose whole purpose is
   refusing to forget. Delete `harbours/probe-*` from the console whenever it
   bothers you; nothing reads it.
+
+---
+
+## 20. Tenth review — 5.0 and 5.0 → fixed
+
+Both auditors landed on 5.0, the joint-highest, and both said the rise was
+earned rather than granted: *"the first round where most of what was claimed
+is simply true"* and *"six of nine claims substantially hold, which is the
+best ratio so far."* Both still said DO NOT SHIP, and both were right.
+
+The pattern §18 named held for the third time: **every claim that failed
+failed at a seam, and every narrowly-scoped claim came back clean.** The
+measured byte table was re-measured by a second party and survived to the
+byte — 265 002 B of fonts against a claimed 265 kB — and it is the first
+number in this project's history to do that.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **A refusal was still reported as "already done" for every rejection that is not a permission denial.** `runTransaction` also rejects with a bare `Error('maxretry')` after 25 re-runs, and with `Error('set')` when a plain write lands on the same path — neither carries a code, so `reasonFor` called them `offline` and the round-9 check, which looked only for `refused`, let them fall through to `stale` | An admin pressing **Reset demo** while a skipper is depositing does exactly this. Nothing is written, the crate is still a four-hour hold with the catch inside it, and the skipper is told the harbour has nothing left to change. The round-9 defect, in the branch round 9 wrote, through a rejection round 9 did not consider |
+| **A `reserved` slot needed no `reservedAt`.** The fix that made `depositedAt` mandatory covered `occupied` and left its sibling | A hold with no clock can never expire — `claimable`, `expireHolds` and `applyTick` all skip it — and clause 3 of the rule needs `reservedAt` before anyone else may clear it. A frozen 4:00:00 that never counts down: one of thirty crates gone for the life of the deployment, with no admin remedy, because `forceReleasable` correctly never offers a button for it |
+| **`reserveRemote` leaked a live hold when a write was refused mid-loop** — a rejection unwound straight past the giveback into the catch | The skipper is told the write was refused and believes he holds nothing. He holds one crate, and it blocks the box for four hours. In the loop whose own comment says "half a booking is worse than none" |
+| **`useMarine` carried a reading across a harbour change.** The catch path did `{...prev, lat, lon}`, re-stamping another harbour's swell with these coordinates — which is exactly what the render-time guard exists to catch, and it satisfied it | Change harbour, let one fetch fail on 2G — which the hook's own comment calls routine — and Nizampatnam's 2.6 m renders under Kakinada's name. If it was rough, the full red breakers card comes with it, describing a sea 200 km away. The strip and the card agreed perfectly, on the wrong harbour |
+| The legend taught a crate glyph for a stored crate; the grid draws the **catch's** own icon. And it drew a solid border for the empty state where the grid draws a dashed one | A legend that teaches a mark the grid never uses is worse than no legend: the skipper looks for something that is not there |
+| `CrateRow` gave a mark to `overstay` only, so a **hold** and a **stored** crate still differed by hue alone — and that is the distinction that matters most there: a hold is an empty crate someone has claimed | And the `aria-label` added alongside sat on a bare `<span>`, role `generic`, where an author-supplied name is *prohibited* and conforming screen readers drop it. It reached nobody |
+| `safetyUnknown` asserted "no current swell reading" for the whole first fetch, while the strip above it said it was still fetching | Two answers in one viewport again, pointing the other way |
+| The chart never re-framed when the position arrived **after** the booking — step 3 of the judge's own demo script | Book a box, tap "pretend I am 8 km out", and the map stays on 300 m of quay with the route running off the edge to a boat pin nobody can see |
+| `verify-rules.sh`'s own header was false twice: `ruletest` for `probe-<timestamp>`, "three ledger rows" for one. Its `[PASS]` assertions used minimal write shapes, not the app's | In the file whose entire purpose is not lying about the rules. It now sends `putBoat`'s real object and `slotPaths`' real thirty-path publish, and both pass |
+| §19 wrote up results obtained against the **`240bcd9`** rules as facts about "the deployed rules", while the working tree already held the hardening that refuses both | A result with no version attached is a claim, not evidence. §19 now names the commit and the date |
+| The approve button's guard was global while its `disabled` was per-boat, so every other Approve was enabled and silently dead for a second | |
+| Two more promise-returning handlers typed `() => void`; three `void record(...)` with no rejection handler | Third round running for this class |
+| Nine dead exports, a 9.6 px collection hour, `aria-live` re-announcing the nav readout once a second | |
+
+**Deleted, not fixed:** `FishIcon`, `boxById`, `overstayCount`, `freeingSoon`,
+`maxEmpty`, `findBoat`, `DEFAULT_BOAT_ID`, `MOCK_CLEARED_TODAY`. `oxlint`
+cannot see across module boundaries, so all four gates stayed green over all
+of them.
+
+**Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
+of webfonts, the demo/live toggle. One subsystem per round.

@@ -247,7 +247,12 @@ export default function App() {
             ) : null}
 
             {tab === 'dock' ? (
-              <DockScreen band={band} onChangeHarbour={signOut} onResetDemo={resetDemo} />
+              <DockScreen
+                band={band}
+                seaKnown={marine.reading !== null}
+                onChangeHarbour={signOut}
+                onResetDemo={resetDemo}
+              />
             ) : (
               <HarbourScreen />
             )}

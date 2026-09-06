@@ -33,6 +33,7 @@ import { CompassRose } from './CompassRose'
 import { ConfirmButton } from './ConfirmButton'
 import { SafetyCard } from './SafetyCard'
 import { CompassIcon, CrateIcon, TideClockIcon } from '../icons/marine'
+import { SPECIES_ICON } from '../icons/species'
 
 // Leaflet is ~44 kB gzipped. It loads alongside the page rather than
 // blocking the booking flow behind it on a 2G tether.
@@ -57,10 +58,13 @@ const PLAN_HOURS = [2, 4, 5]
  */
 export function DockScreen({
   band,
+  seaKnown,
   onChangeHarbour,
   onResetDemo,
 }: {
   band: WaveBand | null
+  /** Whether a swell reading has EVER landed for this harbour. */
+  seaKnown: boolean
   onChangeHarbour: () => void
   onResetDemo: () => void | Promise<void>
 }) {
@@ -170,7 +174,7 @@ export function DockScreen({
         <>
           {/* A <dl>, because these are three term/value pairs and <dt>/<dd>
               are only meaningful inside one. */}
-          <dl className="card grid grid-cols-3 gap-2 p-4" aria-live="polite">
+          <dl className="card grid grid-cols-3 gap-2 p-4">
             <Stat label={t('navDistance')} value={formatKm(nav.km, lang)} />
             <Stat label={t('navEta')} value={formatEta(nav.etaMinutes, lang)} />
             <Stat
@@ -212,7 +216,7 @@ export function DockScreen({
       {/* `geo.status` was computed, documented and read by nothing at all —
           so the safety card could never tell "no position yet" from "no
           position ever". */}
-      <SafetyCard band={band} fix={geo.fix} locating={geo.status !== 'unavailable'} />
+      <SafetyCard band={band} fix={geo.fix} locating={geo.status !== "unavailable"} seaKnown={seaKnown} />
 
       <DemoTools
         simulating={simulated !== null}
@@ -327,11 +331,17 @@ function Stat({ label, value }: { label: string; value: string }) {
  */
 function Legend() {
   const t = useT()
+  // Each chip carries EXACTLY what its cells carry — the dashed border of an
+  // empty slot, the hold's clock, a catch icon for a stored crate, the `!`
+  // of an overdue one. The first version showed a crate glyph for "full",
+  // which the grid never draws: it draws the catch's own icon. A legend that
+  // teaches a mark the grid does not use is worse than no legend, because
+  // the skipper then looks for something that is not there.
   const items = [
-    ['legendFree', 'bg-free-wash text-ink', '·'],
-    ['legendHold', 'bg-hold text-hold-ink', null],
-    ['legendFull', 'bg-full text-full-ink', null],
-    ['legendLate', 'bg-late text-late-ink', '!'],
+    ['legendFree', 'bg-free-wash text-ink border-dashed', <span key="d">·</span>],
+    ['legendHold', 'bg-hold text-hold-ink', <TideClockIcon key="h" size={13} />],
+    ['legendFull', 'bg-full text-full-ink', <SPECIES_ICON.mixed key="f" size={13} />],
+    ['legendLate', 'bg-late text-late-ink', <span key="l">!</span>],
   ] as const
 
   return (
@@ -344,7 +354,7 @@ function Legend() {
             style,
           )}
         >
-          {mark ?? (key === 'legendHold' ? <TideClockIcon size={13} /> : <CrateIcon size={13} />)}
+          {mark}
           {t(key)}
         </li>
       ))}
@@ -422,8 +432,8 @@ function MyStatusCard({
   plannedOutAt: number | null
   now: number
   onDeposit: () => void
-  onCancel: () => void
-  onRelease: () => void
+  onCancel: () => void | Promise<void>
+  onRelease: () => void | Promise<void>
 }) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)

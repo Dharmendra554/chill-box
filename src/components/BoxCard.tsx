@@ -174,7 +174,7 @@ function SlotCell({ t, slot, now }: { t: T; slot: Slot; now: number }) {
       </span>
       {out !== null ? (
         <span
-          className={cx('tabular text-[0.6rem] leading-none font-bold', overdue && 'underline')}
+          className={cx('tabular text-xs leading-none font-bold', overdue && 'underline')}
         >
           {formatClockShort(out)}
         </span>

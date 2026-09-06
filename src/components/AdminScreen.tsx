@@ -240,7 +240,7 @@ function Console() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={busy === boat.id}
+                  disabled={busy !== null}
                   onClick={async () => {
                     if (busy) return
                     setBusy(boat.id)

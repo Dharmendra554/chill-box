@@ -39,9 +39,19 @@ export function useMarine(
       fetchWaveHeight(lat, lon, signal)
         .then((reading) => setCache({ lat, lon, reading, error: false }))
         .catch(() => {
-          if (!ac.signal.aborted) {
-            setCache((prev) => ({ ...prev, lat, lon, error: true }))
-          }
+          if (ac.signal.aborted) return
+          // KEEP the last reading only if it came from HERE. `{...prev, lat,
+          // lon}` re-stamped another harbour's swell with these coordinates,
+          // which is precisely what the render-time guard below exists to
+          // catch — and it satisfied it. Change harbour, let one fetch fail
+          // on 2G, and Nizampatnam's 2.6 m rendered under Kakinada's name,
+          // with the full red rough-breakers landing card beneath it,
+          // describing a sea 200 km away.
+          setCache((prev) =>
+            prev.lat === lat && prev.lon === lon
+              ? { ...prev, error: true }
+              : { lat, lon, reading: null, error: true },
+          )
         })
 
     void load(ac.signal)

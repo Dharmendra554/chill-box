@@ -911,23 +911,33 @@ export async function reserveRemote(
     if (candidates.length < crates) return { ok: false, error: 'boxFull' }
 
     // One slot at a time, taking the next candidate whenever we lose a race.
-    const won: number[] = []
-    for (const index of candidates) {
-      if (won.length === crates) break
-      if (await claimSlot(a, harbourId, boxId, index, boatId, species)) won.push(index)
-    }
-
-    if (won.length === crates) return { ok: true }
-
+    //
     // Half a booking is worse than none: the skipper would hold one crate
-    // while believing they had two. Give back what we took, then say the box
-    // filled up — which is exactly what happened.
-    for (const index of won) {
-      await changeOwnSlot(a, harbourId, boxId, index, boatId, ['reserved'], () => ({
-        status: 'empty',
-      }))
+    // while believing they had two. The giveback is in a `finally` because a
+    // rules refusal REJECTS `claimSlot` — so a throw on the second crate used
+    // to unwind straight past the giveback, leaving the first crate reserved
+    // on the server while the skipper was told the write had been refused and
+    // that he held nothing. That crate then blocked the box for four hours.
+    const won: number[] = []
+    try {
+      for (const index of candidates) {
+        if (won.length === crates) break
+        if (await claimSlot(a, harbourId, boxId, index, boatId, species)) won.push(index)
+      }
+    } finally {
+      if (won.length !== crates) {
+        for (const index of won) {
+          // Best effort: if this throws too, the outer catch reports the
+          // original failure, which is the one the skipper needs.
+          await changeOwnSlot(a, harbourId, boxId, index, boatId, ['reserved'], () => ({
+            status: 'empty',
+          }))
+        }
+      }
     }
-    return { ok: false, error: 'boxFull' }
+
+    // The box filled up, which is exactly what happened.
+    return won.length === crates ? { ok: true } : { ok: false, error: 'boxFull' }
   } catch (error) {
     return { ok: false, error: reasonFor(error) }
   }
@@ -1107,11 +1117,17 @@ async function mutateOwnSlots(
     // that lost its identity — was told "That is already done" and walked
     // away from a crate still holding his catch. A refusal must always read
     // as a refusal; that is what sends him to find the harbour master.
-    if (freed.length === 0) {
-      const denied = done.some(
-        (r) => r.status === 'rejected' && reasonFor(r.reason) === 'refused',
-      )
-      if (denied) return { ok: false, error: 'refused' }
+    // ANY rejection, not only a permission denial. `runTransaction` also
+    // rejects with a bare `Error('maxretry')` after 25 re-runs, and with
+    // `Error('set')` when a plain write lands on the same path — which is
+    // what an admin pressing Reset demo does to a skipper mid-deposit.
+    // Neither carries a code, so `reasonFor` calls them `offline`, and
+    // checking only for `refused` let them fall through to `stale`: "That is
+    // already done." Nothing was written, the crate is still a four-hour
+    // hold with the catch inside it, and the skipper walks away.
+    const failed = done.find((r) => r.status === 'rejected')
+    if (freed.length === 0 && failed) {
+      return { ok: false, error: reasonFor(failed.reason) }
     }
     return { ok: true, freed, total: mine.length }
   } catch (error) {

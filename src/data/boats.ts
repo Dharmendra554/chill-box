@@ -109,18 +109,8 @@ export function seedPending(now: number): Boat[] {
   ]
 }
 
-export const DEFAULT_BOAT_ID = '04'
-
 export function boatsAt(boats: Boat[], harbourId: HarbourId): Boat[] {
   return boats.filter((b) => b.harbourId === harbourId)
-}
-
-export function findBoat(
-  boats: Boat[],
-  harbourId: HarbourId,
-  id: string,
-): Boat | undefined {
-  return boats.find((b) => b.harbourId === harbourId && b.id === id)
 }
 
 export function boatName(boat: Boat, lang: Lang): string {
