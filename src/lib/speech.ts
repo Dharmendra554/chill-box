@@ -77,6 +77,7 @@ const TE = {
   crates: 'క్రేట్లు',
   full: 'నిండింది',
   stale: 'జాగ్రత్త. ఈ లెక్క పాతది. బాక్స్ దగ్గర చూసుకోండి.',
+  demo: 'ఇది డెమో. నిజమైన బుకింగ్ కాదు.',
   counts: ['సున్నా', 'ఒక', 'రెండు', 'మూడు', 'నాలుగు', 'ఐదు', 'ఆరు', 'ఏడు', 'ఎనిమిది', 'తొమ్మిది', 'పది'],
 } as const
 
@@ -88,6 +89,7 @@ const ROMAN = {
   crates: 'cretlu',
   full: 'nindindi',
   stale: 'jaagratta. ee lekka paatadi. box daggara chusukondi.',
+  demo: 'idi demo. nijamaina booking kaadu.',
   counts: ['sunna', 'oka', 'rendu', 'moodu', 'naalugu', 'aidu', 'aaru', 'edu', 'enimidi', 'tommidi', 'padi'],
 } as const
 
@@ -118,11 +120,18 @@ export type SpeechOutcome = 'telugu' | 'transliterated' | 'unsupported'
  * the app's own primary failure mode, delivered through its own
  * accessibility feature. If the figures are not current, the voice says so
  * first, before any number.
+ *
+ * `demo` is the same argument one step further, and it was missed when the
+ * mode was added: the entire disclaimer went into text, on a screen the one
+ * user this button exists for cannot read. He heard a flat, confident
+ * "Auction Hall, two crates" off a harbour that does not exist. Whichever
+ * caveat applies is spoken FIRST, before any number, for the same reason.
  */
 export function speakCapacity(
   boxes: ColdBox[],
   fresh: boolean,
   onEnd: () => void,
+  demo = false,
 ): SpeechOutcome {
   if (!supportsSpeech()) return 'unsupported'
 
@@ -130,7 +139,8 @@ export function speakCapacity(
   const voice = telugu ?? findVoice('en') ?? findVoice('hi')
   const words: Phrases = telugu ? TE : ROMAN
 
-  const spoken = fresh ? line(boxes, words) : `${words.stale} ${line(boxes, words)}`
+  const caveats = [demo ? words.demo : '', fresh ? '' : words.stale].filter(Boolean).join(' ')
+  const spoken = caveats ? `${caveats} ${line(boxes, words)}` : line(boxes, words)
   const utterance = new SpeechSynthesisUtterance(spoken)
   utterance.lang = voice?.lang ?? (telugu ? 'te-IN' : 'en-IN')
   if (voice) utterance.voice = voice

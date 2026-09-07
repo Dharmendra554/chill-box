@@ -84,8 +84,13 @@ import {
  *
  * Namespacing is what makes `mode.ts`'s promise — "a copy of the harbour that
  * lives on this phone alone" — true rather than aspirational.
+ *
+ * Neither name may collide with `mode.ts`'s flag key. The first attempt used
+ * `ap-chill-box.demo` for both, so the store overwrote the flag on the first
+ * `set` and the app quietly went back to the live harbour on the next
+ * reload. The flag now lives under `.mode`; these two own `.store`.
  */
-const STORAGE_KEY = demoMode ? 'ap-chill-box.demo' : 'ap-chill-box'
+export const STORAGE_KEY = demoMode ? 'ap-chill-box.store.demo' : 'ap-chill-box'
 const STORAGE_VERSION = 4
 
 /**
@@ -371,6 +376,8 @@ export interface DockState {
    * effect on every phone in the harbour.
    */
   setBoatStatus: (id: string, status: Boat['status']) => Promise<'ok' | 'pending' | 'failed'>
+  /** Block or unblock a boat and record it. See the implementation. */
+  setBoatBlocked: (id: string, blocked: boolean) => Promise<void>
   /** `indexes` are the crates the harbour may take back — see forceReleasable. */
   adminRelease: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<void>
   publishHarbour: () => Promise<void>
@@ -1008,6 +1015,22 @@ export const useDockStore = create<DockState>()(
 
         approveBoat: async (id) => {
           await logStatusChange(id, 'active', 'boat.approve')
+        },
+
+        /**
+         * Block or unblock, logged the same way as approve and reject.
+         *
+         * Here rather than in the console, because the console was building
+         * the same detail string by hand in JSX — two copies of one rule,
+         * neither tested, on the action that most needs to be attributable:
+         * blocking stops a boat releasing the crate its catch is in.
+         */
+        setBoatBlocked: async (id, blocked) => {
+          await logStatusChange(
+            id,
+            blocked ? 'blocked' : 'active',
+            blocked ? 'boat.block' : 'boat.unblock',
+          )
         },
 
         /**

@@ -38,6 +38,7 @@ export function TopBar({
   harbourId,
   boat,
   speaking,
+  demo,
   onLang,
   onTheme,
   onSpeak,
@@ -48,6 +49,8 @@ export function TopBar({
   harbourId: HarbourId
   boat: Boat | null
   speaking: boolean
+  /** Whether this session is on a local demo copy. See lib/mode.ts. */
+  demo: boolean
   onLang: (lang: Lang) => void
   onTheme: (theme: Theme) => void
   onSpeak: () => void
@@ -109,6 +112,12 @@ export function TopBar({
         </button>
       </div>
 
+      {/* INSIDE the sticky header, so it is on screen at every scroll
+          position rather than only the first 117 px. It was a sibling below
+          it — `position: static` — which meant the one sentence saying none
+          of this is real was visible for 2% of the Harbour page, and absent
+          exactly where the booking and deposit controls are. */}
+      {demo ? <DemoBanner t={t} /> : null}
     </header>
   )
 }

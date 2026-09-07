@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
-  DemoBanner,
   LoadingBanner,
   OfflineBanner,
   TabBar,
@@ -155,7 +154,7 @@ export default function App() {
     // stale, so `reach` — which then tracks the weather poll — must not
     // decide. A warning that fires when nothing is wrong stops being read.
     const fresh = !sharedActive || reach === 'connected'
-    const outcome = speakCapacity(boxes, fresh, () => setSpeaking(false))
+    const outcome = speakCapacity(boxes, fresh, () => setSpeaking(false), demoMode)
     if (outcome === 'unsupported') {
       notify('warn', t('voiceNone'))
       return
@@ -207,7 +206,13 @@ export default function App() {
    */
   let banner = <OfflineBanner t={t} since={sharedActive ? reachedAt : null} shared={sharedActive} />
   if (reach === 'checking' && sharedActive) banner = <LoadingBanner t={t} />
-  else if (reach !== 'stale') {
+  else if (reach !== 'stale' || demoMode) {
+    // `|| demoMode`: a demo has no shared copy to fall behind, so losing the
+    // radio changes nothing about these figures. Without this, switching a
+    // phone to flight mode in demo stacked an amber "No signal — these
+    // figures are from this phone only" on top of the demo banner already
+    // saying exactly that, and raised an alarm about a link the mode does
+    // not use. A warning that fires when nothing is wrong stops being read.
     banner = <WaveStrip t={t} reading={marine.reading} band={band} error={marine.error} />
   }
 
@@ -220,6 +225,7 @@ export default function App() {
         harbourId={harbour.id}
         boat={boat}
         speaking={speaking}
+        demo={demoMode}
         onLang={setLang}
         onTheme={setTheme}
         onSpeak={onSpeak}
@@ -234,7 +240,6 @@ export default function App() {
         inside those twenty seconds. It fails in the dangerous direction: he
         sees crates that do not exist, rather than none at all.
       */}
-      {demoMode ? <DemoBanner t={t} /> : null}
       {banner}
 
       <main className="mx-auto max-w-6xl px-3 py-4 pb-28">

@@ -26,11 +26,30 @@ import { syncEnabled } from './harbourSync'
  * cope with it changing.
  */
 
-const KEY = 'ap-chill-box.demo'
+/**
+ * The flag's own key, and it MUST NOT be a key anything else writes.
+ *
+ * It was `ap-chill-box.demo` — byte-identical to the key the demo store was
+ * given one commit later. So the first `set` in a demo session (a tab tap, a
+ * language toggle, a hold expiring) serialised the whole store over the
+ * flag, and the next cold start read that JSON, compared it to `'1'`, and
+ * booted LIVE. Demo mode did not survive one interaction, and it failed
+ * toward the shared harbour: the next crate the user tapped was a real one.
+ *
+ * `.mode` rather than `.demo`, so the two namespaces cannot converge again.
+ *
+ * There is deliberately NO migration from the old key. A phone that was in
+ * demo when this shipped comes back live once, and then stays wherever it is
+ * put. That is the fail-safe direction — live is the app's real product and
+ * the default a first visit gets — and the old key is not trustworthy
+ * anyway: on any phone that did more than open the app it holds the whole
+ * serialised store rather than a flag, which is the defect being fixed.
+ */
+export const MODE_KEY = 'ap-chill-box.mode'
 
 function readFlag(): boolean {
   try {
-    return localStorage.getItem(KEY) === '1'
+    return localStorage.getItem(MODE_KEY) === '1'
   } catch {
     // Storage blocked entirely — a locked-down browser, or a test runner
     // with no DOM. Fall back to the deployment's own default rather than to
@@ -73,8 +92,8 @@ export const sharedActive = syncEnabled && !demoMode
 export function setDemoMode(on: boolean): boolean {
   const want = on ? '1' : '0'
   try {
-    localStorage.setItem(KEY, want)
-    if (localStorage.getItem(KEY) !== want) return false
+    localStorage.setItem(MODE_KEY, want)
+    if (localStorage.getItem(MODE_KEY) !== want) return false
   } catch {
     return false
   }
@@ -91,7 +110,7 @@ export function setDemoMode(on: boolean): boolean {
  */
 export function keepMode(): void {
   try {
-    localStorage.setItem(KEY, demoMode ? '1' : '0')
+    localStorage.setItem(MODE_KEY, demoMode ? '1' : '0')
   } catch {
     /* nothing to do; the reload will fall back to live, which is the default */
   }

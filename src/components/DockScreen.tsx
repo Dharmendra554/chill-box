@@ -4,8 +4,7 @@ import { useGeolocation } from '../hooks/useGeolocation'
 import { BOX_SHORT, type StringKey } from '../i18n/dictionary'
 import { useT } from '../i18n/useT'
 import { cardinal, simulateApproachFix } from '../lib/geo'
-import { demoMode, setDemoMode, sharedActive } from '../lib/mode'
-import { syncEnabled as syncConfigured } from '../lib/harbourSync'
+import { sharedActive } from '../lib/mode'
 import type { WaveBand } from '../lib/marine'
 import { distanceToBox, formatEta, formatKm, navigateTo } from '../lib/nav'
 import { formatClock, formatCountdown, formatElapsed, formatGap, HOUR_MS } from '../lib/time'
@@ -34,6 +33,7 @@ import { BoxDetails } from './BoxDetails'
 import { ChoiceSheet } from './ChoiceSheet'
 import { CompassRose } from './CompassRose'
 import { ConfirmButton } from './ConfirmButton'
+import { ModeSwitch } from './ModeSwitch'
 import { SafetyCard } from './SafetyCard'
 import { CompassIcon, CrateIcon, TideClockIcon } from '../icons/marine'
 import { crateMark } from '../icons/crateMark'
@@ -565,7 +565,6 @@ function DemoTools({
   onResetDemo: () => void | Promise<void>
 }>) {
   const t = useT()
-  const notify = useDockStore((s) => s.notify)
   return (
     <section className="card-soft flex flex-col gap-2 p-3">
       <h3 className="text-sm font-extrabold uppercase">{t('demoTitle')}</h3>
@@ -576,26 +575,7 @@ function DemoTools({
           the app is local and always was, and a toggle that cannot move is
           worse than none. Switching reloads — see lib/mode.ts for why that
           is the design rather than a shortcut. */}
-      {syncConfigured ? (
-        <>
-          <p className="border-3 border-rule bg-paper-2 px-3 py-2 text-sm font-extrabold">
-            {t(demoMode ? 'modeDemoNow' : 'modeLiveNow')}
-          </p>
-          <button
-            type="button"
-            className="btn btn-block"
-            onClick={() => {
-              // Says so when it cannot. A switch that silently fails is a
-              // dead button, and this one decides which harbour the next
-              // booking reaches.
-              if (!setDemoMode(!demoMode)) notify('error', t('modeSwitchFailed'))
-            }}
-          >
-            {t(demoMode ? 'modeGoLive' : 'modeGoDemo')}
-          </button>
-          <p className="text-xs font-bold text-ink-2">{t('modeHint')}</p>
-        </>
-      ) : null}
+      <ModeSwitch />
 
       <button
         type="button"

@@ -131,7 +131,7 @@ function Console() {
   const [busy, setBusy] = useState<string | null>(null)
   const approveBoat = useDockStore((s) => s.approveBoat)
   const rejectBoat = useDockStore((s) => s.rejectBoat)
-  const setBoatStatus = useDockStore((s) => s.setBoatStatus)
+  const setBoatBlocked = useDockStore((s) => s.setBoatBlocked)
   const adminRelease = useDockStore((s) => s.adminRelease)
   const lockAdmin = useDockStore((s) => s.lockAdmin)
   const touchAdmin = useDockStore((s) => s.touchAdmin)
@@ -543,23 +543,12 @@ function Console() {
                   // recreated the same hole one outcome to the left.
                   onClick={async () => {
                     const next = boat.status === 'blocked' ? 'active' : 'blocked'
-                    const outcome = await setBoatStatus(boat.id, next)
-                    if (outcome === 'failed') return
-                    // The harbour, like every other action records. Hull
-                    // numbers repeat across harbours — Nizampatnam's #04 is
-                    // a different boat from Visakhapatnam's — so a row
-                    // reading `boat.block · #04 ·` names three boats and
-                    // identifies none, in the log the README offers to
-                    // settle a dispute with. Blocking is the action that
-                    // most needs to be attributable: it stops a boat
-                    // releasing the crate its catch is already in.
-                    void record(
-                      `boat.${next === 'blocked' ? 'block' : 'unblock'}`,
-                      `#${boat.id}`,
-                      outcome === 'pending'
-                        ? `${harbour.id} · outcome not confirmed`
-                        : harbour.id,
-                    )
+                    // The store writes the row, exactly as it does for
+                    // approve and reject. This used to build the same detail
+                    // string by hand here — two copies of one rule, in an
+                    // app whose contract says rules live in the store, on
+                    // the action that most needs to be attributable.
+                    await setBoatBlocked(boat.id, next === 'blocked')
                   }}
                 >
                   {t(boat.status === 'blocked' ? 'unblock' : 'block')}
@@ -726,10 +715,15 @@ function AuditPanel() {
    * items a second, on the screen where Approve and Force-release live.
    * Round 14 removed the formatter CONSTRUCTIONS here and left the calls.
    *
-   * Memoised on `audit` alone, so a tick costs nothing, and sliced because
-   * nobody reads two thousand rows on a 320 px phone — the rest is one tap
-   * away, and the integrity check above still runs over every row either
-   * way, which is the part that has to be complete.
+   * Memoised on `audit` alone, so a tick no longer rebuilds and re-reverses
+   * the array. The `formatDayClock` calls in the rows DO still run every
+   * tick — about 57 a second on the default page, measured, against 2 006
+   * before the slice. That is the honest number; the memo does not make a
+   * tick free, it makes it cheap.
+   *
+   * Sliced because nobody reads two thousand rows on a 320 px phone — the
+   * rest is one tap away, and the integrity check above still runs over
+   * every row either way, which is the part that has to be complete.
    */
   const rows = useMemo(() => [...audit].reverse(), [audit])
   const shown = all ? rows : rows.slice(0, AUDIT_PAGE)

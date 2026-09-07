@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the sixteenth hostile audit round, pushed.
+**Last updated:** 7 Sept 2026, after the seventeenth hostile audit round, pushed.
 
 ---
 
@@ -33,7 +33,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 | | |
 | --- | --- |
-| Entry JS | 95 kB gz |
+| Entry JS | 97 kB gz |
 | CSS | 12 kB gz |
 | Service worker + workbox runtime + workbox-window, first visit | 11 kB gz |
 | **Firebase**, fetched at start-up by `main.tsx` | **88 kB gz** |
@@ -125,15 +125,16 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Fifteen hostile audit rounds were run and acted on
+### Seventeen hostile audit rounds were run and acted on
 
 Scores in order, rules-sync-store side then UI-honesty side once the review
 split in two at round 7: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, then **3.5/4.5**,
 **3.5/3.5**, **4.0/5.0**, **5.0/5.0**, **5.5/6.0**, **5.5/6.0**, **5.5/5.5**,
-**6.0/6.0**, **6.5/6.5**. Every round found real defects with all four gates
-green, and in FIFTEEN of the fifteen the *previous round's fixes* caused the
-next round's defects. Details in §9–§13 and §16–§25; the recipe is
-`AGENTS.md` §5.
+**6.0/6.0**, **6.5/6.5**, **6.5/6.0**, **6.5/5.5**. Every round found real
+defects with all four gates green, and in SEVENTEEN of the seventeen the
+*previous round's fixes* caused the next round's defects — twice now, the
+fix landed in the same commit as the defect it caused. Details in §9–§13 and
+§16–§27; the recipe is `AGENTS.md` §5.
 
 Splitting the review in two by concern is worth it: the auditors find
 disjoint sets and then converge on the same root cause.
@@ -147,9 +148,9 @@ sync layer and the score rose a point and a half.
 **So: one subsystem per round.** Not because it is tidier — because nine
 rounds of evidence say a big round buys its own next round's defects.
 
-**Assume the next one will find something too.** That has been true fifteen
-times out of fifteen, and the last two rounds found their headline defect on a
-seam the round before had just cut.
+**Assume the next one will find something too.** That has been true seventeen
+times out of seventeen, and the last four rounds found their headline defect on
+a seam the round before had just cut — twice on one the SAME commit cut.
 
 ---
 
@@ -1155,3 +1156,41 @@ change, and this time the newest change was the feature added that hour.
 deadlines, the rules file and its probe, and every one of round 15's
 reporting-layer fixes — four of six verified under instrumentation rather
 than by reading.
+
+---
+
+## 28. Seventeenth review — 6.5 and 5.5 → fixed
+
+Both auditors found the same headline, independently, and it was the worst
+kind: **round 16 introduced the mode flag and the demo store's name in the
+same commit, and gave them the same string.** `ap-chill-box.demo` was both.
+
+So the first `set` of any demo session — a tab tap, a language toggle, a
+hold expiring — serialised the whole store over the flag. The next cold
+start compared 800 kB of JSON to `'1'`, got false, and booted LIVE. Demo
+mode did not survive one interaction, and it failed toward the shared
+harbour: the next crate the user tapped was a real one. Both auditors
+reproduced it end to end. The comment three lines away said "the flag lives
+under its own key", which was false as it was written.
+
+The flag is `ap-chill-box.mode`; the stores are `ap-chill-box` and
+`ap-chill-box.store.demo`. And `src/lib/mode.test.ts` now exists — the whole
+feature had **no test that touched it**, because `vite.config.ts` forces the
+Firebase env empty and `demoMode` is then an unconditional `true`, so the one
+build shape where the flag decides anything was the shape the suite could not
+construct. The harness stubs a configured env and a fake `localStorage` and
+simulates page loads with `vi.resetModules()`; the collision test fails on
+the old key and passes on the new one, verified both ways.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **The voice readout did not know it was a demo.** The entire disclaimer was text | AGENTS §1 says the users are people who will not read, and the speaker button is the accommodation built for exactly them. `speech.ts` already carries this argument for staleness — "the app's own primary failure mode, delivered through its own accessibility feature" — and the mode reintroduced it. Whichever caveat applies is spoken first now, before any number |
+| **The demo banner scrolled away.** It was a sibling of the sticky header, `position: static` — on screen for 2% of the Harbour page, and absent exactly where the booking and deposit controls are | Its own JSDoc claimed "every scroll position". It is inside the sticky header now; re-measured visible at scrollY 0, 900 and 1781 |
+| **The only route to demo ran through registering in the REAL roster.** The toggle lived at the bottom of the Book screen, which does not exist until you have a boat | So a judge wanting the safe sandbox had to first put a fictitious boat on a society's permanent record — where no rule can ever delete it. `ModeSwitch` is on the registration screen too |
+| Demo plus flight mode stacked two "this phone only" strips, the second titled **"No signal"** in the amber alarm style — about a link the mode does not use | A warning that fires when nothing is wrong stops being read, which is the app's own argument elsewhere |
+| The block/unblock audit rule was built by hand in JSX, duplicating the store's | Two copies of one rule, neither tested, on the action the file's own comment calls the one that most needs to be attributable. `setBoatBlocked` is a store action now |
+| MEMORY §2 was stale for the third round running, and the audit-paging comment claimed a tick "costs nothing" when it costs 57 `Intl.format` calls a second | Both corrected against measurement |
+
+**What neither auditor could break, for the third round running:** the
+crate-moving core, the caps and deadlines, the rules file and its probe, the
+deploy workflow, and every reporting-layer fix from rounds 14 and 15.

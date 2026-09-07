@@ -6,6 +6,7 @@ import { cx } from '../lib/ui'
 import type { RegistrationError } from '../store/useDockStore'
 import { useDockStore } from '../store/useDockStore'
 import { AnchorIcon, BoatIcon } from '../icons/marine'
+import { ModeSwitch } from './ModeSwitch'
 
 const ERROR_KEY = {
   boatName: 'errBoatName',
@@ -96,6 +97,13 @@ export function RegisterScreen() {
       <section className="card flex flex-col gap-3 p-4">
         <h2 className="text-2xl">{t('regTitle')}</h2>
         <p className="font-bold text-ink-2">{t('regIntro')}</p>
+
+        {/* Before the form, not after it. On a configured build the only
+            route to the demo used to run through registering in the REAL
+            roster — and a boat can never be deleted. A judge who wants the
+            sandbox must be able to reach it without leaving a fictitious
+            fisherman on a society's permanent record. */}
+        <ModeSwitch />
 
         <form
           className="flex flex-col gap-3"
