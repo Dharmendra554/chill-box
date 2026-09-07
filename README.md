@@ -9,8 +9,7 @@ approves a registration, nobody can block a boat, and no person takes a crate
 back: a boat books the second it registers, and a space eight hours old is
 returned by the clock, through whichever phone in the harbour is online at the
 time. The record of all of it is a tab anyone can open, and nothing on it can
-stop a boat or move a crate. One PIN survives, on **Publish harbour** — the
-deployment step, which seeds an empty database and cannot alter a live one.
+stop a boat or move a crate — and there is no password anywhere in the app.
 
 **Source:** https://github.com/Dharmendra554/chill-box
 **Live demo:** https://dharmendra554.github.io/chill-box/
@@ -129,11 +128,36 @@ nobody is in charge, that put a person on the critical path at 4 a.m., and in
 a real society it is a monopoly — whoever holds the PIN decides who may store
 fish.
 
-No password anywhere in the skipper's product either: on this dock a shared
-secret is painted on a hull within a week, and the brief forbids
-authentication services outright. Claiming a boat already on the roster needs
-the last four digits of its registered number, so the list is not a one-tap
-"become anyone" — those digits identify a boat, they do not authenticate one.
+### Why the last four digits, and not an OTP or a Google sign-in
+
+**The design we would have built is a mobile OTP.** A skipper types the number
+the society already has on file, a code arrives by SMS, and that is the whole
+login — no password to forget, no email, nothing to install. It is the one
+authentication a fisherman on this coast already understands, because every
+bank and every ration shop uses it.
+
+**We did not build it because it costs money.** Every SMS gateway — Firebase
+Phone Auth included — bills per message, and the brief is explicit: *"No paid
+external APIs, authentication services, or paid databases."* So the OTP is out
+on the rules, not merely on the budget.
+
+**A Google sign-in was never the answer either.** Many skippers here have no
+Gmail account; those who do share the phone, or have the password written down
+by whoever set it up for them. A screen asking for an email address and a
+password is exactly the wall that keeps this crowd off an app, and it would be
+the first thing a user meets.
+
+**What we do instead is the OTP flow with the paid step removed.** You pick
+your boat from the roster and type **the last four digits of the mobile number
+the society registered for it**. Nothing is sent; the app compares them
+locally. That is honestly weaker — anyone who knows a boat's number can claim
+it — but it costs nothing, needs no account, works with no signal, and is one
+number a skipper already knows by heart. A real deployment adds the SMS step
+and **nothing else in the app changes**: it is the same field, the same
+roster, the same check.
+
+So: those digits *identify* a boat. They do not *authenticate* one, and the
+README will not pretend otherwise.
 
 A boat that joined in the last week carries a **New** mark in the harbour
 list. That is the whole of what replaced approval: nobody vets a new boat and
@@ -165,15 +189,19 @@ per-catch breakdowns, an **insight strip** (utilisation, average dwell,
 overstay rate, month-on-month trend and the hour boats actually land — the
 number that staffs the quay), and **Download for Excel** — the raw ledger for the
 selected month as CSV with a UTF-8 BOM, so Telugu names survive the trip into
-Excel on Windows. The PIN survives on two controls only — **Publish harbour** and **Reset
-demo** — which are deployment and demonstration tools, not harbour policy.
-Both are destructive and neither is something twenty skippers should meet by
-scrolling, so they keep the lock a government portal would use:
+Excel on Windows.
 
-- the PIN is **not in the source** — only a PBKDF2-SHA-256 hash (150 000
-  iterations, salted), verified with Web Crypto
-- **lockout with exponential backoff** after three wrong attempts, to 15 min
-- **idle auto-lock** after 5 minutes
+**There is no PIN anywhere in the app any more.** There was one, and it was a
+faithful copy of what a government portal does — a PBKDF2-SHA-256 hash so no
+secret shipped in the bundle, lockout with exponential backoff, idle
+auto-lock. What it guarded shrank round by round until the last thing behind
+it was **Publish harbour**, which fills an empty database and cannot alter a
+live one. At that point the lock protected nobody from anything; it only made
+the record look like a console with something hidden inside. It is deleted,
+and so is the code that checked it.
+
+What is left is not access control and never was:
+
 - **two-tap confirmation** on every irreversible action
 - a **hash-chained action log**: every recorded action carries who, what, when and
   a SHA-256 over the previous entry, and the record verifies the chain live.
@@ -219,6 +247,10 @@ build time by the Firebase config; which one you are in is a toggle under
 **Demo tools**, at the bottom of the "which boat are you" screen — the one
 place a judge can reach before putting a fictitious boat on a real society's
 permanent roster.
+
+**The blue bar at the top of the screen tells you which one you are in, and
+the button in that bar switches.** Blue "Demo" means this phone only. Green
+"Real" means every phone. There is no third state and nowhere else to look.
 
 **Demo** is the same app — same rules, same screens, same refusals — on a
 copy of the harbour that lives on this phone alone. Nobody else's crates
@@ -462,6 +494,22 @@ The skipper is never asked whether they have signal — the app works it out:
 - Releasing on time is credited; an overstay release is not
 - Capacity is crates only — species is a tag, never a constraint
 
+## Try it in thirty seconds
+
+The link opens on the real shared harbour. Sign in as any boat on the roster
+with the last four digits of its number — they follow the hull number, so
+**#04 is 2004, #11 is 2011**, and so on.
+
+| | |
+| --- | --- |
+| Harbour | **Nizampatnam** |
+| Boat | **Ramu #04** |
+| Last four digits | **2004** |
+
+That is a real account on the real harbour: what you book appears on every
+other phone. If you would rather not touch anyone else's crates, tap **Go
+demo** in the bar at the top first — same app, your phone only.
+
 ## Judge demo
 
 **Step 0, and it matters.** The link opens on the real shared harbour, where
@@ -496,10 +544,10 @@ stays in the header everywhere. Everything below is then yours to break.
 8. In the harbour list, **Deepika #21** carries a **New** mark — a boat that
    joined this week, visible to everyone, stoppable by nobody.
 
-**Reset demo** lives at the bottom of the Record tab behind PIN **2468**, with
-Publish harbour. In the shared harbour it clears every phone's crates and
-signs you out; the roster and past records are kept, because the ledger is
-append-only by rule and there is no longer anyone who could override that.
+**Reset demo** lives in Demo tools at the bottom of the Book screen, and it
+touches this phone's copy only. There is no control anywhere that resets a
+shared harbour — the roster and the ledger are kept regardless, because the
+ledger is append-only by rule and there is nobody left who could override it.
 
 ## Layout
 

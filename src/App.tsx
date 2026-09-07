@@ -15,10 +15,12 @@ import { vibrate } from './hooks/useHaptics'
 import { MARINE_STALE_MS, useMarine } from './hooks/useMarine'
 import { STALE_MS, SYNC_STALE_MS, useConnectivity } from './hooks/useConnectivity'
 import { useT } from './i18n/useT'
-import { demoMode, sharedActive } from './lib/mode'
+import { syncEnabled } from './lib/harbourSync'
+import { demoMode, setDemoMode, sharedActive } from './lib/mode'
 import { waveBand } from './lib/marine'
 import { speakCapacity, stopSpeech } from './lib/speech'
 import { boatState } from './store/selectors'
+import type { Tab } from './types'
 import {
   flushStorage,
   selectBoxes,
@@ -127,16 +129,50 @@ export default function App() {
       ?.setAttribute('content', theme === 'day' ? '#FAF7F0' : '#101a2b')
   }, [lang, theme])
 
-  // `#admin` is a bookmark, not the route any more — the record is a tab.
-  // Watching hashchange keeps the back button working for anyone who still
-  // arrives that way, and for the README, which has sent judges there for
-  // eighteen rounds.
+  /*
+   * The phone's back button moves between tabs instead of leaving the app.
+   *
+   * It used to leave. Open the record, press back once — the browser's own
+   * gesture, the one an Android user makes without thinking — and you were
+   * out of the app entirely, because nothing in it had ever touched history.
+   * On a phone that reads as the app crashing.
+   *
+   * The tab is the hash, so each tab change is one history entry and back
+   * walks them. `#admin` still opens the record: it is in the README and in
+   * eighteen rounds of muscle memory.
+   */
   useEffect(() => {
-    const sync = () => setTab(location.hash === '#admin' ? 'record' : 'dock')
-    if (location.hash === '#admin') sync()
+    const fromHash = (): Tab => {
+      const h = location.hash
+      if (h === '#admin' || h === '#record') return 'record'
+      if (h === '#harbour') return 'harbour'
+      return 'dock'
+    }
+    const sync = () => setTab(fromHash())
+    sync()
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
   }, [setTab])
+
+  /**
+   * Push the tab into history when the app changes it, never when the back
+   * button did.
+   *
+   * `replace` on the very first entry, so the first tab tap does not need two
+   * presses of back to leave — a phone user expects one back out of the
+   * screen they opened on.
+   */
+  const lastTab = useRef<Tab | null>(null)
+  useEffect(() => {
+    const want = tab === 'dock' ? '#' : `#${tab}`
+    if (location.hash === want || (tab === 'record' && location.hash === '#admin')) {
+      lastTab.current = tab
+      return
+    }
+    if (lastTab.current === null) history.replaceState(null, '', want)
+    else history.pushState(null, '', want)
+    lastTab.current = tab
+  }, [tab])
 
   // A crate of ours going overdue is the one event worth a buzz in a pocket.
   const late = myBoatId ? boatState(boxes, myBoatId) === 'overstay' : false
@@ -247,6 +283,15 @@ export default function App() {
         speaking={speaking}
         demo={demoMode}
         banner={banner}
+        onSwitchMode={
+          // Only where there is a choice to offer. With no database
+          // configured the app is local and always was.
+          syncEnabled
+            ? () => {
+                if (!setDemoMode(!demoMode)) notify('error', t('modeSwitchFailed'))
+              }
+            : null
+        }
         onLang={setLang}
         onTheme={setTheme}
         onSpeak={onSpeak}

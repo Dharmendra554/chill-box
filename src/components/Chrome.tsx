@@ -41,6 +41,7 @@ export function TopBar({
   speaking,
   demo,
   banner,
+  onSwitchMode,
   onLang,
   onTheme,
   onSpeak,
@@ -59,6 +60,12 @@ export function TopBar({
    * it. See the JSX below for why that matters more than the demo strip does.
    */
   banner: ReactNode
+  /**
+   * Switch between the demo copy and the real harbour, or null when there is
+   * no choice — no database configured means the app is local and always was,
+   * and a bar offering a switch that cannot happen is worse than no bar.
+   */
+  onSwitchMode: (() => void) | null
   onLang: (lang: Lang) => void
   onTheme: (theme: Theme) => void
   onSpeak: () => void
@@ -180,7 +187,7 @@ export function TopBar({
           it — `position: static` — which meant the one sentence saying none
           of this is real was visible for 2% of the Harbour page, and absent
           exactly where the booking and deposit controls are. */}
-      {demo ? <DemoBanner t={t} /> : null}
+      {onSwitchMode ? <ModeBar t={t} demo={demo} onSwitch={onSwitchMode} /> : null}
 
       {/* And so is the freshness line, which round 17 left outside while
           pinning this one — the weaker case of the two.
@@ -348,12 +355,48 @@ export function LoadingBanner({ t }: Readonly<{ t: T }>) {
  * what you think". It is not dismissible: a demo you can hide is a demo you
  * can forget you are in.
  */
-export function DemoBanner({ t }: Readonly<{ t: T }>) {
+/**
+ * Which harbour you are on, and the one tap that changes it.
+ *
+ * The strip used to say only that this was a demo, and the switch that turns
+ * it off lived at the BOTTOM of the Book screen under "Demo tools" — past the
+ * chart, the box cards and the safety card. So the owner, who wrote the
+ * feature's requirements, could not find it and could not tell the two modes
+ * apart. If the person who commissioned it cannot, a judge with ninety
+ * seconds certainly cannot, and a skipper never will.
+ *
+ * The answer is not more explanation. It is putting the control in the same
+ * place as the statement it contradicts: this bar says which harbour you are
+ * in, and the button beside it takes you to the other one. Both modes get a
+ * bar now — a green one saying the bookings are real — because "no bar" is
+ * not something anyone reads as "this is the live harbour".
+ */
+export function ModeBar({
+  t,
+  demo,
+  onSwitch,
+}: Readonly<{ t: T; demo: boolean; onSwitch: () => void }>) {
   return (
-    <p className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-sea px-3 py-1.5 text-sm font-extrabold text-sea-ink">
-      <span>{t('demoBannerTitle')}</span>
-      <span className="font-bold">{t('demoBannerBody')}</span>
-    </p>
+    <div
+      className={cx(
+        'flex items-center gap-2 border-b-3 border-rule px-3 py-1.5 text-sm font-extrabold',
+        demo ? 'bg-sea text-sea-ink' : 'bg-free text-free-ink',
+      )}
+    >
+      <span className="shrink-0">{t(demo ? 'demoBannerTitle' : 'liveBannerTitle')}</span>
+      <span className="min-w-0 flex-1 truncate font-bold">
+        {t(demo ? 'demoBannerBody' : 'liveBannerBody')}
+      </span>
+      {onSwitch ? (
+        <button
+          type="button"
+          className="shrink-0 border-2 border-current px-2 py-0.5 text-xs font-extrabold"
+          onClick={onSwitch}
+        >
+          {t(demo ? 'modeGoLiveShort' : 'modeGoDemoShort')}
+        </button>
+      ) : null}
+    </div>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { useNow } from '../hooks/useClock'
 import { boatName, boatsAt } from '../data/boats'
 import { BOX_SHORT } from '../i18n/dictionary'
@@ -75,70 +75,6 @@ export function RecordScreen() {
   return <Console />
 }
 
-function PinGate() {
-  const t = useT()
-  const unlockAdmin = useDockStore((s) => s.unlockAdmin)
-  const lockedUntil = useDockStore((s) => s.adminLockedUntil)
-  const now = useNow()
-
-  const [pin, setPin] = useState('')
-  const [problem, setProblem] = useState<'wrong' | 'unavailable' | null>(null)
-
-  const lockedFor = Math.max(0, Math.ceil((lockedUntil - now) / 1000))
-
-  return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={async (event) => {
-        event.preventDefault()
-        const result = await unlockAdmin(pin)
-        setPin('')
-        // `locked` and `ok` are not problems to report here: one is already
-        // shown by the lockout counter, the other is the door opening.
-        setProblem(result === 'wrong' || result === 'unavailable' ? result : null)
-      }}
-    >
-      {/* No heading. This form is nested inside the tools section, which
-          already has one — and while it WAS the door to the whole screen it
-          repeated the page title back at the reader on a 320 px phone. */}
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-extrabold uppercase">{t('adminPinLabel')}</span>
-        <input
-          className="field tabular"
-          type="password"
-          inputMode="numeric"
-          autoComplete="off"
-          maxLength={8}
-          value={pin}
-          onChange={(event) => {
-            setPin(event.target.value)
-            setProblem(null)
-          }}
-        />
-      </label>
-
-      {lockedFor > 0 ? (
-        <p className="border-3 border-rule bg-late px-3 py-2 font-extrabold text-late-ink" role="alert">
-          {t('adminLocked', lockedFor)}
-        </p>
-      ) : problem ? (
-        <p className="border-3 border-rule bg-full px-3 py-2 font-extrabold text-full-ink" role="alert">
-          {t(problem === 'wrong' ? 'adminWrongPin' : 'adminUnavailable')}
-        </p>
-      ) : null}
-
-      <button
-        type="submit"
-        className="btn btn-lg btn-primary btn-block"
-        disabled={lockedFor > 0 || pin.length === 0}
-      >
-        {t('adminUnlock')}
-      </button>
-      <p className="text-sm font-bold text-ink-2">{t('adminSessionNote')}</p>
-    </form>
-  )
-}
-
 function Console() {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
@@ -146,32 +82,8 @@ function Console() {
   const allBoats = useDockStore((s) => s.boats)
   const boxes = useDockStore(selectBoxes)
   const allLedger = useDockStore((s) => s.ledger)
-  const now = useNow()
-  const touchAdmin = useDockStore((s) => s.touchAdmin)
   const record = useDockStore((s) => s.record)
-
-  /**
-   * Any interaction inside the console defers the idle lock.
-   *
-   * Listeners on the node, not `onPointerDown`/`onKeyDown` in the JSX: a
-   * plain `<div>` carrying interaction handlers claims to be a control, and
-   * this one is not — it is a container that happens to notice activity, and
-   * there is nothing here to activate. Nothing in this subtree is portalled,
-   * so a native listener sees every event React's would.
-   */
-  const root = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const node = root.current
-    if (!node) return
-    const wake = () => touchAdmin()
-    node.addEventListener('pointerdown', wake)
-    node.addEventListener('keydown', wake)
-    return () => {
-      node.removeEventListener('pointerdown', wake)
-      node.removeEventListener('keydown', wake)
-    }
-  }, [touchAdmin])
-
+  const now = useNow()
   const boats = boatsAt(allBoats, harbour.id)
   const ledger = useMemo(() => ledgerFor(allLedger, harbour.id), [allLedger, harbour.id])
 
@@ -281,7 +193,7 @@ function Console() {
   }
 
   return (
-    <div className="flex flex-col gap-5" ref={root}>
+    <div className="flex flex-col gap-5">
       <header className="flex items-center gap-2">
         <HelmIcon size={28} />
         <div className="min-w-0 flex-1">
@@ -508,24 +420,40 @@ function Console() {
  * between a console and a noticeboard, and it is why nothing in this file can
  * approve, block or release anything, or touch a crate at all.
  */
+/**
+ * Whether this harbour is shared, and the one-time button that fills an empty
+ * database.
+ *
+ * NO PIN ANY MORE. The last one guarded Publish harbour, and a lock on that
+ * was never protecting the harbour from anybody: publishing yields to
+ * whatever is already there, so it creates a harbour and cannot alter one.
+ * What the lock actually did was make the record look like a console with
+ * something hidden behind it, in an app whose whole claim is that nothing is.
+ *
+ * It is only offered when there is an empty database to fill. A button that
+ * would do nothing is worse than no button, and after the first publish this
+ * one would do nothing for the rest of the deployment.
+ */
 function HarbourTools() {
   const t = useT()
-  const unlocked = useDockStore((s) => s.adminUnlocked)
-  const lockAdmin = useDockStore((s) => s.lockAdmin)
   const publishHarbour = useDockStore((s) => s.publishHarbour)
+  const boxes = useDockStore(selectBoxes)
   const [busy, setBusy] = useState(false)
+
+  // Nothing published yet: every slot empty AND no history. A live harbour
+  // that happens to be quiet at 3 a.m. is not an unpublished one.
+  const ledger = useDockStore((s) => s.ledger)
+  const harbourId = useDockStore((s) => s.harbourId)
+  const unseeded =
+    boxes.every((box) => box.slots.every((slot) => slot.status === 'empty')) &&
+    !ledger.some((e) => e.harbourId === harbourId)
 
   return (
     <section className="card flex flex-col gap-2 border-dashed p-3">
       <h3 className="text-xl">{t('adminSync')}</h3>
       <p className="font-bold">{t(sharedActive ? 'adminSyncOn' : 'adminSyncOff')}</p>
-      {!unlocked ? (
-        <PinGate />
-      ) : sharedActive ? (
+      {sharedActive && unseeded ? (
         <>
-          <button type="button" className="btn btn-block" onClick={lockAdmin}>
-            {t('adminLock')}
-          </button>
           <button
             type="button"
             className="btn btn-lg btn-block"
@@ -540,14 +468,7 @@ function HarbourTools() {
           </button>
           <p className="text-sm font-bold text-ink-2">{t('adminPublishBody')}</p>
         </>
-      ) : (
-        // Unlocked, but there is no shared harbour to publish to or reset.
-        // A button that cannot work is a lie; the sentence above already
-        // says this phone is on its own.
-        <button type="button" className="btn btn-block" onClick={lockAdmin}>
-          {t('adminLock')}
-        </button>
-      )}
+      ) : null}
     </section>
   )
 }
@@ -589,26 +510,50 @@ function Bars({
   rows: BarRow[]
   compact?: boolean
 }>) {
+  const t = useT()
   const max = Math.max(1, ...rows.map((r) => r.value))
 
   if (compact) {
+    /*
+     * Axis labels, because a bar chart with none is a picture of nothing.
+     *
+     * These two charts — arrivals by hour and crates per day — carried a
+     * `title` attribute, which never renders on a touch screen, and an
+     * `sr-only` list nobody sighted ever reads. So on a phone they were
+     * twenty-four green rectangles with no scale, no units and no way to tell
+     * which bar is 4 a.m. The tallest bar is the whole point of the first one
+     * — it is what staffs the quay — and it was unreadable.
+     *
+     * Four ticks, not twenty-four: at 320 px anything more overlaps, and
+     * Telugu cannot be tracked tighter to fit (AGENTS §4). The peak is named
+     * in words underneath, which is the number a reader actually wants.
+     */
+    const peak = rows.reduce((best, row) => (row.value > best.value ? row : best), rows[0])
+    const ticks = rows.filter((_, i) => i % Math.ceil(rows.length / 4) === 0)
+
     return (
       <figure className="card p-3">
         <figcaption className="mb-2 text-sm font-extrabold uppercase text-ink-2">{title}</figcaption>
-        {/* Height and colour, and a `title` that never renders on a touch
-            screen — so this chart carried no text at all, which is the
-            "never colour alone" rule the README states and this broke. The
-            bars are decorative; the figure carries the reading. */}
         <div className="flex h-24 items-end gap-[2px]" aria-hidden="true">
           {rows.map((row) => (
             <div
               key={row.key}
-              className="flex-1 bg-free"
+              className={cx('flex-1', row.key === peak.key ? 'bg-sea' : 'bg-free')}
               style={{ height: `${Math.max(2, (row.value / max) * 100)}%` }}
-              title={`${row.label}: ${row.value}`}
             />
           ))}
         </div>
+        <div
+          className="mt-1 flex justify-between border-t-3 border-rule pt-1 text-xs font-bold text-ink-2"
+          aria-hidden="true"
+        >
+          {ticks.map((row) => (
+            <span key={row.key}>{row.label}</span>
+          ))}
+        </div>
+        <p className="mt-1 text-sm font-extrabold">
+          {t('chartPeak', peak.label, peak.value)}
+        </p>
         <p className="sr-only">{rows.map((row) => `${row.label}: ${row.value}`).join('. ')}</p>
       </figure>
     )

@@ -58,71 +58,32 @@ import type { AuditEntry } from '../types'
  */
 export const AUDIT_LIMIT = 2_000
 
-/** PBKDF2 parameters. Salt and hash are public by design — the PIN is not. */
-const SALT_HEX = 'edf17a8afcddcd4e9e6b3580e06bc723'
-const PIN_HASH_HEX = '710b40cba57bdafffaf89f39db20f66e7f22319b62e102c6b8f8f794ba1631e8'
-const ITERATIONS = 150_000
-
-/** Auto-lock after this much inactivity, matching typical portal policy. */
-export const ADMIN_IDLE_MS = 5 * 60 * 1000
-
-/** Attempts allowed before backoff starts, then 30 s × 2^(n-3), capped. */
-export const MAX_ATTEMPTS = 3
-const MAX_LOCKOUT_MS = 15 * 60 * 1000
-
-export function lockoutMs(failures: number): number {
-  if (failures < MAX_ATTEMPTS) return 0
-  return Math.min(MAX_LOCKOUT_MS, 30_000 * 2 ** (failures - MAX_ATTEMPTS))
-}
+/*
+ * THE PIN IS GONE, AND SO IS EVERYTHING THAT CHECKED IT.
+ *
+ * A PBKDF2-SHA-256 hash, a lockout with exponential backoff, an idle timer
+ * and a timing-safe comparison used to live here, and they were good copies
+ * of what a government portal does. What they guarded shrank round by round
+ * — approve, reject, block and force release were deleted, then the shared
+ * reset — until the last thing behind the lock was Publish harbour, which
+ * fills an empty database and cannot alter a live one.
+ *
+ * At that point the lock was not protecting the harbour from anybody. It was
+ * making the record LOOK like a console with something hidden in it, in an
+ * app whose whole claim is that nothing is. The owner could not tell what the
+ * password was for, which is the answer: it was not for anything.
+ *
+ * What remains in this file is the part that was never access control — the
+ * hash-chained action log, which is a receipt, not a gate.
+ */
 
 function subtle(): SubtleCrypto | null {
   return typeof crypto !== 'undefined' && crypto.subtle ? crypto.subtle : null
 }
 
 function toHex(buffer: ArrayBuffer): string {
-  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("")
 }
-
-function fromHex(hex: string): ArrayBuffer {
-  return Uint8Array.from(hex.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []).buffer
-}
-
-/**
- * Compares every character regardless of where the first difference is, so
- * the loop's duration does not reveal how much of the guess was right.
- *
- * Not constant-time in the cryptographic sense — a JS engine gives no such
- * guarantee — but the value being compared is a PBKDF2 digest, not the PIN,
- * so there is no prefix worth learning. The lockout is the real defence.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  let diff = a.length ^ b.length
-  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
-    diff |= (a.codePointAt(i) ?? 0) ^ (b.codePointAt(i) ?? 0)
-  }
-  return diff === 0
-}
-
-export type PinResult = 'ok' | 'wrong' | 'unavailable'
-
-export async function verifyPin(pin: string): Promise<PinResult> {
-  const api = subtle()
-  // Web Crypto needs a secure context. Failing closed is the only safe
-  // answer: an insecure page must not be able to open the console.
-  if (!api) return 'unavailable'
-
-  const key = await api.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, [
-    'deriveBits',
-  ])
-  const bits = await api.deriveBits(
-    { name: 'PBKDF2', salt: fromHex(SALT_HEX), iterations: ITERATIONS, hash: 'SHA-256' },
-    key,
-    256,
-  )
-  return timingSafeEqual(toHex(bits), PIN_HASH_HEX) ? 'ok' : 'wrong'
-}
-
-/* -- Audit trail ------------------------------------------------------- */
 
 async function sha256(text: string): Promise<string | null> {
   const api = subtle()
@@ -134,10 +95,9 @@ async function sha256(text: string): Promise<string | null> {
 }
 
 /** The exact bytes that get hashed. Field order is part of the contract. */
-function canonical(entry: Omit<AuditEntry, 'hash'>): string {
-  return [entry.at, entry.actor, entry.action, entry.target, entry.detail, entry.prevHash].join('|')
+function canonical(entry: Omit<AuditEntry, "hash">): string {
+  return [entry.at, entry.actor, entry.action, entry.target, entry.detail, entry.prevHash].join("|")
 }
-
 /**
  * Append one action, chaining it to the tip of the log. Editing or removing
  * an earlier entry breaks every hash after it — unless the editor also

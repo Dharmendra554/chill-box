@@ -35,6 +35,12 @@ const S = {
   demoBannerBody: { te: 'ఈ ఫోన్‌లో మాత్రమే — నిజమైన బుకింగ్ కాదు.', en: 'This phone only — not a real booking.' },
   modeLiveNow: { te: 'ఇది నిజమైన హార్బర్. మీరు చేసేది అందరి ఫోన్లలో కనిపిస్తుంది.', en: 'This is the real harbour. What you do here appears on every phone.' },
   modeDemoNow: { te: 'ఇది డెమో. ఈ ఫోన్‌లో మాత్రమే — ఇతరుల క్రేట్లు కదలవు.', en: 'This is a demo copy. It lives on this phone only — nobody else’s crates move.' },
+  liveBannerTitle: { te: 'నిజం', en: 'Real' },
+  liveBannerBody: { te: 'ఇది నిజమైన హార్బర్ — మీ బుకింగ్ అందరికీ కనిపిస్తుంది.', en: 'The real harbour — your booking shows on every phone.' },
+  // Short forms, for the button inside the bar. The long ones do not fit
+  // beside a sentence at 320 px.
+  modeGoLiveShort: { te: 'నిజానికి', en: 'Go real' },
+  modeGoDemoShort: { te: 'డెమోకు', en: 'Go demo' },
   modeGoDemo: { te: 'డెమో కాపీకి మారు', en: 'Switch to a demo copy' },
   modeGoLive: { te: 'నిజమైన హార్బర్‌కు మారు', en: 'Switch to the real harbour' },
   modeSwitchFailed: { te: 'ఈ ఫోన్ ఎంపికను గుర్తుంచుకోలేకపోతోంది — మారడం కుదరలేదు.', en: 'This phone cannot remember the choice, so the mode did not change.' },
@@ -277,10 +283,6 @@ const S = {
 
   // — Admin ———————————————————————————————————————
   adminTitle: { te: 'హార్బర్ పుస్తకం', en: 'Harbour record' },
-  adminPinLabel: { te: 'అడ్మిన్ పిన్', en: 'Admin PIN' },
-  adminUnlock: { te: 'తెరవండి', en: 'Unlock' },
-  adminWrongPin: { te: 'పిన్ తప్పు', en: 'Wrong PIN' },
-  adminLock: { te: 'మూసివేయి', en: 'Lock' },
   // `adminApprovals`, `adminNoApprovals`, `approve`, `reject`, `block`,
   // `unblock` and `adminForceRelease` went with the powers they named.
   adminLive: { te: 'ప్రస్తుత వాడకం', en: 'Live usage' },
@@ -317,14 +319,12 @@ const S = {
   // above are still the truth about the rows that survived.
   adminMonthClipped: { te: 'ఈ నెల రికార్డులో కొంత భాగం మాత్రమే మిగిలింది, అందుకే శాతాలు చూపడం లేదు. పైన ఉన్న లెక్కలు మిగిలిన రికార్డు ప్రకారం సరైనవి.', en: 'Only part of this month survives in the record, so the percentages are not shown. The counts above are correct for the rows that remain.' },
   adminPeakHour: { te: 'రద్దీ సమయం', en: 'Busiest hour' },
+  chartPeak: { te: 'ఎక్కువ: {0} — {1}', en: 'Busiest: {0} — {1}' },
   adminPerHour: { te: 'ఏ గంటకు ఎన్ని బోట్లు వస్తాయి', en: 'Arrivals by hour of day' },
   adminInsights: { te: 'విశ్లేషణ', en: 'Insights' },
   adminExport: { te: 'ఎక్సెల్ ఫైల్ డౌన్‌లోడ్', en: 'Download for Excel' },
   adminPerBoat: { te: 'బోటు వారీగా', en: 'By boat' },
 
-  adminLocked: { te: 'చాలాసార్లు తప్పింది. {0} సెకన్ల తర్వాత ప్రయత్నించండి.', en: 'Too many attempts. Try again in {0}s.' },
-  adminUnavailable: { te: 'సురక్షిత కనెక్షన్ (HTTPS) లేకుండా అడ్మిన్ తెరవలేము.', en: 'Admin needs a secure (HTTPS) connection.' },
-  adminSessionNote: { te: '5 నిమిషాలు పని లేకపోతే ఆటోమేటిక్‌గా మూసుకుంటుంది.', en: 'Locks itself after 5 minutes of inactivity.' },
   adminAudit: { te: 'చర్యల రికార్డు', en: 'Action log' },
   adminAuditUnchecked: { te: 'లాగ్‌ను తనిఖీ చేయలేకపోయాం. ఈ ఫోన్‌లో మళ్లీ తెరవండి.', en: 'Could not check the log on this phone. Open the console again.' },
   adminAuditIntact: { te: 'రికార్డు చెక్కుచెదరలేదు', en: 'Log verified intact' },

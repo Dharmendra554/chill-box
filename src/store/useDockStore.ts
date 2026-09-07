@@ -10,14 +10,7 @@ import {
 import { DEFAULT_HARBOUR_ID, harbour } from '../data/harbours'
 import { createMockBoxes, seedAllBoxes, seedAllLedgers } from '../data/mock'
 import { t } from '../i18n/dictionary'
-import {
-  ADMIN_IDLE_MS,
-  appendAudit,
-  AUDIT_LIMIT,
-  lockoutMs,
-  verifyPin,
-  type PinResult,
-} from '../lib/adminAuth'
+import { appendAudit, AUDIT_LIMIT } from '../lib/adminAuth'
 import {
   cancelRemote,
   claimBoat,
@@ -119,9 +112,6 @@ const STORAGE_VERSION = 5
 
 /** Coalesce persist writes to at most one per this interval. */
 const WRITE_EVERY_MS = 5_000
-
-/** Refresh the admin's idle timer at most this often. See touchAdmin. */
-const TOUCH_EVERY_MS = 10_000
 
 /**
  * The ledger only grows and the persisted store shares a ~5 MB quota, so it
@@ -336,11 +326,7 @@ export interface DockState {
   tab: Tab
   harbourId: HarbourId
   myBoatId: string | null
-  adminUnlocked: boolean
   /** Last admin interaction; drives the idle auto-lock. */
-  adminTouchedAt: number
-  adminFailures: number
-  adminLockedUntil: number
   audit: AuditEntry[]
 
   // harbour data
@@ -387,9 +373,6 @@ export interface DockState {
    * and they are deployment and demonstration tools, not harbour policy.
    * Everything a skipper might want to look at is open to every skipper.
    */
-  unlockAdmin: (pin: string) => Promise<PinResult | 'locked'>
-  touchAdmin: () => void
-  lockAdmin: () => void
   /**
    * Take back the crates a boat has left past the eight-hour line.
    *
@@ -688,10 +671,6 @@ export const useDockStore = create<DockState>()(
         tab: 'dock',
         harbourId: DEFAULT_HARBOUR_ID,
         myBoatId: null,
-        adminUnlocked: false,
-        adminTouchedAt: 0,
-        adminFailures: 0,
-        adminLockedUntil: 0,
         audit: [],
         syncLive: false,
         syncedAt: null,
@@ -738,10 +717,6 @@ export const useDockStore = create<DockState>()(
           // second does not invalidate every box-derived render.
           if (changed) patch.boxesByHarbour = next as Record<HarbourId, ColdBox[]>
 
-          // Idle auto-lock, the way a portal session expires.
-          if (prev.adminUnlocked && now - prev.adminTouchedAt > ADMIN_IDLE_MS) {
-            patch.adminUnlocked = false
-          }
           if (Object.keys(patch).length > 0) set(patch)
 
           /*
@@ -867,7 +842,7 @@ export const useDockStore = create<DockState>()(
           return true
         },
 
-        signOut: () => set({ myBoatId: null, adminUnlocked: false, tab: 'dock' }),
+        signOut: () => set({ myBoatId: null, tab: 'dock' }),
 
         reserve: async (boxId, crates, species) => {
           const { boxesByHarbour, harbourId, myBoatId, boats, lang } = get()
@@ -1040,47 +1015,6 @@ export const useDockStore = create<DockState>()(
           putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
         },
 
-        unlockAdmin: async (pin) => {
-          // One clock in this store. `tick` compares adminTouchedAt against
-          // serverNow(), so stamping it with the device clock idle-locked a
-          // slow phone out of the admin console on the very next tick — and
-          // stopped a fast phone from ever locking at all.
-          const now = serverNow()
-          if (now < get().adminLockedUntil) return 'locked'
-
-          const result = await verifyPin(pin)
-          if (result !== 'ok') {
-            const failures = get().adminFailures + 1
-            set({ adminFailures: failures, adminLockedUntil: now + lockoutMs(failures) })
-            return result
-          }
-
-          set({
-            adminUnlocked: true,
-            adminTouchedAt: now,
-            adminFailures: 0,
-            adminLockedUntil: 0,
-          })
-          void get().record('session.unlock', get().harbourId)
-          return 'ok'
-        },
-
-        /**
-         * Keep the admin's idle timer alive while they are working.
-         *
-         * Bound to pointer-down and key-down on the whole console, so it
-         * used to fire a `set()` on every tap — each one re-rendering every
-         * subscriber and queueing a re-serialisation of the persisted store.
-         * The idle lock is measured in minutes; refreshing it more than once
-         * every few seconds buys nothing at all.
-         */
-        touchAdmin: () => {
-          const now = serverNow()
-          if (now - get().adminTouchedAt < TOUCH_EVERY_MS) return
-          set({ adminTouchedAt: now })
-        },
-
-        lockAdmin: () => set({ adminUnlocked: false, tab: 'dock' }),
 
         /**
          * Append to the action log, and say so if it fails.
@@ -1327,8 +1261,6 @@ export const useDockStore = create<DockState>()(
             // Signed out, not signed in as #04: handing out an approved boat
             // here would make the last-4 check pointless.
             myBoatId: null,
-            adminFailures: 0,
-            adminLockedUntil: 0,
           })
           void get().record('demo.reset', harbourId)
         },
@@ -1347,8 +1279,6 @@ export const useDockStore = create<DockState>()(
         boxesByHarbour: s.boxesByHarbour,
         ledger: s.ledger,
         audit: s.audit,
-        adminFailures: s.adminFailures,
-        adminLockedUntil: s.adminLockedUntil,
       }),
       /**
        * v4 → v5 drops `status` from every boat.
