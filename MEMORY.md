@@ -3,7 +3,7 @@
 Where the project stands, what is blocked, and what to do next.
 Read `AGENTS.md` first for the rules and the vision.
 
-**Last updated:** 7 Sept 2026, after the twelfth hostile audit round, pushed.
+**Last updated:** 7 Sept 2026, after the sixteenth hostile audit round, pushed.
 
 ---
 
@@ -27,7 +27,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 99 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 104 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
 **First paint, measured, all of it:**
 
@@ -79,9 +79,11 @@ Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
+| `7812fff` | The demo/live toggle, decided once at start-up |
+| `0fafed5` | Round 15b: the sea's verdict keeps its own date |
 | `8a3681b` | Round 15a: the reporting layer, where the last bugs live |
 | `865a183` | Round 14b: the likely findings, before they become certain ones |
-| `fb11bbb` | Round 14: the sea called calm at two metres, and an unbeatable clock |
+| `fb11bbb` | Round 14: the sea called calm at two metres, and a clock nobody could be |
 | `c211541` | Sonar: the marks a crate can carry, in one place |
 | `21f554e` | Round 13b: a write that never settles, and history reported honestly |
 | `92679f5` | Round 13: the rules went live, and a clock wrong in a third direction |
@@ -1127,3 +1129,29 @@ twice.
 Verified in the browser rather than reasoned about: registered a boat in demo
 mode (local only, nothing reached the live database), toggled to live and
 back, and confirmed the mode line and button text on both sides.
+
+---
+
+## 27. Sixteenth review — 6.5 and 6.0 → fixed
+
+**The toggle scored 3.0 on its own terms and both auditors led with the same
+defect in it.** Sixteen of sixteen: the headline was written by the newest
+change, and this time the newest change was the feature added that hour.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **`freshenDemoHarbour` decided on one harbour and reseeded all three.** The guard read `boxesByHarbour[harbourId]`; the write was `seedAllBoxes(now)` | Measured by both auditors: a ten-minute-old crate in another harbour destroyed on evidence gathered from the one on screen. No ledger row, no toast — the catch simply not in the app. And the seed of the other two harbours contains no hold, so the "a live hold means the demo is in use" safety had nothing to catch on. Three documents said it could not happen. It reseeds the harbour it checked now, and the test asserts the OTHER harbour by identity |
+| **Demo and live shared one persisted store.** A boat invented while playing appeared in the LIVE approvals queue, unmarked, and one tap on Approve wrote it into the real society's roster — permanently, because no rule can delete a boat | The audit log crossed the same way: demo blocks and force-releases in the same hash chain as real ones, and `verifyAudit` called the mixture intact. The store is namespaced by mode now, which is what makes "a copy that lives on this phone alone" true rather than aspirational — and it takes the identity and the un-revalidated `myBoatId` with it |
+| **The mode was stated in exactly one place, 2 672 px down the Book screen**, inside a panel headed "these do not appear in real use" — and was unreachable before registration, because that panel lives on a screen you only see once you have a boat | So a skipper could register in a demo, be told the harbour master would approve him, and wait at 4 a.m. for a message no code path can produce. There is a line in the chrome now, on every screen including registration, and the pending card names the admin as you |
+| **The crash screen's Reset silently moved a demo user to live.** `localStorage.clear()` took the mode flag with it | The next thing they touched was somebody else's crate. The flag is re-asserted after the clear |
+| **The toggle was a dead button when storage refused the write** — swallowed and reloaded anyway, coming back in the mode you had just left, saying nothing | It reads the value back and reports failure |
+| `countMissing` returned `verified: true` when every verification read had failed — the same dead link that refused the writes | A green "Published" and a `0 history rows lost` audit row over up to 25 billing rows that were genuinely gone |
+| Block and Unblock wrote an audit row with no harbour, in an app where hull numbers repeat across harbours | Three boats answer to `boat.block · #04` |
+| "Show the rest" in the audit panel was one-way: an unlabelled tap restored 2 000 rows a second, permanently, on the screen carrying Approve | |
+| The offline banner told a shared harbour with no snapshot yet that its figures were "from this phone only" | On a cold start with no signal they are last night's SHARED copy. Its own line now |
+| A JSDoc block was orphaned onto the wrong function, and MEMORY §2 was stale again on three of four facts | |
+
+**What both auditors could not break, again:** the crate-moving core, the
+deadlines, the rules file and its probe, and every one of round 15's
+reporting-layer fixes — four of six verified under instrumentation rather
+than by reading.

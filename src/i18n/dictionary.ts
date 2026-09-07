@@ -26,10 +26,15 @@ const S = {
   // The two ways the app can run. Nothing here describes a limitation of the
   // demo: it is the same app, the same rules and the same screens — only the
   // copy of the harbour is different, and that is what these say.
+  // The chrome line. Short, because it is on every screen for ever; blunt,
+  // because the whole point is that it cannot be mistaken for the harbour.
+  demoBannerTitle: { te: 'డెమో', en: 'Demo' },
+  demoBannerBody: { te: 'ఈ ఫోన్‌లో మాత్రమే — నిజమైన బుకింగ్ కాదు.', en: 'This phone only — not a real booking.' },
   modeLiveNow: { te: 'ఇది నిజమైన హార్బర్. మీరు చేసేది అందరి ఫోన్లలో కనిపిస్తుంది.', en: 'This is the real harbour. What you do here appears on every phone.' },
   modeDemoNow: { te: 'ఇది డెమో. ఈ ఫోన్‌లో మాత్రమే — ఇతరుల క్రేట్లు కదలవు.', en: 'This is a demo copy. It lives on this phone only — nobody else’s crates move.' },
   modeGoDemo: { te: 'డెమో కాపీకి మారు', en: 'Switch to a demo copy' },
   modeGoLive: { te: 'నిజమైన హార్బర్‌కు మారు', en: 'Switch to the real harbour' },
+  modeSwitchFailed: { te: 'ఈ ఫోన్ ఎంపికను గుర్తుంచుకోలేకపోతోంది — మారడం కుదరలేదు.', en: 'This phone cannot remember the choice, so the mode did not change.' },
   modeHint: { te: 'మారినప్పుడు యాప్ ఒకసారి రీలోడ్ అవుతుంది. బుకింగ్ నియమాలు రెండింటిలోనూ ఒకటే.', en: 'Switching reloads the app once. The booking rules are identical in both.' },
 
   // — Registration ————————————————————————————————
@@ -54,6 +59,8 @@ const S = {
   legendWaiting: { te: 'ఆమోదం కోసం', en: 'Not approved' },
   legendBlocked: { te: 'నిలిపివేయబడింది', en: 'Blocked' },
   pendingBody: { te: 'హార్బర్ అడ్మిన్ ఆమోదించగానే మీరు బాక్స్ బుక్ చేయవచ్చు. ఇప్పటికీ అందరి స్థలం చూడవచ్చు.', en: 'You can book a box the moment the harbour admin approves you. Until then you can still watch every box.' },
+  // Only in demo, where the approver is the person holding the phone.
+  pendingDemo: { te: 'ఈ డెమోలో అడ్మిన్ మీరే: #admin తెరిచి (పిన్ 2468) ఈ బోటును ఆమోదించండి.', en: 'In this demo you are the harbour master: open #admin (PIN 2468) and approve this boat.' },
   blockedTitle: { te: 'మీ బోటు ఆపబడింది', en: 'Your boat is on hold' },
   blockedBody: { te: 'హార్బర్ అడ్మిన్‌ను సంప్రదించండి.', en: 'Please speak to the harbour admin.' },
 
@@ -223,6 +230,10 @@ const S = {
   loadingBody: { te: 'కింద కనిపిస్తున్నది ఇంకా పాతది.', en: 'What is below is not current yet.' },
   voiceRoman: { te: 'ఈ ఫోన్‌లో తెలుగు గొంతు లేదు. తెలుగు మాటలు ఇంగ్లిష్ గొంతుతో చదువుతోంది.', en: 'This phone has no Telugu voice — Telugu words are read by an English voice.' },
   storageFull: { te: 'ఫోన్ మెమరీ నిండింది — కొత్త మార్పులు సేవ్ కావట్లేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'Phone storage is full — changes are not being saved. Tell someone at the box.' },
+  // A shared harbour with no snapshot THIS session: the figures below are
+  // the last shared copy this phone kept, not its own — a different claim,
+  // and the one that is true at 4 a.m. on a cold start with no signal.
+  staleUnsynced: { te: 'ఈ హార్బర్‌తో ఇంకా కలవలేదు. కింది సంఖ్యలు ఈ ఫోన్ చివరిసారి చూసినవి. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'Not in touch with the harbour yet. These are the last figures this phone saw. Check again at the box.' },
   staleNever: { te: 'ఈ సంఖ్యలు ఈ ఫోన్‌లోనివి మాత్రమే. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from this phone only. Check again at the box.' },
   staleBody: { te: 'ఈ సంఖ్యలు {0} నాటివి. బాక్స్ దగ్గర ఒకసారి చూసుకోండి.', en: 'These figures are from {0}. Check again at the box.' },
   // Not "ask the admin": there is no admin control that can move a boat to
@@ -276,6 +287,7 @@ const S = {
   // Four reasons a comparison is not shown, said plainly. Absent with no
   // reason reads as "no change", which is a number we did not measure.
   adminAuditMore: { te: 'మిగిలిన {0} రికార్డులు చూపించు', en: 'Show the other {0} entries' },
+  adminAuditFewer: { te: 'కొత్త {0} మాత్రమే చూపించు', en: 'Show only the newest {0}' },
   adminTrendFirst: { te: 'పోల్చడానికి గత నెల రికార్డు లేదు.', en: 'no earlier month to compare with.' },
   adminTrendRunning: { te: 'ఈ నెల ఇంకా నడుస్తోంది — పూర్తయ్యాక పోల్చవచ్చు.', en: 'this month is still running — comparable once it ends.' },
   adminTrendClipped: { te: 'గత నెల రికార్డులో కొంత భాగమే మిగిలింది.', en: 'only part of last month survives in the record.' },

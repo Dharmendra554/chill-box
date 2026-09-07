@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
+  DemoBanner,
   LoadingBanner,
   OfflineBanner,
   TabBar,
@@ -15,7 +16,7 @@ import { vibrate } from './hooks/useHaptics'
 import { MARINE_STALE_MS, useMarine } from './hooks/useMarine'
 import { STALE_MS, SYNC_STALE_MS, useConnectivity } from './hooks/useConnectivity'
 import { useT } from './i18n/useT'
-import { sharedActive } from './lib/mode'
+import { demoMode, sharedActive } from './lib/mode'
 import { waveBand } from './lib/marine'
 import { speakCapacity, stopSpeech } from './lib/speech'
 import { boatState } from './store/selectors'
@@ -204,7 +205,7 @@ export default function App() {
    * the weather poll — dating the box figures to it said something true
    * about the wrong thing, so `staleNever` is the honest line there.
    */
-  let banner = <OfflineBanner t={t} since={sharedActive ? reachedAt : null} />
+  let banner = <OfflineBanner t={t} since={sharedActive ? reachedAt : null} shared={sharedActive} />
   if (reach === 'checking' && sharedActive) banner = <LoadingBanner t={t} />
   else if (reach !== 'stale') {
     banner = <WaveStrip t={t} reading={marine.reading} band={band} error={marine.error} />
@@ -233,6 +234,7 @@ export default function App() {
         inside those twenty seconds. It fails in the dangerous direction: he
         sees crates that do not exist, rather than none at all.
       */}
+      {demoMode ? <DemoBanner t={t} /> : null}
       {banner}
 
       <main className="mx-auto max-w-6xl px-3 py-4 pb-28">
@@ -263,6 +265,14 @@ export default function App() {
                 <span className="font-bold">
                   {t(boat.status === 'pending' ? 'pendingBody' : 'blockedBody')}
                 </span>
+                {/* Who the admin IS, when it is you. In a demo nothing was
+                    sent anywhere, and "the harbour master will approve you"
+                    reads as a message that is coming — so a skipper waits at
+                    4 a.m. for something no code path can produce. The demo
+                    console is real and one tap away; say so. */}
+                {demoMode && boat.status === 'pending' ? (
+                  <span className="block font-bold">{t('pendingDemo')}</span>
+                ) : null}
               </p>
             ) : null}
 

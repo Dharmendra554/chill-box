@@ -8,7 +8,7 @@ import {
   seedPending,
 } from '../data/boats'
 import { DEFAULT_HARBOUR_ID, harbour } from '../data/harbours'
-import { seedAllBoxes, seedAllLedgers } from '../data/mock'
+import { createMockBoxes, seedAllBoxes, seedAllLedgers } from '../data/mock'
 import { t } from '../i18n/dictionary'
 import {
   ADMIN_IDLE_MS,
@@ -34,7 +34,7 @@ import {
   watchRoster,
   type RemoteResult,
 } from '../lib/harbourSync'
-import { sharedActive } from '../lib/mode'
+import { demoMode, keepMode, sharedActive } from '../lib/mode'
 import { HOUR_MS } from '../lib/time'
 import type {
   AuditEntry,
@@ -63,7 +63,29 @@ import {
   slotsForBoat,
 } from './selectors'
 
-const STORAGE_KEY = 'ap-chill-box'
+/**
+ * One store per mode, and they must never meet.
+ *
+ * Demo and live shared a single key, so everything invented in a demo was
+ * still there in the real harbour — and the roster is the sharp end of that.
+ * `watchRoster` deliberately keeps a local boat the shared copy has not heard
+ * of, because that is how a fresh registration survives until it is
+ * published. So a boat invented while playing appeared in the LIVE admin
+ * console's approvals queue with nothing to mark it, and one tap on Approve
+ * wrote it into the real society's roster — where the rules make it
+ * permanent, because a boat can never be deleted. A society would be left
+ * with a fisherman who does not exist and a second two-crate allowance no
+ * control can remove.
+ *
+ * The audit log crossed the same way: demo blocks and force-releases went
+ * into the same hash chain as real ones, unmarked, and `verifyAudit` called
+ * the mixture intact — in the artefact the README offers to settle a dispute
+ * with.
+ *
+ * Namespacing is what makes `mode.ts`'s promise — "a copy of the harbour that
+ * lives on this phone alone" — true rather than aspirational.
+ */
+const STORAGE_KEY = demoMode ? 'ap-chill-box.demo' : 'ap-chill-box'
 const STORAGE_VERSION = 4
 
 /**
@@ -185,6 +207,13 @@ export function resetStorage(): void {
   pendingWrite = null
   try {
     localStorage.clear()
+    // Put the mode back. The flag lives under its own key, so a blanket
+    // clear took it too — and the crash screen then returned a judge who had
+    // deliberately chosen the demo into the REAL harbour, writing to other
+    // people's crates. `mode.ts` argues that demo is never given quietly;
+    // the same is true of live, and here the mistake points at a shared
+    // database rather than at nobody.
+    keepMode()
   } catch {
     /* nothing left to do; the reload is still worth attempting */
   }
@@ -1281,14 +1310,6 @@ export const useDockStore = create<DockState>()(
 /* -- Derived reads ----------------------------------------------------- */
 
 /**
- * Follow the shared harbour, if there is one.
- *
- * Called once at startup and again whenever the harbour changes. The
- * listener overwrites this device's boxes with the shared copy, which is
- * what makes two phones agree; with no Firebase configured it does nothing
- * and the app stays local, exactly as before.
- */
-/**
  * Wake a demo harbour that has slept through its own overstay window.
  *
  * The seeded occupancy is anchored to the moment it was created — crates
@@ -1316,11 +1337,34 @@ export function freshenDemoHarbour(): void {
   if (sharedActive) return
   const { boxesByHarbour, harbourId } = useDockStore.getState()
   const now = serverNow()
-  const held = boxesByHarbour[harbourId].flatMap((box) => box.slots).filter((s) => s.status !== 'empty')
+  const held = boxesByHarbour[harbourId]
+    .flatMap((box) => box.slots)
+    .filter((s) => s.status !== 'empty')
   if (held.length === 0 || !held.every((slot) => isOverdue(slot, now))) return
-  useDockStore.setState({ boxesByHarbour: seedAllBoxes(now) })
+  // THE HARBOUR THAT WAS CHECKED, and only that one.
+  //
+  // The first version tested the active harbour and then wrote
+  // `seedAllBoxes(now)`, which returns a fresh record for all three. So
+  // looking around Kakinada — whose seeded crates had aged out, and whose
+  // seed contains no hold for the guard to catch on — reseeded Nizampatnam
+  // too, and the two crates a skipper deposited an hour ago were gone: no
+  // ledger row, no audit row, no toast, and the catch simply not in the app.
+  // A guard that inspects one thing and a write that changes three is not a
+  // guard at all.
+  useDockStore.setState({
+    boxesByHarbour: { ...boxesByHarbour, [harbourId]: createMockBoxes(harbourId, now) },
+  })
 }
 
+/**
+ * Follow the shared harbour, if this session is on one.
+ *
+ * Called once at startup and again whenever the harbour changes. The
+ * listener overwrites this device's boxes with the shared copy, which is
+ * what makes two phones agree. It does nothing at all when `sharedActive` is
+ * false — either no Firebase is configured, or this session is in demo mode
+ * — and the app then stays local, exactly as it did before either existed.
+ */
 export function startHarbourSync(): () => void {
   if (!sharedActive) return () => {}
   let stop: (() => void) | null = null

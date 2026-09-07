@@ -58,13 +58,41 @@ export const demoMode = syncEnabled ? readFlag() : true
  */
 export const sharedActive = syncEnabled && !demoMode
 
-/** Switch modes and reload, because a mode is decided at start-up. */
-export function setDemoMode(on: boolean): void {
+/**
+ * Switch modes and reload, because a mode is decided at start-up.
+ *
+ * Returns false when the choice could not be stored, and does NOT reload.
+ * Swallowing that and reloading anyway made the control a dead button: in a
+ * locked-down browser the app went away, came back in the mode you had just
+ * left, and said nothing — while the caller believed it had switched. Which
+ * harbour the next booking reaches is not a thing to be quiet about.
+ *
+ * The write is read back rather than trusted: some browsers accept
+ * `setItem` in private mode and keep nothing.
+ */
+export function setDemoMode(on: boolean): boolean {
+  const want = on ? '1' : '0'
   try {
-    localStorage.setItem(KEY, on ? '1' : '0')
+    localStorage.setItem(KEY, want)
+    if (localStorage.getItem(KEY) !== want) return false
   } catch {
-    // Nothing to do but carry on: the reload will read whatever survived,
-    // and a mode that will not persist is better than a half-switched app.
+    return false
   }
   location.reload()
+  return true
+}
+
+/**
+ * Re-assert the current mode after a blanket `localStorage.clear()`.
+ *
+ * The crash screen's "Reset this phone" clears everything, and the flag
+ * lives under its own key — so a reset silently returned a demo user to the
+ * live harbour, where the next thing they touched was somebody else's crate.
+ */
+export function keepMode(): void {
+  try {
+    localStorage.setItem(KEY, demoMode ? '1' : '0')
+  } catch {
+    /* nothing to do; the reload will fall back to live, which is the default */
+  }
 }

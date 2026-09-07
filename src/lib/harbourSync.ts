@@ -892,9 +892,17 @@ async function countMissing(
     // A read that itself failed is not evidence of a missing row. Only a
     // successful read saying "nothing here" counts, so an unreadable ledger
     // reports no loss rather than inventing one.
+    //
+    // But it must not report CONFIRMED no-loss either. The link that refused
+    // the writes is the same link answering these reads, so "every check
+    // failed" is the likeliest single outcome here — and returning
+    // `{ lost: 0, verified: true }` for it put a green "Published" and a
+    // `0 history rows lost` audit row over up to twenty-five billing rows
+    // that were genuinely gone.
+    const answered = checks.filter((c) => c.status === 'fulfilled')
     return {
-      lost: checks.filter((c) => c.status === 'fulfilled' && !c.value.exists()).length,
-      verified: true,
+      lost: answered.filter((c) => !c.value.exists()).length,
+      verified: answered.length === checks.length,
     }
   }
 

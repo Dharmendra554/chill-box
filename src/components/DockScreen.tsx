@@ -565,6 +565,7 @@ function DemoTools({
   onResetDemo: () => void | Promise<void>
 }>) {
   const t = useT()
+  const notify = useDockStore((s) => s.notify)
   return (
     <section className="card-soft flex flex-col gap-2 p-3">
       <h3 className="text-sm font-extrabold uppercase">{t('demoTitle')}</h3>
@@ -583,7 +584,12 @@ function DemoTools({
           <button
             type="button"
             className="btn btn-block"
-            onClick={() => setDemoMode(!demoMode)}
+            onClick={() => {
+              // Says so when it cannot. A switch that silently fails is a
+              // dead button, and this one decides which harbour the next
+              // booking reaches.
+              if (!setDemoMode(!demoMode)) notify('error', t('modeSwitchFailed'))
+            }}
           >
             {t(demoMode ? 'modeGoLive' : 'modeGoDemo')}
           </button>

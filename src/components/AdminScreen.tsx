@@ -545,10 +545,20 @@ function Console() {
                     const next = boat.status === 'blocked' ? 'active' : 'blocked'
                     const outcome = await setBoatStatus(boat.id, next)
                     if (outcome === 'failed') return
+                    // The harbour, like every other action records. Hull
+                    // numbers repeat across harbours — Nizampatnam's #04 is
+                    // a different boat from Visakhapatnam's — so a row
+                    // reading `boat.block · #04 ·` names three boats and
+                    // identifies none, in the log the README offers to
+                    // settle a dispute with. Blocking is the action that
+                    // most needs to be attributable: it stops a boat
+                    // releasing the crate its catch is already in.
                     void record(
                       `boat.${next === 'blocked' ? 'block' : 'unblock'}`,
                       `#${boat.id}`,
-                      outcome === 'pending' ? 'outcome not confirmed' : '',
+                      outcome === 'pending'
+                        ? `${harbour.id} · outcome not confirmed`
+                        : harbour.id,
                     )
                   }}
                 >
@@ -786,9 +796,13 @@ function AuditPanel() {
         </ol>
       )}
 
-      {audit.length > shown.length ? (
-        <button type="button" className="btn btn-block" onClick={() => setAll(true)}>
-          {t('adminAuditMore', audit.length - shown.length)}
+      {/* And a way back. "Show the rest" was one-way, so an unlabelled tap
+          restored the 1 Hz cost this paging exists to avoid — 2 000 rows
+          re-rendered every second on the screen carrying Approve and Force
+          release — permanently, for the session. */}
+      {audit.length > AUDIT_PAGE ? (
+        <button type="button" className="btn btn-block" onClick={() => setAll(!all)}>
+          {all ? t('adminAuditFewer', AUDIT_PAGE) : t('adminAuditMore', audit.length - AUDIT_PAGE)}
         </button>
       ) : null}
     </section>

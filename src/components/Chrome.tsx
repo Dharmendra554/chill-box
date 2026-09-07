@@ -204,12 +204,24 @@ export function WaveStrip({
  * them rather than let a stale "2 free" send a boat to a full box. Honest
  * staleness beats confident wrongness.
  */
-export function OfflineBanner({ t, since }: Readonly<{ t: T; since: number | null }>) {
+export function OfflineBanner({
+  t,
+  since,
+  shared,
+}: Readonly<{ t: T; since: number | null; shared: boolean }>) {
   return (
     <output className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-late px-3 py-1.5 text-sm font-extrabold text-late-ink">
       <span>{t('offlineTitle')}</span>
       <span className="font-bold">
-        {since === null ? t('staleNever') : t('staleBody', formatClock(since))}
+        {/* Three cases, because two of them were being told the same thing.
+            On a SHARED harbour with no snapshot yet this session — a cold
+            start with no signal, the common 4 a.m. case — the figures are
+            last night's shared copy, not "from this phone only", and saying
+            so named the wrong source. `syncedAt` is deliberately not
+            persisted, so `since` is null there too. */}
+        {since !== null
+          ? t('staleBody', formatClock(since))
+          : t(shared ? 'staleUnsynced' : 'staleNever')}
       </span>
     </output>
   )
@@ -231,6 +243,31 @@ export function LoadingBanner({ t }: Readonly<{ t: T }>) {
       <span>{t('loadingTitle')}</span>
       <span className="font-bold">{t('loadingBody')}</span>
     </output>
+  )
+}
+
+/**
+ * That none of this is real, said where it cannot be missed.
+ *
+ * The mode is sticky across reloads for ever, and the only other statement
+ * of it lived at the bottom of the Book screen inside a panel headed "Demo
+ * tools · these do not appear in real use" — so the app's one true sentence
+ * about which harbour you are in sat inside a box that disclaims itself.
+ * Two days later, at 4 a.m., a skipper sees a normal harbour, a live Book
+ * button, a receipt and a countdown, and no phone at the quay has heard of
+ * any of it.
+ *
+ * So it takes a line in the chrome, on every screen and at every scroll
+ * position, in the slot the app already uses to say "these figures are not
+ * what you think". It is not dismissible: a demo you can hide is a demo you
+ * can forget you are in.
+ */
+export function DemoBanner({ t }: Readonly<{ t: T }>) {
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-sea px-3 py-1.5 text-sm font-extrabold text-sea-ink">
+      <span>{t('demoBannerTitle')}</span>
+      <span className="font-bold">{t('demoBannerBody')}</span>
+    </p>
   )
 }
 
