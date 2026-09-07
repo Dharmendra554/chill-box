@@ -32,18 +32,25 @@ import { useEffect, useRef, type RefObject } from 'react'
  * the effect's dependencies are the whole defect this helper had.
  */
 function openModal(el: HTMLDialogElement | null, onClose: () => void): () => void {
-  if (!el || el.open) return () => {}
+  if (!el) return () => {}
 
   if (typeof el.showModal === 'function') {
-    el.showModal()
+    if (!el.open) el.showModal()
     return () => {}
   }
 
-  el.setAttribute('open', '')
-  // `tabIndex = -1` so the dialog itself can take focus without joining the
-  // tab order. Without this the fallback announced nothing at all.
-  el.tabIndex = -1
-  el.focus()
+  // Opening is guarded; ATTACHING THE LISTENER IS NOT. StrictMode invokes a
+  // mount effect twice — run, clean up, run again — and an early return on
+  // `el.open` meant the second run skipped past the listener the cleanup had
+  // just removed. Escape was dead in development, on exactly the branch the
+  // contract says to go and verify in a browser.
+  if (!el.open) {
+    el.setAttribute('open', '')
+    // `tabIndex = -1` so the dialog itself can take focus without joining
+    // the tab order. Without this the fallback announced nothing at all.
+    el.tabIndex = -1
+    el.focus()
+  }
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return

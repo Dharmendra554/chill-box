@@ -50,6 +50,8 @@ export function RegisterScreen() {
   // Without this, a second tap registers the same person twice and burns a
   // hull number that can never be reused.
   const [submitting, setSubmitting] = useState(false)
+  /** Latched by a `pending` registration. See the submit handler. */
+  const [awaitingRoster, setAwaitingRoster] = useState(false)
 
   const boats = boatsAt(allBoats, harbourId)
   const update = (key: keyof typeof form) => (value: string) => {
@@ -99,13 +101,21 @@ export function RegisterScreen() {
           className="flex flex-col gap-3"
           onSubmit={async (event) => {
             event.preventDefault()
-            if (submitting) return
+            if (submitting || awaitingRoster) return
             setSubmitting(true)
             try {
               // Awaited: with a shared harbour the database issues the hull
               // number, so the registration is not real until it answers.
               const result = await register(form)
               if (!result.ok) setError(result.error)
+              // A `pending` registration is the one outcome that must not be
+              // retried. We stopped waiting; the write is still queued, and
+              // a hull number may yet be claimed for this boat. Tapping
+              // Register again would put a SECOND boat on a roster where a
+              // boat can never be deleted and every boat carries its own
+              // two-crate allowance. The button latches shut and the message
+              // says to wait for the roster rather than try again.
+              if (!result.ok && result.error === 'pending') setAwaitingRoster(true)
             } finally {
               setSubmitting(false)
             }
@@ -144,7 +154,7 @@ export function RegisterScreen() {
           <button
             type="submit"
             className="btn btn-lg btn-primary btn-block"
-            disabled={submitting}
+            disabled={submitting || awaitingRoster}
           >
             {t(submitting ? 'saving' : 'regSubmit')}
           </button>

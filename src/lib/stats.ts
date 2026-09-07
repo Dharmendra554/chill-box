@@ -206,10 +206,13 @@ export function monthInsight(
   // window rendered 8% against an honest ~27%, one line above the trend that
   // had been correctly hidden for exactly this reason.
   //
-  // The cap is the only thing that can hide rows, so it is the only reason
-  // to distrust the figure. A young harbour whose first row is the 12th of
-  // the month has a short month because it was not open, not because
-  // anything was dropped — and its utilisation is real. Asking `oldest`
+  // The cap is the only thing that can HIDE rows, so it is the only reason
+  // to withhold the figure entirely. A young harbour whose first row is the
+  // 12th has a short month because it was not open, not because anything
+  // was dropped, so its figure is computed from complete data — it simply
+  // reads low, because the denominator is the whole month; `daysElapsed`
+  // says so and says why that is the safer error. Withheld and understated
+  // are different things, and only the first is worth a `—`. Asking `oldest`
   // alone would have blanked that too.
   const truncated = ledger.length >= LEDGER_LIMIT
   const reaches = !truncated || oldest <= Date.parse(`${key}-01T00:00:00+05:30`)

@@ -307,6 +307,13 @@ const S = {
   // Only ever shown when the shared harbour had NO history before this
   // publish, so a refusal here means those rows are genuinely not there —
   // and the monthly report is what the society bills from.
+  // The publish is still running somewhere. Pressing again is safe — every
+  // write yields to what is already there — so that is what it says.
+  adminPublishPending: { te: 'పంపడం ఇంకా పూర్తి కాలేదు. సిగ్నల్ వచ్చాక అడ్మిన్ కన్సోల్‌లో చూసి, అవసరమైతే మళ్లీ నొక్కండి — రెండోసారి నొక్కడం సురక్షితం.', en: 'The publish has not finished. Check the console when the signal is back and press it again if you need to — a second press is safe.' },
+  // Too many refused rows to check one by one, on a harbour that had no
+  // history before this press — so the number is how many writes were
+  // refused, not how many rows are confirmed missing. Said as such.
+  adminPublishHistoryUnsure: { te: '{0} పాత రికార్డులు నమోదు కాకపోయి ఉండవచ్చు. నెలవారీ రిపోర్ట్ ఒకసారి చూసి, అవసరమైతే మళ్లీ పంపండి.', en: 'Up to {0} history rows may not have been written. Check the monthly report and publish again if it looks short.' },
   adminPublishNoHistory: { te: 'బోట్లు, బాక్సులు పంపబడ్డాయి. కానీ {0} పాత రికార్డులు కుదరలేదు — నెలవారీ రిపోర్ట్ అసంపూర్ణంగా ఉంటుంది.', en: 'Boats and boxes published, but {0} history rows were refused — the monthly report will be incomplete.' },
   adminPublishRetry: { te: 'బోట్ల జాబితా పంపబడింది. బాక్సులు కుదరలేదు — మళ్లీ ఒకసారి నొక్కండి.', en: 'The roster is published. The boxes were refused — press this once more.' },
   adminPublishFailed: { te: 'పంపడం కుదరలేదు. నెట్ చూసి మళ్లీ ప్రయత్నించండి.', en: 'Could not publish. Check the connection and try again.' },

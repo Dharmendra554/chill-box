@@ -498,14 +498,20 @@ function Console() {
                   // and missed here. A refused write left the hash-chained
                   // audit trail asserting a block the database never made,
                   // while the blocked skipper went on booking.
+                  // And `pending` is not `failed`. When the deadline fires the
+                  // write is still queued, the optimistic roster change is
+                  // deliberately left on screen, and the block very likely
+                  // takes effect on every phone — so logging nothing there
+                  // recreated the same hole one outcome to the left.
                   onClick={async () => {
                     const next = boat.status === 'blocked' ? 'active' : 'blocked'
-                    if (await setBoatStatus(boat.id, next)) {
-                      void record(
-                        `boat.${next === 'blocked' ? 'block' : 'unblock'}`,
-                        `#${boat.id}`,
-                      )
-                    }
+                    const outcome = await setBoatStatus(boat.id, next)
+                    if (outcome === 'failed') return
+                    void record(
+                      `boat.${next === 'blocked' ? 'block' : 'unblock'}`,
+                      `#${boat.id}`,
+                      outcome === 'pending' ? 'outcome not confirmed' : '',
+                    )
                   }}
                 >
                   {t(boat.status === 'blocked' ? 'unblock' : 'block')}

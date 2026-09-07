@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { appendAudit, lockoutMs, MAX_ATTEMPTS, verifyAudit, verifyPin } from './adminAuth'
+import {
+  appendAudit,
+  AUDIT_LIMIT,
+  lockoutMs,
+  MAX_ATTEMPTS,
+  verifyAudit,
+  verifyPin,
+} from './adminAuth'
+import type { AuditEntry } from '../types'
 
 /**
  * Security tests. They assert the controls we claim in the README: the PIN
@@ -63,16 +71,39 @@ describe('an action log that has outgrown its cap', () => {
     for (let i = 0; i < 4; i += 1) log = await appendAudit(log, 'boat.block', `#0${i + 2}`)
     expect(log.map((row) => row.id)).toEqual(['A1', 'A2', 'A3', 'A4', 'A5'])
 
-    // Drop the oldest two, as the cap does.
-    const trimmed = log.slice(-3)
+    // A SHORT log has not been trimmed, so its head must still be the
+    // genesis row — and deleting the oldest row is the simplest tamper
+    // there is. Anchoring to the surviving head unconditionally made this
+    // undetectable on every console for its first month, which is most of
+    // the consoles that will ever exist.
+    expect(await verifyAudit(log.slice(1))).toBe(0)
+
+    // Tampering inside the rows is caught either way.
+    const altered = log.map((row, i) => (i === 2 ? { ...row, target: '#99' } : row))
+    expect(await verifyAudit(altered)).toBe(2)
+
+    // Numbering continues from the tip, so a trim cannot mint a second A1.
+    const grown = await appendAudit(log, 'slot.forceRelease', '#07')
+    expect(grown.at(-1)?.id).toBe('A6')
+  })
+
+  it('accepts a log the cap has actually trimmed', async () => {
+    // At or past the limit the head legitimately points at a hash that is no
+    // longer here, and demanding `genesis` there would paint every long-lived
+    // console as tampered with — a false alarm on the one panel whose job is
+    // to be believed.
+    let log: AuditEntry[] = []
+    for (let i = 0; i < AUDIT_LIMIT + 5; i += 1) {
+      log = await appendAudit(log, 'boat.block', `#${i}`)
+    }
+    const trimmed = log.slice(-AUDIT_LIMIT)
+
+    expect(trimmed).toHaveLength(AUDIT_LIMIT)
+    expect(trimmed[0].prevHash).not.toBe('genesis')
     expect(await verifyAudit(trimmed)).toBe(-1)
 
-    const grown = await appendAudit(trimmed, 'slot.forceRelease', '#07')
-    expect(grown.at(-1)?.id).toBe('A6')
-    expect(await verifyAudit(grown)).toBe(-1)
-
-    // And tampering inside the kept rows is still caught.
-    const altered = grown.map((row, i) => (i === 1 ? { ...row, target: '#99' } : row))
-    expect(await verifyAudit(altered)).toBe(1)
+    // And a row altered inside a trimmed log is still caught.
+    const altered = trimmed.map((row, i) => (i === 4 ? { ...row, detail: 'x' } : row))
+    expect(await verifyAudit(altered)).toBe(4)
   })
 })

@@ -109,12 +109,49 @@ const SETTLE_DEADLINE_MS = 12_000
  * demo button that could hang for the rest of the session with nothing on
  * screen to say so.
  */
-function withDeadline<T>(work: Promise<T>, onTimeout: () => T): Promise<T> {
+function withDeadline<T>(work: Promise<T>, onTimeout: () => T, ms = SETTLE_DEADLINE_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
   const deadline = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(onTimeout()), SETTLE_DEADLINE_MS)
+    timer = setTimeout(() => resolve(onTimeout()), ms)
   })
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer))
+}
+
+/**
+ * Publishing gets its own, much longer deadline.
+ *
+ * It is not one write. It is a boat transaction each for the roster, a
+ * thirty-path box update, and one `set` per ledger row — up to LEDGER_LIMIT
+ * of them. Twelve seconds for that on the 2 G phone this app is built for is
+ * not a deadline, it is a guarantee of firing, and every firing produced a
+ * toast and an audit row about an outcome nobody had measured. A minute is a
+ * long time to watch a spinner, and it is an admin doing it once, knowingly,
+ * with a busy button in front of them.
+ */
+const PUBLISH_DEADLINE_MS = 60_000
+
+/**
+ * What a publish did, or an admission that we stopped watching.
+ *
+ * `timedOut` exists so nothing downstream has to guess: the counts are only
+ * meaningful when it is false.
+ */
+export interface PublishOutcome {
+  /** Boats the shared roster refused. */
+  failed: number
+  /** Whether the thirty-slot box publish landed. */
+  boxesOk: boolean
+  /** History rows found absent afterwards. See countMissing. */
+  historyLost: number
+  /**
+   * Whether `historyLost` was measured row by row. False when there were too
+   * many refusals to check individually on a harbour that had no history —
+   * then `historyLost` is how many writes were refused, not how many rows
+   * are confirmed missing, and the message must not pretend otherwise.
+   */
+  historyVerified?: boolean
+  /** True when the deadline fired and none of the above was measured. */
+  timedOut?: boolean
 }
 
 /** The unknown-outcome result, for the calls that return one. */
@@ -741,7 +778,7 @@ async function seedHarbourImpl(
   boxes: ColdBox[],
   boats: Boat[],
   ledger: LedgerEntry[],
-): Promise<{ failed: number; boxesOk: boolean; historyLost: number }> {
+): Promise<PublishOutcome> {
   const a = await api()
   if (!a) return { failed: boats.length, boxesOk: false, historyLost: 0 }
 
@@ -807,18 +844,20 @@ async function seedHarbourImpl(
   // A refused row that IS in the database is idempotency working. A refused
   // row that is not is a row the society will never be able to bill. One
   // read each answers it exactly, and only refusals are read.
+  const hadHistory = await historyExists(a, harbourId)
   const rows = await Promise.allSettled(
     ledger.map(({ id, harbourId: _h, ...row }) =>
       a.set(a.ref(a.db, `harbours/${harbourId}/ledger/${ledgerKey(id)}`), row),
     ),
   )
   const refused = ledger.filter((_, i) => rows[i].status === 'rejected')
-  const historyLost = await countMissing(a, harbourId, refused)
+  const history = await countMissing(a, harbourId, refused, hadHistory)
 
   return {
-    failed: skipped + results.filter((r) => r.status === 'rejected').length,
+    failed: skipped + results.filter((r) => r.status === "rejected").length,
     boxesOk: true,
-    historyLost,
+    historyLost: history.lost,
+    historyVerified: history.verified,
   }
 }
 
@@ -838,15 +877,56 @@ async function seedHarbourImpl(
  */
 const VERIFY_REFUSALS_UPTO = 25
 
-async function countMissing(a: Api, harbourId: HarbourId, refused: LedgerEntry[]): Promise<number> {
-  if (refused.length === 0 || refused.length > VERIFY_REFUSALS_UPTO) return 0
-  const checks = await Promise.allSettled(
-    refused.map((row) => a.get(a.ref(a.db, `harbours/${harbourId}/ledger/${ledgerKey(row.id)}`))),
-  )
-  // A read that itself failed is not evidence of a missing row. Only a
-  // successful read saying "nothing here" counts, so an unreadable ledger
-  // reports no loss rather than inventing one.
-  return checks.filter((c) => c.status === 'fulfilled' && !c.value.exists()).length
+async function countMissing(
+  a: Api,
+  harbourId: HarbourId,
+  refused: LedgerEntry[],
+  hadHistory: boolean,
+): Promise<{ lost: number; verified: boolean }> {
+  if (refused.length === 0) return { lost: 0, verified: true }
+
+  if (refused.length <= VERIFY_REFUSALS_UPTO) {
+    const checks = await Promise.allSettled(
+      refused.map((row) => a.get(a.ref(a.db, `harbours/${harbourId}/ledger/${ledgerKey(row.id)}`))),
+    )
+    // A read that itself failed is not evidence of a missing row. Only a
+    // successful read saying "nothing here" counts, so an unreadable ledger
+    // reports no loss rather than inventing one.
+    return {
+      lost: checks.filter((c) => c.status === 'fulfilled' && !c.value.exists()).length,
+      verified: true,
+    }
+  }
+
+  // Too many to check one at a time — so ask the cheap question instead.
+  //
+  // A harbour that already had history refuses every row on purpose: that is
+  // what makes publishing idempotent, and a re-press is the documented
+  // remedy. Reporting a loss there would be noise on working behaviour.
+  //
+  // A harbour that had NONE is the other case entirely. Hundreds of refusals
+  // on a first publish is a flaky link losing the society's billing history,
+  // which is precisely what this function exists to catch — and the first
+  // version threw it away, because the bound was calibrated for the benign
+  // case and fired hardest in the dangerous one. It cannot be counted
+  // exactly without a thousand reads, so it is reported as unverified, with
+  // the number of writes that were refused, and the message says so.
+  if (hadHistory) return { lost: 0, verified: true }
+  return { lost: refused.length, verified: false }
+}
+
+/** One key is enough to know whether this harbour has been published before. */
+async function historyExists(a: Api, harbourId: HarbourId): Promise<boolean> {
+  try {
+    const snap = await a.get(
+      a.query(a.ref(a.db, `harbours/${harbourId}/ledger`), a.limitToLast(1)),
+    )
+    return snap.exists()
+  } catch {
+    // Unreadable is not empty. Assuming empty here would report a wholesale
+    // idempotent refusal as lost history on a harbour that has all of it.
+    return true
+  }
 }
 
 /**
@@ -922,8 +1002,16 @@ async function readBoxes(a: Api, harbourId: HarbourId): Promise<WireBoxes | null
 /**
  * Is this slot free right now — empty, or a hold that has run out?
  *
- * One definition, shared with `expireHolds`, and it is a mirror of the
- * deployed rule rather than an opinion of its own. See `expiredHold`.
+ * One definition, shared with `expireHolds`. It mirrors the HOLD branch of
+ * clause 3 in the deployed rules exactly (see `expiredHold`) and deliberately
+ * implements neither of the other two: the rules also let anyone clear an
+ * `overstay` slot, or an `occupied` one past six hours, and this client will
+ * not book either. Those belong to the admin's force-release path
+ * (`forceReleasable`, `overdueIndexes`), where a human decides.
+ *
+ * So it is narrower than the rule, never wider — a client that refuses what
+ * the server would allow costs nothing, while one that offers what the
+ * server refuses turns a tap into an unexplained refusal.
  */
 function claimable(slot: WireSlot | undefined, now: number): boolean {
   if (!slot || slot.status === 'empty') return true
@@ -1414,22 +1502,28 @@ export function resetRemoteBoxes(harbourId: HarbourId, boxes: ColdBox[]): Promis
 }
 
 /**
- * Publishing has no `pending` to report, so the deadline reports the thing
- * that IS true and actionable: the boxes did not land, press it again.
- * Publish is idempotent by design — every write yields to what is already
- * there — so a second press after a queued first one is safe.
+ * `timedOut` rather than a made-up result.
+ *
+ * The first version answered the deadline with `{ failed: 0, boxesOk: false,
+ * historyLost: 0 }`, which said three untrue things at once: that no boat was
+ * refused, that the BOXES were refused — they were in flight — and that no
+ * history was lost. The admin then saw "the boxes were refused, press this
+ * once more", which is a wrong-reason refusal, and the audit log took a row
+ * swearing to two numbers nobody had measured.
+ *
+ * Zero is not a safe default for a count you did not take.
  */
 export function seedHarbour(
   harbourId: HarbourId,
   boxes: ColdBox[],
   boats: Boat[],
   ledger: LedgerEntry[],
-): Promise<{ failed: number; boxesOk: boolean; historyLost: number }> {
-  return withDeadline(seedHarbourImpl(harbourId, boxes, boats, ledger), () => ({
-    failed: 0,
-    boxesOk: false,
-    historyLost: 0,
-  }))
+): Promise<PublishOutcome> {
+  return withDeadline(
+    seedHarbourImpl(harbourId, boxes, boats, ledger),
+    () => ({ failed: 0, boxesOk: false, historyLost: 0, timedOut: true }),
+    PUBLISH_DEADLINE_MS,
+  )
 }
 
 /**

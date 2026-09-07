@@ -10,7 +10,14 @@ import {
 import { DEFAULT_HARBOUR_ID, harbour } from '../data/harbours'
 import { seedAllBoxes, seedAllLedgers } from '../data/mock'
 import { t } from '../i18n/dictionary'
-import { ADMIN_IDLE_MS, appendAudit, lockoutMs, verifyPin, type PinResult } from '../lib/adminAuth'
+import {
+  ADMIN_IDLE_MS,
+  appendAudit,
+  AUDIT_LIMIT,
+  lockoutMs,
+  verifyPin,
+  type PinResult,
+} from '../lib/adminAuth'
 import {
   cancelRemote,
   claimBoat,
@@ -47,7 +54,6 @@ import type {
 import {
   activeBoxId,
   applyTick,
-  AUDIT_LIMIT,
   emptyCount,
   emptySlot,
   isOverdue,
@@ -327,7 +333,15 @@ export interface DockState {
   lockAdmin: () => void
   approveBoat: (id: string) => Promise<void>
   rejectBoat: (id: string) => Promise<void>
-  setBoatStatus: (id: string, status: Boat['status']) => Promise<boolean>
+  /**
+   * `ok` when the shared roster took it, `pending` when we stopped waiting
+   * and it may still land, `failed` when it genuinely did not.
+   *
+   * Three outcomes rather than a boolean, because a caller that cannot tell
+   * `pending` from `failed` writes no audit row for a block that then takes
+   * effect on every phone in the harbour.
+   */
+  setBoatStatus: (id: string, status: Boat['status']) => Promise<'ok' | 'pending' | 'failed'>
   /** `indexes` are the crates the harbour may take back — see forceReleasable. */
   adminRelease: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<void>
   publishHarbour: () => Promise<void>
@@ -452,6 +466,32 @@ export const useDockStore = create<DockState>()(
        * deleted project, a revoked key — so a skipper on full bars was told
        * to wait for a signal. The two need different actions from them.
        */
+      /**
+       * Change a boat's status and record it, including when we do not know.
+       *
+       * Approve and Block used to log only on a clean `ok`. A `pending`
+       * result — the deadline fired, the write is still queued and, since
+       * round 14, the optimistic roster change is deliberately LEFT on
+       * screen — wrote nothing. So a boat could end up blocked on every
+       * phone in the harbour, unable to book, deposit or release the crate
+       * his catch is already in, with the hash-chained log the README offers
+       * to settle disputes containing no row saying any admin touched him.
+       *
+       * That is the same hole `adminRelease` closed one function away, and
+       * it is closed the same way: the row goes in, marked for what it is.
+       */
+      const logStatusChange = async (
+        id: string,
+        status: Boat['status'],
+        action: string,
+      ): Promise<void> => {
+        const harbourId = get().harbourId
+        const outcome = await get().setBoatStatus(id, status)
+        if (outcome === 'failed') return
+        const detail = outcome === 'pending' ? `${harbourId} · outcome not confirmed` : harbourId
+        void get().record(action, `#${id}`, detail)
+      }
+
       const reportFailure = (result: RemoteResult) => {
         if (result.ok) return
         const lang = get().lang
@@ -594,7 +634,28 @@ export const useDockStore = create<DockState>()(
           if (!isValidMobile(digits)) return { ok: false, error: 'mobile' }
 
           const { boats, harbourId } = get()
-          if (boats.some((b) => b.mobile === digits)) {
+          // Compare what the roster actually holds.
+          //
+          // A boat registered on ANOTHER phone arrives from the shared
+          // roster with only the last four digits of its number — by design,
+          // so a stranger cannot read a fleet's phone book off the wire. A
+          // ten-digit equality test therefore matched nothing but this
+          // phone's own registrations, and the duplicate check was silently
+          // inert for the entire rest of the harbour.
+          //
+          // Ten digits are compared in full where we have them, and only the
+          // shared four otherwise. Four digits can collide by chance — about
+          // one boat in ten thousand — so this refuses a legitimate number
+          // occasionally; the admin approves every registration and can wave
+          // it through. Missing every real duplicate is the worse trade,
+          // because a second boat is a second 2-crate allowance and a boat
+          // can never be deleted.
+          const taken = boats.some(
+            (b) =>
+              b.harbourId === harbourId &&
+              (b.mobile.length >= 10 ? b.mobile === digits : b.mobile.slice(-4) === digits.slice(-4)),
+          )
+          if (taken) {
             return { ok: false, error: 'mobileTaken' }
           }
 
@@ -917,10 +978,7 @@ export const useDockStore = create<DockState>()(
         },
 
         approveBoat: async (id) => {
-          // Logged only if it landed — see setBoatStatus.
-          if (await get().setBoatStatus(id, 'active')) {
-            void get().record('boat.approve', `#${id}`, get().harbourId)
-          }
+          await logStatusChange(id, 'active', 'boat.approve')
         },
 
         /**
@@ -935,10 +993,9 @@ export const useDockStore = create<DockState>()(
          * boat booking.
          */
         rejectBoat: async (id) => {
-          const { harbourId, myBoatId } = get()
-          const landed = await get().setBoatStatus(id, 'blocked')
-          if (myBoatId === id) set({ myBoatId: null })
-          if (landed) void get().record('boat.reject', `#${id}`, harbourId)
+          const wasMe = get().myBoatId === id
+          await logStatusChange(id, 'blocked', 'boat.reject')
+          if (wasMe) set({ myBoatId: null })
         },
 
         /**
@@ -954,7 +1011,7 @@ export const useDockStore = create<DockState>()(
           )
           set({ boats: updated })
           const boat = updated.find((b) => b.harbourId === harbourId && b.id === id)
-          if (!syncEnabled || !boat) return true
+          if (!syncEnabled || !boat) return 'ok'
           const result = await putBoat(harbourId, boat)
           if (!result.ok) {
             // Put the roster back. Leaving the optimistic change on screen
@@ -982,8 +1039,9 @@ export const useDockStore = create<DockState>()(
               })
             }
             reportFailure(result)
+            return result.error === 'pending' ? 'pending' : 'failed'
           }
-          return result.ok
+          return 'ok'
         },
 
         adminRelease: async (boatId, boxId, indexes) => {
@@ -1063,7 +1121,7 @@ export const useDockStore = create<DockState>()(
           const { harbourId, boxesByHarbour, boats, ledger, lang } = get()
           if (!requireLink()) return
           try {
-            const { failed, boxesOk, historyLost } = await seedHarbour(
+            const { failed, boxesOk, historyLost, historyVerified, timedOut } = await seedHarbour(
               harbourId,
               boxesByHarbour[harbourId],
               boats.filter((b) => b.harbourId === harbourId),
@@ -1073,6 +1131,17 @@ export const useDockStore = create<DockState>()(
             // and reporting it as either would be a lie. The boxes failing is
             // its own case: the roster landed, and pressing this again is all
             // that is needed.
+            // Nothing is known after a timeout, so nothing is claimed. The
+            // counts above are all zero because they were never taken, and
+            // reporting them as measurements — "no boats refused, the boxes
+            // were refused, no history lost" — put three untrue statements
+            // on screen and a fourth into the audit log.
+            if (timedOut) {
+              set({ toast: toast('warn', t(lang, 'adminPublishPending')) })
+              void get().record('harbour.publish', harbourId, 'outcome not confirmed')
+              return
+            }
+
             // History is its own case for the same reason. It only counts
             // when the harbour had none before — a refusal on a second
             // publish is the append-only rule working — and when it does
@@ -1084,13 +1153,29 @@ export const useDockStore = create<DockState>()(
                 : failed > 0
                   ? toast('warn', t(lang, 'adminPublishPartial', failed))
                   : historyLost > 0
-                    ? toast('warn', t(lang, 'adminPublishNoHistory', historyLost))
+                    ? toast(
+                        'warn',
+                        t(
+                          lang,
+                          // "may not have been written" when the count is a
+                          // refusal count rather than a verified absence —
+                          // too many rows to check one at a time. Reporting
+                          // an unverified number as a measurement is the
+                          // same class of lie as reporting zero for one.
+                          historyVerified === false
+                            ? 'adminPublishHistoryUnsure'
+                            : 'adminPublishNoHistory',
+                          historyLost,
+                        ),
+                      )
                     : toast('ok', t(lang, 'adminPublishDone')),
             })
             void get().record(
               'harbour.publish',
               harbourId,
-              `${failed} refused · ${historyLost} history rows lost`,
+              `${failed} refused · ${historyLost} history rows ${
+                historyVerified === false ? 'possibly lost' : 'lost'
+              }`,
             )
           } catch {
             // Say it failed. A silent failure here looks identical to success

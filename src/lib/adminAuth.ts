@@ -41,6 +41,23 @@ import type { AuditEntry } from '../types'
  * real enforcement; nothing else in the app has to move.
  */
 
+/**
+ * Newest audit rows kept.
+ *
+ * The ledger has had a cap since AGENTS.md §6 was written; the action log
+ * was left out of it and grew forever. It shares the ~5 MB localStorage
+ * quota with everything else, and it is hashed row by row on every verify.
+ * At roughly fifty admin actions a day it reaches the quota inside a year,
+ * and when it does `commitWrite` starts failing and NOTHING persists any
+ * more — boxes, roster and ledger included — behind one "storage full"
+ * toast. Two thousand rows is over a month of heavy use and a few hundred kB.
+ *
+ * It lives here, beside the chain it bounds, because `verifyAudit` needs it
+ * too: below this many rows the log cannot have been trimmed, so its head
+ * must still be the genesis row.
+ */
+export const AUDIT_LIMIT = 2_000
+
 /** PBKDF2 parameters. Salt and hash are public by design — the PIN is not. */
 const SALT_HEX = 'edf17a8afcddcd4e9e6b3580e06bc723'
 const PIN_HASH_HEX = '710b40cba57bdafffaf89f39db20f66e7f22319b62e102c6b8f8f794ba1631e8'
@@ -159,19 +176,28 @@ function nextAuditId(log: AuditEntry[]): string {
 /**
  * Index of the first broken link, or -1 when the chain is intact.
  *
- * Starts from the first row's OWN `prevHash`, not from `genesis`, because
- * the log is capped: once the oldest rows have been dropped the surviving
- * head legitimately points at a hash that is no longer here. Anchoring to
- * `genesis` would have reported every capped log as broken at row 0 — a
- * false alarm on the one panel whose whole job is to be believed.
+ * The anchor depends on whether the cap can have bitten yet, and that is the
+ * whole subtlety. Below `AUDIT_LIMIT` rows the log has never been trimmed,
+ * so its head MUST still be the genesis row and anything else is tampering —
+ * including the simplest tamper there is, deleting the oldest row. At or
+ * above the limit the head legitimately points at a hash that is no longer
+ * here, and demanding `genesis` would report every capped log as broken at
+ * row 0: a false alarm on the one panel whose job is to be believed.
  *
- * What this costs is stated rather than hidden: the chain proves that the
- * rows STILL HERE have not been altered or reordered. It cannot prove that
- * nothing was dropped from the front, and after the cap has bitten, nothing
- * could. The panel says "over the rows kept" for that reason.
+ * A first attempt anchored to the first row's own `prevHash` unconditionally
+ * and claimed in a comment that, after trimming, "nothing could" detect a
+ * dropped head. True after trimming; false before it, which is where every
+ * console spends its first month — and the check had been given up for
+ * nothing. Deleting row one of a three-row log went undetected.
+ *
+ * What is genuinely surrendered, once the cap has bitten: the chain proves
+ * the rows STILL HERE are unaltered and unreordered, but not that none was
+ * dropped from the front. The panel says "over the rows kept" for that
+ * reason.
  */
 export async function verifyAudit(log: AuditEntry[]): Promise<number> {
-  let prevHash = log[0]?.prevHash ?? 'genesis'
+  const trimmed = log.length >= AUDIT_LIMIT
+  let prevHash = trimmed ? (log[0]?.prevHash ?? 'genesis') : 'genesis'
   for (let i = 0; i < log.length; i += 1) {
     const entry = log[i]
     if (entry.prevHash !== prevHash) return i

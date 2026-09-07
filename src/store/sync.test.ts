@@ -659,13 +659,50 @@ describe('every shared call a person waits on', () => {
       for (const key of ['reserve', 'putBoat', 'resetBoxes'] as const) {
         await expect(calls[key], key).resolves.toMatchObject({ ok: false, error: 'pending' })
       }
-      // Publishing has no `pending` to report, so it says the thing that is
-      // both true and actionable: the boxes did not land, press it again.
-      await expect(calls.seed).resolves.toMatchObject({ boxesOk: false })
+      // Publishing has its own, much longer deadline: it is a boat
+      // transaction each, a thirty-path update and one write per ledger row,
+      // and twelve seconds for that on 2G was a guarantee of firing rather
+      // than a deadline. It must still be waiting here.
+      await expect(Promise.race([calls.seed, Promise.resolve('waiting')])).resolves.toBe('waiting')
+      await vi.advanceTimersByTimeAsync(48_000)
+      // And it reports that it does not know, rather than zeroes it never
+      // measured. `timedOut` is the flag every consumer must read first.
+      await expect(calls.seed).resolves.toMatchObject({ timedOut: true })
       // Distinct from `null`, which would mean the harbour refused us and a
       // second registration is safe. It is not.
       await expect(calls.claimBoat).resolves.toBe('pending')
       await expect(calls.claimDevice).resolves.toBe('unbound')
+    } finally {
+      vi.useRealTimers()
+      hangAll = false
+    }
+  })
+  it('gives up on a release, a deposit and a cancel that reach a dead link', async () => {
+    // The three the case above cannot cover, because each short-circuits to
+    // `stale` when the boat holds nothing — so each needs a harbour where it
+    // genuinely reaches the network. A comment once promised this test and
+    // the file simply ended, leaving the call that frees a crate AND writes
+    // the billing rows with no deadline coverage at all.
+    await publishedHarbour()
+    await sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn')
+
+    // A live hold: cancel and deposit both have something to write.
+    vi.useFakeTimers()
+    try {
+      hangAll = true
+      const cancel = sync.cancelRemote('nizampatnam', '04')
+      await vi.advanceTimersByTimeAsync(12_500)
+      await expect(cancel).resolves.toMatchObject({ ok: false, error: 'pending' })
+
+      hangAll = false
+      const deposit = sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)
+      await vi.advanceTimersByTimeAsync(1)
+      await deposit
+
+      hangAll = true
+      const release = sync.releaseRemote('nizampatnam', '04')
+      await vi.advanceTimersByTimeAsync(12_500)
+      await expect(release).resolves.toMatchObject({ ok: false, error: 'pending' })
     } finally {
       vi.useRealTimers()
       hangAll = false
