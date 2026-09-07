@@ -12,11 +12,13 @@ import { cx } from '../lib/ui'
 import { useModal } from '../lib/dialog'
 import {
   activeBoxId,
+  allowanceFor,
   boatState,
   bookingCode,
   emptyCount,
   holdRemainingMs,
   isFull,
+  joinedRecently,
   PLAN_HOURS,
   plannedOutAtForBoat,
   QUOTA,
@@ -25,6 +27,7 @@ import {
   storageElapsedMs,
   suggestedBoxId,
 } from '../store/selectors'
+import { boatsAt } from '../data/boats'
 import { selectBoxes, selectHarbour, useDockStore } from '../store/useDockStore'
 import type { BoxId, GeoFix } from '../types'
 import { BookSheet } from './BookSheet'
@@ -78,6 +81,8 @@ export function DockScreen({
   const boxes = useDockStore(selectBoxes)
   const now = useNow()
   const myBoatId = useDockStore((s) => s.myBoatId)
+  const allBoats = useDockStore((s) => s.boats)
+  const vouches = useDockStore((s) => s.vouches)
   const reserve = useDockStore((s) => s.reserve)
   const cancelHold = useDockStore((s) => s.cancelHold)
   const deposit = useDockStore((s) => s.deposit)
@@ -120,9 +125,24 @@ export function DockScreen({
    * only thing withheld is the booking action, and tapping a box opens the
    * box instead of nothing.
    */
+  /**
+   * What this boat may hold — one crate for an unbacked newcomer, two for
+   * everyone else. The same arithmetic the store enforces (`myAllowance`),
+   * because a screen that offers two crates to a boat the store will refuse
+   * the second of is a promise it cannot keep.
+   */
+  const settled = boatsAt(allBoats, harbour.id).filter(
+    (b) => !joinedRecently(b.registeredAt, now),
+  ).length
+  const me = myBoatId
+    ? boatsAt(allBoats, harbour.id).find((b) => b.id === myBoatId)
+    : undefined
+  const backers = myBoatId ? Object.keys(vouches[harbour.id]?.[myBoatId] ?? {}).length : 0
+  const allowance = me ? allowanceFor(me.registeredAt, backers, settled, now) : QUOTA
+
   const state = myBoatId ? boatState(boxes, myBoatId) : 'idle'
   const myBoxId = myBoatId ? activeBoxId(boxes, myBoatId) : null
-  const quota = myBoatId ? remainingQuota(boxes, myBoatId) : 0
+  const quota = myBoatId ? remainingQuota(boxes, myBoatId, allowance) : 0
   const mySlots = myBoatId ? slotsForBoat(boxes, myBoatId) : []
   const canBook = Boolean(myBoatId) && state === 'idle' && quota > 0
   const suggested = suggestedBoxId(boxes, 1)
@@ -155,6 +175,11 @@ export function DockScreen({
               the boat may be holding something. */}
           <p className="font-bold text-ink-2">{t('navTapMap')}</p>
           <p className="tabular text-sm font-extrabold">{t(quota === 1 ? 'quotaLeft1' : 'quotaLeft', quota)}</p>
+          {/* Why it is one, and that it is not a refusal. A number with no
+              reason reads as the app being broken. */}
+          {allowance < QUOTA ? (
+            <p className="text-sm font-bold text-ink-2">{t('allowanceOne')}</p>
+          ) : null}
         </section>
       ) : (
         <MyStatusCard

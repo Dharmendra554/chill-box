@@ -51,6 +51,9 @@ const config = {
 
 export const syncEnabled = Boolean(config.apiKey && config.databaseURL)
 
+/** `{ applicantBoatId: { voterBoatId: true } }` — see `vouchFor`. */
+export type Vouches = Record<string, Record<string, true>>
+
 /**
  * Why a shared write did not happen, so the UI can say something true.
  *
@@ -465,9 +468,11 @@ export function watchRoster(
   harbourId: HarbourId,
   onBoats: (boats: Boat[]) => void,
   onLedger: (entries: LedgerEntry[]) => void,
+  onVouches: (vouches: Vouches) => void,
 ): () => void {
   let offBoats: (() => void) | null = null
   let offLedger: (() => void) | null = null
+  let offVouches: (() => void) | null = null
   let cancelled = false
 
   void api().then((a) => {
@@ -523,13 +528,53 @@ export function watchRoster(
       if (!wire) return
       onLedger(Object.entries(wire).map(([id, row]) => ({ ...row, id, harbourId })))
     })
+
+    // Tiny — one boolean per vouch, and only for boats in their first week.
+    // It rides on the roster subscription rather than opening a fourth one.
+    offVouches = a.onValue(a.ref(a.db, `harbours/${harbourId}/vouches`), (snap) => {
+      onVouches((snap.val() as Vouches | null) ?? {})
+    })
   })
 
   return () => {
     cancelled = true
     offBoats?.()
     offLedger?.()
+    offVouches?.()
   }
+}
+
+/**
+ * Vouch for a boat, from the boat this phone holds.
+ *
+ * One node, one boolean, and it can only ever say yes — see the rules. The
+ * database checks that the voter is this phone's boat, so one boat is one
+ * vouch whatever the screen does.
+ */
+async function vouchForImpl(
+  harbourId: HarbourId,
+  applicantId: string,
+  voterId: string,
+): Promise<RemoteResult> {
+  const a = await api()
+  if (!a) return { ok: false, error: 'offline' }
+  try {
+    await a.set(
+      a.ref(a.db, `harbours/${harbourId}/vouches/${applicantId}/${voterId}`),
+      true,
+    )
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: reasonFor(error) }
+  }
+}
+
+export function vouchFor(
+  harbourId: HarbourId,
+  applicantId: string,
+  voterId: string,
+): Promise<RemoteResult> {
+  return withDeadline(vouchForImpl(harbourId, applicantId, voterId), () => PENDING)
 }
 
 /**

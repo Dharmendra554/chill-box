@@ -69,6 +69,20 @@ const S = {
   // `pendingDemo`, `blockedTitle` and `blockedBody` are gone with the
   // approval queue that needed them.
   legendNew: { te: 'కొత్తది', en: 'New' },
+
+  // The vouch. Nothing here may sound like permission to USE the boxes — a
+  // new boat books the minute it registers. What the harbour is deciding is
+  // how much of the shared space a stranger may hold at once.
+  vouchTitle: { te: 'కొత్త బోట్లు — మీ మద్దతు', en: 'New boats — your backing' },
+  vouchBody: { te: 'కొత్త బోటు ఇప్పుడే బుక్ చేయవచ్చు, కానీ ఒకే క్రేట్. హార్బర్‌లో సగం మంది మద్దతు ఇస్తే రెండు క్రేట్లు. ఎవరూ ఎవరినీ ఆపలేరు.', en: 'A new boat can book straight away, but only one crate. Once half the harbour backs it, it gets two. Nobody can stop anybody.' },
+  vouchTally: { te: '{1}లో {0} మంది మద్దతు ఇచ్చారు', en: '{0} of {1} boats have backed it' },
+  vouchGo: { te: 'నేను మద్దతు ఇస్తాను', en: 'I back this boat' },
+  vouchMine: { te: 'మీరు మద్దతు ఇచ్చారు ✓', en: 'You backed this ✓' },
+  vouchFull: { te: 'హార్బర్ మద్దతు ఇచ్చింది — రెండు క్రేట్లు', en: 'Backed by the harbour — two crates' },
+  vouchNeedBoat: { te: 'మద్దతు ఇవ్వాలంటే ముందు మీ బోటు ఏదో చెప్పండి.', en: 'Say which boat you are before backing another.' },
+  vouchDone: { te: 'మీ మద్దతు నమోదైంది.', en: 'Your backing is recorded.' },
+  vouchWho: { te: 'మద్దతు ఇచ్చినవారు: {0}', en: 'Backed by: {0}' },
+  allowanceOne: { te: 'కొత్త బోటు — ప్రస్తుతం ఒక క్రేట్', en: 'New boat — one crate for now' },
   backToBoxes: { te: '← బాక్సులకు తిరిగి', en: '← Back to the boxes' },
 
   // Shown to anyone who has not said which boat they are. They can already

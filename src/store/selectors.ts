@@ -31,6 +31,46 @@ export function joinedRecently(registeredAt: number, now: number): boolean {
 }
 
 /**
+ * How many boats must vouch for a newcomer: more than half the harbour.
+ *
+ * A majority, because the thing it unlocks is a share of a scarce resource
+ * that belongs to all of them. Twenty boats need eleven.
+ */
+export function vouchesNeeded(activeBoats: number): number {
+  return Math.floor(activeBoats / 2) + 1
+}
+
+/**
+ * A new boat's allowance, and the whole of what the harbour votes on.
+ *
+ * **A vouch can only ever RAISE it.** There is no "no", no way to remove a
+ * boat, and no way to reduce anybody. That is deliberate and it is the second
+ * design: the first one had the harbour VOTE A BOAT IN, and it was wrong for
+ * a reason worth writing down — it put eleven neighbours between a skipper at
+ * 4 a.m. and a crate for his catch, which is the same harbour master the
+ * brief says does not exist, just with more hands on it.
+ *
+ * So a boat that registered ten seconds ago can book immediately. It simply
+ * starts with ONE crate instead of two, and the harbour can hand it the
+ * second one. Nobody waits for permission to use the boxes; the vote decides
+ * only how much of the shared space a stranger may take before the people who
+ * share it have said they know him.
+ *
+ * The tally is public, on the Harbour tab, with every voucher named. That is
+ * the point as much as the arithmetic: twenty people who can see who vouched
+ * for whom need no authority above them.
+ */
+export function allowanceFor(
+  registeredAt: number,
+  vouchCount: number,
+  activeBoats: number,
+  now: number,
+): number {
+  if (!joinedRecently(registeredAt, now)) return QUOTA
+  return vouchCount >= vouchesNeeded(activeBoats) ? QUOTA : 1
+}
+
+/**
  * Collection windows a skipper can promise, in hours. All are strictly under
  * the 6 h overstay line — offering "6 h" would let the app suggest a time
  * that flags the moment it arrives, and a flagged crate is one any phone in
@@ -90,8 +130,19 @@ export function crateCountForBoat(boxes: ColdBox[], boatId: string): number {
   return n
 }
 
-export function remainingQuota(boxes: ColdBox[], boatId: string): number {
-  return Math.max(0, QUOTA - crateCountForBoat(boxes, boatId))
+/**
+ * How many more crates this boat may take.
+ *
+ * `allowance` defaults to the full cap, so every existing caller and every
+ * test that does not care about newcomers reads exactly as it did. Only the
+ * screens that know a boat's age and its vouches pass the third argument.
+ */
+export function remainingQuota(
+  boxes: ColdBox[],
+  boatId: string,
+  allowance: number = QUOTA,
+): number {
+  return Math.max(0, allowance - crateCountForBoat(boxes, boatId))
 }
 
 export function slotsForBoat(boxes: ColdBox[], boatId: string): Slot[] {

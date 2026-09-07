@@ -166,6 +166,28 @@
           }
         },
 
+        // Who the harbour has vouched for, one node per voter.
+        //
+        // A vouch can only ever RAISE a boat's allowance, from one crate to
+        // two. There is deliberately no "no" and no way to remove a boat:
+        // this app has no authority in it, and a control that could lower
+        // somebody's allowance would be one. The worst a hostile phone can do
+        // is vouch for a boat that did not deserve it.
+        //
+        // Permission is per voter, exactly like a crate slot: you may write
+        // the node keyed to the boat YOUR phone holds, and nobody else's. So
+        // one boat is one vouch, enforced by the database rather than by the
+        // screen.
+        "vouches": {
+          ".read": true,
+          "$applicant": {
+            "$voter": {
+              ".write": "auth != null && newData.val() === true && $voter !== $applicant && root.child('harbours').child($harbour).child('boats').child($applicant).exists() && root.child('harbours').child($harbour).child('boats').child($voter).child('uid').val() === auth.uid",
+              ".validate": "newData.val() === true"
+            }
+          }
+        },
+
         "boats": {
           ".read": true,
           "$boat": {

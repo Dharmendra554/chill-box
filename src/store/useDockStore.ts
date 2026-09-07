@@ -22,8 +22,10 @@ import {
   serverNow,
   watchConnection,
   watchHarbour,
+  vouchFor,
   watchRoster,
   type RemoteResult,
+  type Vouches,
 } from '../lib/harbourSync'
 import { SYNC_STALE_MS } from '../hooks/useConnectivity'
 import { demoMode, sharedActive } from '../lib/mode'
@@ -45,10 +47,12 @@ import type {
 } from '../types'
 import {
   activeBoxId,
+  allowanceFor,
   applyTick,
   emptyCount,
   emptySlot,
   isOverdue,
+  joinedRecently,
   LEDGER_LIMIT,
   QUOTA,
   reclaimable,
@@ -328,6 +332,13 @@ export interface DockState {
   myBoatId: string | null
   /** Last admin interaction; drives the idle auto-lock. */
   audit: AuditEntry[]
+  /**
+   * Who has vouched for whom, per harbour: `{ applicant: { voter: true } }`.
+   *
+   * Shared, so the tally is the same on every phone. Empty in local mode,
+   * where there is no harbour to ask.
+   */
+  vouches: Record<HarbourId, Vouches>
 
   // harbour data
   boats: Boat[]
@@ -382,6 +393,8 @@ export interface DockState {
    * stored an hour ago, and the database will refuse the pair.
    */
   reclaimCrates: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<boolean>
+  /** Vouch for a newcomer, from the boat this phone holds. Yes only. */
+  vouchForBoat: (applicantId: string) => Promise<void>
   publishHarbour: () => Promise<void>
   record: (action: string, target: string, detail?: string) => Promise<void>
 
@@ -408,6 +421,25 @@ function toast(tone: ToastTone, text: string): ToastMessage {
 export function seed(now: number) {
   return {
     boats: [...seedBoats(), ...seedRecent(now)],
+    /*
+     * Deepika #21 is one vouch short of the harbour's backing.
+     *
+     * Nizampatnam has twenty settled boats, so eleven are needed and ten have
+     * already said yes. A judge taps once and watches a stranger's allowance
+     * go from one crate to two, with every backer named — which is the whole
+     * feature in a single tap, and it cannot be shown at all from an empty
+     * tally.
+     */
+    vouches: {
+      vizag: { '13': { '01': true, '02': true, '03': true } },
+      kakinada: {},
+      nizampatnam: {
+        '21': {
+          '01': true, '02': true, '03': true, '04': true, '05': true,
+          '06': true, '07': true, '08': true, '09': true, '10': true,
+        },
+      },
+    } as Record<HarbourId, Vouches>,
     boxesByHarbour: seedAllBoxes(now),
     ledger: capLedger(seedAllLedgers(now)),
     toast: null,
@@ -595,6 +627,25 @@ export const useDockStore = create<DockState>()(
             })
             .catch(() => reclaiming.delete(key))
         }
+      }
+
+      /**
+       * What the signed-in boat may hold at once.
+       *
+       * The full cap for an established boat; one crate for a newcomer the
+       * harbour has not backed yet. See `allowanceFor` — a vouch can only
+       * ever raise this, never lower it, and nothing here can refuse a
+       * booking outright.
+       */
+      const myAllowance = (): number => {
+        const { boats, harbourId, myBoatId, vouches } = get()
+        const me = boats.find((b) => b.harbourId === harbourId && b.id === myBoatId)
+        if (!me) return QUOTA
+        const settled = boats.filter(
+          (b) => b.harbourId === harbourId && !joinedRecently(b.registeredAt, serverNow()),
+        ).length
+        const backers = Object.keys(vouches[harbourId]?.[me.id] ?? {}).length
+        return allowanceFor(me.registeredAt, backers, settled, serverNow())
       }
 
       const reportFailure = (result: RemoteResult) => {
@@ -856,7 +907,11 @@ export const useDockStore = create<DockState>()(
           const me = boats.find((b) => b.harbourId === harbourId && b.id === myBoatId)
           if (!me) return false
 
-          const quota = remainingQuota(boxes, myBoatId)
+          // A boat in its first week holds one crate until the harbour has
+          // backed it. Computed HERE, in the store, because it is a harbour
+          // rule — a screen that worked it out for itself would be a second
+          // copy of it, and the two would drift.
+          const quota = remainingQuota(boxes, myBoatId, myAllowance())
           if (crates > quota) {
             set({ toast: toast('error', t(lang, 'errQuota', QUOTA, quota)) })
             return false
@@ -1143,6 +1198,30 @@ export const useDockStore = create<DockState>()(
          * whatever is already there, so it fills an empty database and
          * touches nothing in a live one. Safe to press twice.
          */
+        vouchForBoat: async (applicantId) => {
+          const { harbourId, myBoatId, vouches, lang } = get()
+          // You must be a boat in this harbour, and not the applicant. The
+          // database checks both again — this is only so the screen can say
+          // something true before the round trip.
+          if (!myBoatId || myBoatId === applicantId) return
+
+          const forBoat = { ...(vouches[harbourId]?.[applicantId] ?? {}), [myBoatId]: true as const }
+          set({
+            vouches: {
+              ...vouches,
+              [harbourId]: { ...vouches[harbourId], [applicantId]: forBoat },
+            },
+          })
+
+          if (sharedActive) {
+            if (!requireLink()) return
+            const outcome = await vouchFor(harbourId, applicantId, myBoatId)
+            if (!outcome.ok) reportFailure(outcome)
+          }
+          set({ toast: toast('ok', t(lang, 'vouchDone')) })
+          void get().record('boat.vouch', `#${applicantId}`, harbourId)
+        },
+
         publishHarbour: async () => {
           const { harbourId, boxesByHarbour, boats, ledger, lang } = get()
           // The store refuses this, not just the screen. `requireLink()`
@@ -1279,6 +1358,7 @@ export const useDockStore = create<DockState>()(
         boxesByHarbour: s.boxesByHarbour,
         ledger: s.ledger,
         audit: s.audit,
+        vouches: s.vouches,
       }),
       /**
        * v4 → v5 drops `status` from every boat.
@@ -1447,6 +1527,10 @@ export function startHarbourSync(): () => void {
       (entries) => {
         const others = useDockStore.getState().ledger.filter((e) => e.harbourId !== harbourId)
         useDockStore.setState({ ledger: capLedger([...others, ...entries]) })
+      },
+      (vouches) => {
+        const state = useDockStore.getState()
+        useDockStore.setState({ vouches: { ...state.vouches, [harbourId]: vouches } })
       },
     )
   }

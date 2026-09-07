@@ -3,14 +3,18 @@ import { useNow } from '../hooks/useClock'
 import { useT } from '../i18n/useT'
 import { formatElapsed, RECLAIM_MS } from '../lib/time'
 import {
+  allowanceFor,
   crateCountForBoat,
   joinedRecently,
   NOT_COLLECTED_MS,
   occupancyRows,
+  QUOTA,
+  vouchesNeeded,
 } from '../store/selectors'
 import { selectBoxes, useDockStore } from '../store/useDockStore'
 import type { Boat } from '../types'
 import { BoatIcon, CrateIcon, ShoalIcon, TideClockIcon } from '../icons/marine'
+import { cx } from '../lib/ui'
 import { CrateRow } from './CrateRow'
 
 /**
@@ -25,6 +29,10 @@ export function HarbourScreen() {
   const harbourId = useDockStore((s) => s.harbourId)
   const allBoats = useDockStore((s) => s.boats)
   const ledger = useDockStore((s) => s.ledger)
+  const vouches = useDockStore((s) => s.vouches)
+  const myBoatId = useDockStore((s) => s.myBoatId)
+  const vouchForBoat = useDockStore((s) => s.vouchForBoat)
+  const notify = useDockStore((s) => s.notify)
   const now = useNow()
 
   // Every boat, with no filter.
@@ -56,8 +64,96 @@ export function HarbourScreen() {
     )
     .sort((a, b) => b.releasedAt - a.releasedAt)
 
+  /**
+   * The newcomers, and how far the harbour has gone in backing them.
+   *
+   * At the TOP, above the crates, because this is the only thing on the
+   * screen that asks the reader to do something rather than read something.
+   */
+  const here = vouches[harbourId] ?? {}
+  const settled = boats.filter((b) => !joinedRecently(b.registeredAt, now))
+  const needed = vouchesNeeded(settled.length)
+  const newcomers = boats
+    .filter((b) => joinedRecently(b.registeredAt, now))
+    .map((boat) => {
+      const backers = Object.keys(here[boat.id] ?? {})
+      return {
+        boat,
+        backers,
+        backed: backers.length >= needed,
+        mine: myBoatId !== null && backers.includes(myBoatId),
+      }
+    })
+
   return (
     <div className="flex flex-col gap-4">
+      {newcomers.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <header>
+            <h2 className="flex items-center gap-2 text-2xl">
+              <ShoalIcon size={26} />
+              {t('vouchTitle')}
+            </h2>
+            <p className="font-bold text-ink-2">{t('vouchBody')}</p>
+          </header>
+          {newcomers.map(({ boat, backers, backed, mine }) => (
+            <div
+              key={boat.id}
+              className={cx(
+                'card flex flex-col gap-2 p-3',
+                backed ? 'border-free bg-free-wash' : 'border-sea',
+              )}
+            >
+              <p className="font-display text-lg font-extrabold">
+                {boatName(boat, lang)} <span className="tabular">#{boat.id}</span>
+              </p>
+              <p className="text-sm font-bold text-ink-2">{boat.owner}</p>
+
+              {/* The count in words AND a bar. Never colour alone, and never
+                  a bar alone either — a bar cannot say "7 of 11". */}
+              <p className="tabular text-sm font-extrabold">
+                {backed ? t('vouchFull') : t('vouchTally', backers.length, needed)}
+              </p>
+              <span className="block h-3 border-3 border-rule">
+                <span
+                  className={cx('block h-full', backed ? 'bg-free' : 'bg-sea')}
+                  style={{ width: `${Math.min(100, (backers.length / Math.max(1, needed)) * 100)}%` }}
+                />
+              </span>
+
+              {/* Who, by name. The arithmetic is half of this feature; the
+                  other half is that twenty people can see who vouched for
+                  whom, which is what makes an authority unnecessary. */}
+              {backers.length > 0 ? (
+                <p className="text-xs font-bold text-ink-2">
+                  {t('vouchWho', backers.map((id) => `#${id}`).join(', '))}
+                </p>
+              ) : null}
+
+              {backed || mine ? (
+                <p className="text-sm font-extrabold">{mine ? t('vouchMine') : null}</p>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-lg btn-primary btn-block"
+                  onClick={() => {
+                    // A true reason, not a dead button: you cannot back a
+                    // boat until the harbour knows which boat you are.
+                    if (!myBoatId) {
+                      notify('warn', t('vouchNeedBoat'))
+                      return
+                    }
+                    void vouchForBoat(boat.id)
+                  }}
+                >
+                  {t('vouchGo')}
+                </button>
+              )}
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       {/* Above the crates, because this is the only thing on the screen that
           is somebody else's problem becoming everyone's. */}
       {notCollected.length > 0 ? (
@@ -140,6 +236,12 @@ export function HarbourScreen() {
               boat={boat}
               stored={crateCountForBoat(boxes, boat.id)}
               isNew={joinedRecently(boat.registeredAt, now)}
+              allowance={allowanceFor(
+                boat.registeredAt,
+                Object.keys(here[boat.id] ?? {}).length,
+                settled.length,
+                now,
+              )}
             />
           ))}
         </ul>
@@ -154,7 +256,8 @@ function BoatRow({
   boat,
   stored,
   isNew,
-}: Readonly<{ boat: Boat; stored: number; isNew: boolean }>) {
+  allowance,
+}: Readonly<{ boat: Boat; stored: number; isNew: boolean; allowance: number }>) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
 
@@ -168,7 +271,7 @@ function BoatRow({
               that replaced admin approval: nobody vets a new boat and nobody
               can stop it booking, but the harbour can see it arrived, which
               is what the twenty would see on the quay anyway. */}
-          {isNew ? (
+          {isNew && allowance < QUOTA ? (
             <span className="ml-1 border-2 border-rule bg-sea px-1 text-xs font-extrabold text-sea-ink">
               {t('legendNew')}
             </span>
