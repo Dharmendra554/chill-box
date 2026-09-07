@@ -4,7 +4,8 @@ import { useGeolocation } from '../hooks/useGeolocation'
 import { BOX_SHORT, type StringKey } from '../i18n/dictionary'
 import { useT } from '../i18n/useT'
 import { cardinal, simulateApproachFix } from '../lib/geo'
-import { syncEnabled } from '../lib/harbourSync'
+import { demoMode, setDemoMode, sharedActive } from '../lib/mode'
+import { syncEnabled as syncConfigured } from '../lib/harbourSync'
 import type { WaveBand } from '../lib/marine'
 import { distanceToBox, formatEta, formatKm, navigateTo } from '../lib/nav'
 import { formatClock, formatCountdown, formatElapsed, formatGap, HOUR_MS } from '../lib/time'
@@ -569,6 +570,27 @@ function DemoTools({
       <h3 className="text-sm font-extrabold uppercase">{t('demoTitle')}</h3>
       <p className="text-sm font-bold text-ink-2">{t('demoBody')}</p>
 
+      {/* The two modes, and which one this phone is in.
+          Offered only where there is a choice: with no database configured
+          the app is local and always was, and a toggle that cannot move is
+          worse than none. Switching reloads — see lib/mode.ts for why that
+          is the design rather than a shortcut. */}
+      {syncConfigured ? (
+        <>
+          <p className="border-3 border-rule bg-paper-2 px-3 py-2 text-sm font-extrabold">
+            {t(demoMode ? 'modeDemoNow' : 'modeLiveNow')}
+          </p>
+          <button
+            type="button"
+            className="btn btn-block"
+            onClick={() => setDemoMode(!demoMode)}
+          >
+            {t(demoMode ? 'modeGoLive' : 'modeGoDemo')}
+          </button>
+          <p className="text-xs font-bold text-ink-2">{t('modeHint')}</p>
+        </>
+      ) : null}
+
       <button
         type="button"
         className={cx('btn btn-block', simulating && 'btn-sea')}
@@ -588,7 +610,7 @@ function DemoTools({
             with production reach. It moves into the admin console, where the
             PIN is at least a lock on it. Local mode affects this phone only,
             so it stays where a judge can find it. */}
-        {syncEnabled ? (
+        {sharedActive ? (
           <p className="text-xs font-bold text-ink-2">{t('demoResetMoved')}</p>
         ) : (
           // Typed `void | Promise<void>`, because typing an async function

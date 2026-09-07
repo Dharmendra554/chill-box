@@ -23,6 +23,15 @@ const S = {
   demoSimulateOff: { te: 'నేను ఉన్న చోటికి తిరిగి', en: 'Back to where I really am' },
   demoSimulateHint: { te: 'రేవులో కూర్చునే దారి, దూరం, దిక్సూచి ఎలా పని చేస్తాయో చూడటానికి.', en: 'Shows how the route, distance and compass work without going to sea.' },
 
+  // The two ways the app can run. Nothing here describes a limitation of the
+  // demo: it is the same app, the same rules and the same screens — only the
+  // copy of the harbour is different, and that is what these say.
+  modeLiveNow: { te: 'ఇది నిజమైన హార్బర్. మీరు చేసేది అందరి ఫోన్లలో కనిపిస్తుంది.', en: 'This is the real harbour. What you do here appears on every phone.' },
+  modeDemoNow: { te: 'ఇది డెమో. ఈ ఫోన్‌లో మాత్రమే — ఇతరుల క్రేట్లు కదలవు.', en: 'This is a demo copy. It lives on this phone only — nobody else’s crates move.' },
+  modeGoDemo: { te: 'డెమో కాపీకి మారు', en: 'Switch to a demo copy' },
+  modeGoLive: { te: 'నిజమైన హార్బర్‌కు మారు', en: 'Switch to the real harbour' },
+  modeHint: { te: 'మారినప్పుడు యాప్ ఒకసారి రీలోడ్ అవుతుంది. బుకింగ్ నియమాలు రెండింటిలోనూ ఒకటే.', en: 'Switching reloads the app once. The booking rules are identical in both.' },
+
   // — Registration ————————————————————————————————
   regTitle: { te: 'మీ బోటును నమోదు చేయండి', en: 'Register your boat' },
   regIntro: { te: 'ఒక్కసారి మాత్రమే. తర్వాత పాస్‌వర్డ్ అక్కర్లేదు.', en: 'Once only. No password after this.' },

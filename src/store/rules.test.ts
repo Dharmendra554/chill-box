@@ -741,3 +741,28 @@ describe('the month-on-month trend', () => {
     expect(monthInsight(full, '2026-08', '2026-07', SEP).cratesDelta).toBe(-20)
   })
 })
+
+describe('a demo harbour that slept through its own overstay window', () => {
+  it('is only reseeded when every crate in it has aged out', () => {
+    // The rule the reseed turns on, tested directly: "every held crate is
+    // past the overstay line". A demo that is being used has fresh crates in
+    // it, so this cannot fire mid-flow — which is the whole safety argument
+    // for reseeding at all.
+    // Through `applyTick` first, exactly as the running app's clock does:
+    // twelve hours on, the seeded four-hour hold has expired to `empty` and
+    // every crate that is left is overdue. A live hold would mean the demo
+    // is not dead, and the guard would correctly leave it alone.
+    const stale = applyTick(createMockBoxes(H, NOW - 12 * HOUR_MS), NOW).boxes
+    const held = (list: ColdBox[]) =>
+      list.flatMap((b) => b.slots).filter((s) => s.status !== 'empty')
+
+    expect(held(stale).length).toBeGreaterThan(0)
+    expect(held(stale).every((s) => isOverdue(s, NOW))).toBe(true)
+
+    // Freshly seeded, the same harbour is emphatically not all overdue: one
+    // crate is deliberately late and the rest are hours from it.
+    const fresh = createMockBoxes(H, NOW)
+    expect(held(fresh).every((s) => isOverdue(s, NOW))).toBe(false)
+    expect(held(fresh).some((s) => isOverdue(s, NOW))).toBe(true)
+  })
+})

@@ -29,12 +29,12 @@ import {
   resetRemoteBoxes,
   seedHarbour,
   serverNow,
-  syncEnabled,
   watchConnection,
   watchHarbour,
   watchRoster,
   type RemoteResult,
 } from '../lib/harbourSync'
+import { sharedActive } from '../lib/mode'
 import { HOUR_MS } from '../lib/time'
 import type {
   AuditEntry,
@@ -454,7 +454,7 @@ export const useDockStore = create<DockState>()(
        * frees nothing, records nothing, and looks exactly like success.
        */
       const requireLink = (): boolean => {
-        if (!syncEnabled || get().syncLive) return true
+        if (!sharedActive || get().syncLive) return true
         set({ toast: toast('error', t(get().lang, 'syncOffline')) })
         return false
       }
@@ -673,7 +673,7 @@ export const useDockStore = create<DockState>()(
           // The database decides the hull number, because only it can see
           // every phone's registrations. It also refuses a slot booked by a
           // boat it has never heard of, so this must land before booking.
-          if (syncEnabled) {
+          if (sharedActive) {
             if (!requireLink()) return { ok: false, error: 'offline' }
             const id = await claimBoat(harbourId, boat)
             // Distinct from `null`. `null` is the harbour refusing us and
@@ -710,7 +710,7 @@ export const useDockStore = create<DockState>()(
           const boat = boats.find((b) => b.harbourId === harbourId && b.id === boatId)
           if (!boat || boat.mobile.slice(-4) !== last4.trim()) return false
 
-          if (syncEnabled) {
+          if (sharedActive) {
             if (!requireLink()) return false
             // Only a boat genuinely held by another device is refused. A boat
             // the database would not let us bind stays unbound — the harbour
@@ -766,7 +766,7 @@ export const useDockStore = create<DockState>()(
           // "Stored in Auction Hall, 0 crates", a booking code that did not
           // match the one recorded, and on a lost race a green Booked panel
           // sitting on top of the toast explaining it was refused.
-          if (syncEnabled) {
+          if (sharedActive) {
             const result = await reserveRemote(harbourId, boxId, myBoatId, crates, species)
             if (result.ok) return true
             // Every refusal gets its own reason. 'notActive' cannot reach
@@ -815,7 +815,7 @@ export const useDockStore = create<DockState>()(
           const myBoatId = activeBoatId()
           if (!myBoatId) return
           const { boxesByHarbour, harbourId } = get()
-          if (syncEnabled) {
+          if (sharedActive) {
             if (!requireLink()) return
             const boxId = activeBoxId(boxesByHarbour[harbourId], myBoatId) ?? undefined
             reportFailure(await cancelRemote(harbourId, myBoatId, boxId))
@@ -849,7 +849,7 @@ export const useDockStore = create<DockState>()(
           const plannedOutAt = now + plannedHours * HOUR_MS
           // Awaited: "Fish deposited" is the promise a skipper walks away on,
           // and it must not appear until the shared copy actually says so.
-          if (syncEnabled) {
+          if (sharedActive) {
             if (!requireLink()) return false
             const boxId = activeBoxId(boxes, myBoatId) ?? undefined
             const result = await depositRemote(harbourId, myBoatId, plannedOutAt, boxId)
@@ -886,7 +886,7 @@ export const useDockStore = create<DockState>()(
             serverNow(),
           )
           if (result.entries.length === 0) return
-          if (syncEnabled) {
+          if (sharedActive) {
             if (!requireLink()) return
             // No rows are passed in: the shared path writes one row per crate
             // it actually freed, which is not knowable from here. Handing it
@@ -1011,7 +1011,7 @@ export const useDockStore = create<DockState>()(
           )
           set({ boats: updated })
           const boat = updated.find((b) => b.harbourId === harbourId && b.id === id)
-          if (!syncEnabled || !boat) return 'ok'
+          if (!sharedActive || !boat) return 'ok'
           const result = await putBoat(harbourId, boat)
           if (!result.ok) {
             // Put the roster back. Leaving the optimistic change on screen
@@ -1083,7 +1083,7 @@ export const useDockStore = create<DockState>()(
               `${harbourId} ${boxId} · ${crates} crates${confirmed ? '' : ' · outcome not confirmed'}`,
             )
 
-          if (syncEnabled) {
+          if (sharedActive) {
             if (!requireLink()) return
             const outcome = await releaseRemote(harbourId, boatId, boxId, indexes)
             reportFailure(outcome)
@@ -1197,7 +1197,7 @@ export const useDockStore = create<DockState>()(
           // settles, and the button did nothing at all — no toast, no
           // spinner, no reason — for the rest of the session. A dead control
           // with no reason given is the thing AGENTS.md §2 forbids by name.
-          if (syncEnabled && !requireLink()) return
+          if (sharedActive && !requireLink()) return
           const fresh = seed(serverNow())
 
           // A local-only reset would be undone by the watcher a second later,
@@ -1214,7 +1214,7 @@ export const useDockStore = create<DockState>()(
           // all thirty. Setting the local copy first showed the admin an
           // empty harbour, then a refusal toast, then the watcher putting
           // every crate back. Say no, or do it; never both.
-          if (syncEnabled) {
+          if (sharedActive) {
             await seedHarbour(
               harbourId,
               fresh.boxesByHarbour[harbourId],
@@ -1288,8 +1288,41 @@ export const useDockStore = create<DockState>()(
  * what makes two phones agree; with no Firebase configured it does nothing
  * and the app stays local, exactly as before.
  */
+/**
+ * Wake a demo harbour that has slept through its own overstay window.
+ *
+ * The seeded occupancy is anchored to the moment it was created — crates
+ * deposited half an hour to seven hours ago, one of them deliberately late.
+ * That is a plausible harbour when you make it and a harbour in total
+ * violation six hours later, because nothing in a demo ever collects its
+ * fish. Open the app the next morning and every crate is red, MyStatusCard
+ * tells your own boat to clear its slot, and the one flag that is supposed
+ * to mean something means nothing because everything has it.
+ *
+ * So on a COLD START only, in demo mode only, and only when EVERY crate in
+ * the harbour is past the overstay line — which cannot happen in normal use,
+ * because a demo that is being used has fresh crates in it — the boxes are
+ * reseeded to now. A judge always gets a live-looking harbour; a skipper
+ * mid-flow never loses one, because mid-flow is exactly the state this
+ * refuses to touch.
+ *
+ * The shared harbour is deliberately NOT included. There the crates are real
+ * data belonging to other people, and an app that quietly rewrites those
+ * because they look stale is the opposite of this one's first rule. The
+ * admin's Reset demo is how a shared harbour is refreshed, by a person, on
+ * purpose.
+ */
+export function freshenDemoHarbour(): void {
+  if (sharedActive) return
+  const { boxesByHarbour, harbourId } = useDockStore.getState()
+  const now = serverNow()
+  const held = boxesByHarbour[harbourId].flatMap((box) => box.slots).filter((s) => s.status !== 'empty')
+  if (held.length === 0 || !held.every((slot) => isOverdue(slot, now))) return
+  useDockStore.setState({ boxesByHarbour: seedAllBoxes(now) })
+}
+
 export function startHarbourSync(): () => void {
-  if (!syncEnabled) return () => {}
+  if (!sharedActive) return () => {}
   let stop: (() => void) | null = null
 
   let stopRoster: (() => void) | null = null

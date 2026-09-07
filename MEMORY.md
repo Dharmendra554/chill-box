@@ -1090,6 +1090,40 @@ Both still said DO NOT SHIP, and every finding sat on a seam round 14 cut.
 | Escape died under StrictMode — the dev build could not exercise the fallback dialog at all, so the project's one manual test for it reported broken in dev and fixed in prod | |
 | README described the connectivity mechanism round 14 deleted, and quoted an offline notice the default build cannot produce. MEMORY §2 was ten commits and three rounds stale | |
 
-**Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
-of webfonts, the demo/live toggle and the seeded harbour ageing into
-all-overstay, which belongs to it.
+**Still open and deliberately untouched:** the 223 kB ledger feed and the
+265 kB of webfonts.
+
+---
+
+## 26. The demo/live toggle
+
+The last item on the open list, and the fix for the thing that made the
+deployed link look broken: a seeded harbour published once and then left
+overnight is thirty overdue crates by morning, because nothing in a demo ever
+collects its fish.
+
+**The mode is decided once, at start-up, and switching reloads.** That is the
+whole design. A live switch would have to tear down two Firebase
+subscriptions, a reconnect timer and a store subscription, reseed the boxes,
+and leave every in-flight write to land in a mode that no longer exists —
+four seams, in an app where fifteen rounds of evidence say the seams are
+where the defects are. A reload has none: `sharedActive` stays a module
+constant, exactly as `syncEnabled` was, so no code anywhere has to cope with
+it changing under them. The cost is one second on a control nobody touches
+twice.
+
+- `lib/mode.ts` owns it. `syncEnabled` still answers "is a database
+  configured" — which is only good for deciding whether to OFFER the toggle —
+  and `sharedActive` answers "do writes go to the shared harbour", which is
+  what everything else should branch on. All 24 call sites moved.
+- Demo is opt-in, never given quietly: a first visit to a configured build is
+  live, and storage that cannot be read falls back to live too.
+- `freshenDemoHarbour()` reseeds on a COLD START, in demo only, and only when
+  EVERY held crate is past the overstay line. A demo in use has fresh crates
+  in it, so it cannot fire mid-flow. The shared harbour is deliberately
+  excluded — those crates are other people's data, and an app that rewrites
+  them because they look stale is the opposite of its own first rule.
+
+Verified in the browser rather than reasoned about: registered a boat in demo
+mode (local only, nothing reached the live database), toggled to live and
+back, and confirmed the mode line and button text on both sides.

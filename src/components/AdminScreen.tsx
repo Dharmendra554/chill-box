@@ -18,7 +18,7 @@ import {
 } from '../lib/stats'
 import { verifyAudit } from '../lib/adminAuth'
 import { saveCsv } from '../lib/download'
-import { syncEnabled } from '../lib/harbourSync'
+import { sharedActive } from '../lib/mode'
 import { formatDayClock, formatGap, monthKey, monthLabel, startOfLocalDay } from '../lib/time'
 import { cx } from '../lib/ui'
 import { forceReleasable, occupancyRows } from '../store/selectors'
@@ -580,8 +580,8 @@ function SyncPanel() {
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-xl">{t('adminSync')}</h3>
-      <p className="card p-3 font-bold">{t(syncEnabled ? 'adminSyncOn' : 'adminSyncOff')}</p>
-      {syncEnabled ? (
+      <p className="card p-3 font-bold">{t(sharedActive ? 'adminSyncOn' : 'adminSyncOff')}</p>
+      {sharedActive ? (
         <>
           <button
             type="button"

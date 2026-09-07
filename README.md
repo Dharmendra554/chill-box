@@ -161,8 +161,24 @@ convenience, not a control.
 
 ## Multi-user: shared, or local
 
-The app runs in one of two modes, decided by whether a Firebase config is
-present at build time.
+The app runs in one of two modes. Whether the choice EXISTS is decided at
+build time by the Firebase config; which one you are in is a toggle at the
+bottom of the Book screen, under **Demo tools**.
+
+**Demo** is the same app — same rules, same screens, same refusals — on a
+copy of the harbour that lives on this phone alone. Nobody else's crates
+move, so it is the honest thing to hand a judge, and the honest thing for a
+skipper who wants to press something and see what happens. Switching reloads
+once, deliberately: a mode is read at start-up by every module, so there is
+no half-switched state for a bug to live in.
+
+A demo harbour that has been left overnight reseeds itself on the next cold
+start — but only when *every* crate in it is past the overstay line, which
+cannot happen while it is being used. Without that, seeded occupancy anchored
+to the moment it was created becomes thirty overdue crates by the next
+morning, and the one flag that is supposed to mean something means nothing.
+The shared harbour is never reseeded automatically: those crates belong to
+other people, and only the admin's **Reset demo** touches them.
 
 **Shared (set `VITE_FIREBASE_*`).** Every phone reads and writes one copy of
 the harbour, and changes arrive live. Each crate is claimed by a Firebase

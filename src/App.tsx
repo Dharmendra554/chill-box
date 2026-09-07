@@ -15,7 +15,7 @@ import { vibrate } from './hooks/useHaptics'
 import { MARINE_STALE_MS, useMarine } from './hooks/useMarine'
 import { STALE_MS, SYNC_STALE_MS, useConnectivity } from './hooks/useConnectivity'
 import { useT } from './i18n/useT'
-import { syncEnabled } from './lib/harbourSync'
+import { sharedActive } from './lib/mode'
 import { waveBand } from './lib/marine'
 import { speakCapacity, stopSpeech } from './lib/speech'
 import { boatState } from './store/selectors'
@@ -93,8 +93,8 @@ export default function App() {
   // strip carries its own age and its own offline line; it does not need
   // this banner to speak for it.
   let reachedAt: number | null = now
-  if (syncEnabled) reachedAt = syncLive ? now : syncedAt
-  const reach = useConnectivity(reachedAt, now, syncEnabled ? SYNC_STALE_MS : STALE_MS)
+  if (sharedActive) reachedAt = syncLive ? now : syncedAt
+  const reach = useConnectivity(reachedAt, now, sharedActive ? SYNC_STALE_MS : STALE_MS)
 
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export default function App() {
     // In local-only mode the figures ARE this phone's own and cannot be
     // stale, so `reach` — which then tracks the weather poll — must not
     // decide. A warning that fires when nothing is wrong stops being read.
-    const fresh = !syncEnabled || reach === 'connected'
+    const fresh = !sharedActive || reach === 'connected'
     const outcome = speakCapacity(boxes, fresh, () => setSpeaking(false))
     if (outcome === 'unsupported') {
       notify('warn', t('voiceNone'))
@@ -204,8 +204,8 @@ export default function App() {
    * the weather poll — dating the box figures to it said something true
    * about the wrong thing, so `staleNever` is the honest line there.
    */
-  let banner = <OfflineBanner t={t} since={syncEnabled ? reachedAt : null} />
-  if (reach === 'checking' && syncEnabled) banner = <LoadingBanner t={t} />
+  let banner = <OfflineBanner t={t} since={sharedActive ? reachedAt : null} />
+  if (reach === 'checking' && sharedActive) banner = <LoadingBanner t={t} />
   else if (reach !== 'stale') {
     banner = <WaveStrip t={t} reading={marine.reading} band={band} error={marine.error} />
   }

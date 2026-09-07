@@ -6,7 +6,7 @@ import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { startClock } from './hooks/useClock'
 import { primeVoices } from './lib/speech'
-import { startHarbourSync, useDockStore } from './store/useDockStore'
+import { freshenDemoHarbour, startHarbourSync, useDockStore } from './store/useDockStore'
 
 // Voices load asynchronously; warm the list before the first tap.
 primeVoices()
@@ -19,6 +19,9 @@ document.documentElement.lang = lang
 
 // One clock and one harbour subscription for the whole app.
 startClock()
+// Before the subscription, so a demo harbour that aged out overnight is
+// already fresh when the first frame paints. See freshenDemoHarbour.
+freshenDemoHarbour()
 startHarbourSync()
 
 registerSW({ immediate: true })
