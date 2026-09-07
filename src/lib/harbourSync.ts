@@ -794,16 +794,26 @@ async function seedHarbourImpl(
   // append-only rule, and reporting twenty refusals for working idempotency
   // would be the same lie pointing the other way.
   //
-  // So ask, once and cheaply, whether the harbour had any history before we
-  // started. If it did, refusals are the design. If it did not, a refused
-  // row is a row that is genuinely not there.
-  const hadHistory = await historyExists(a, harbourId)
+  // So ASK THE ROWS THAT WERE REFUSED whether they are there.
+  //
+  // A first attempt keyed this off "did the harbour have any history before
+  // we started", which suppressed rather than distinguished: the press where
+  // the report matters most — the second one, after a few rows failed
+  // transiently, which is the documented remedy — could no longer produce a
+  // report at all, and two admins publishing a fresh harbour at the same
+  // moment both saw "empty" and one of them was told 45 rows were lost over
+  // a complete history.
+  //
+  // A refused row that IS in the database is idempotency working. A refused
+  // row that is not is a row the society will never be able to bill. One
+  // read each answers it exactly, and only refusals are read.
   const rows = await Promise.allSettled(
     ledger.map(({ id, harbourId: _h, ...row }) =>
       a.set(a.ref(a.db, `harbours/${harbourId}/ledger/${ledgerKey(id)}`), row),
     ),
   )
-  const historyLost = hadHistory ? 0 : rows.filter((r) => r.status === 'rejected').length
+  const refused = ledger.filter((_, i) => rows[i].status === 'rejected')
+  const historyLost = await countMissing(a, harbourId, refused)
 
   return {
     failed: skipped + results.filter((r) => r.status === 'rejected').length,
@@ -812,18 +822,31 @@ async function seedHarbourImpl(
   }
 }
 
-/** One key is enough to know whether this harbour has been published before. */
-async function historyExists(a: Api, harbourId: HarbourId): Promise<boolean> {
-  try {
-    const snap = await a.get(
-      a.query(a.ref(a.db, `harbours/${harbourId}/ledger`), a.limitToLast(1)),
-    )
-    return snap.exists()
-  } catch {
-    // Unreadable is not empty. Assuming empty here would report every
-    // refusal below as lost history on a harbour that has all of it.
-    return true
-  }
+/**
+ * How many refused rows are genuinely absent from the shared ledger.
+ *
+ * Bounded, and the bound is the point. A wholesale re-publish refuses every
+ * row by design — that is what makes publishing idempotent — and reading a
+ * thousand keys to confirm working behaviour would turn an admin's second
+ * press into a minute of round trips on 2G. Past the bound the refusals are
+ * overwhelmingly the append-only rule doing its job, and the honest report
+ * is the one the button already gives: published.
+ *
+ * Under the bound, every refusal is checked, because that is the case that
+ * matters: a handful of rows lost to a flaky link on a first publish, which
+ * nothing retries and which the society bills from.
+ */
+const VERIFY_REFUSALS_UPTO = 25
+
+async function countMissing(a: Api, harbourId: HarbourId, refused: LedgerEntry[]): Promise<number> {
+  if (refused.length === 0 || refused.length > VERIFY_REFUSALS_UPTO) return 0
+  const checks = await Promise.allSettled(
+    refused.map((row) => a.get(a.ref(a.db, `harbours/${harbourId}/ledger/${ledgerKey(row.id)}`))),
+  )
+  // A read that itself failed is not evidence of a missing row. Only a
+  // successful read saying "nothing here" counts, so an unreadable ledger
+  // reports no loss rather than inventing one.
+  return checks.filter((c) => c.status === 'fulfilled' && !c.value.exists()).length
 }
 
 /**

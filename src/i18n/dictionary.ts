@@ -204,7 +204,10 @@ const S = {
   // Deliberately does NOT say "nothing was saved". A queued write can still
   // land when the signal returns, and telling a skipper it failed sends him
   // to take a second crate over the one he may already hold.
-  syncPending: { te: 'సమాధానం రాలేదు. ఇది జరిగిందో లేదో తెలియదు. సిగ్నల్ వచ్చాక బాక్స్ దగ్గర చూసి, ఆ తర్వాతే మళ్లీ బుక్ చేయండి.', en: 'No answer yet — we cannot tell whether that went through. Check the box when the signal is back, before booking again.' },
+  // Caller-neutral on purpose: the same sentence reaches a skipper booking a
+  // crate, an admin blocking a boat and an admin resetting the demo. It used
+  // to end "before booking again", which is nonsense to two of the three.
+  syncPending: { te: 'సమాధానం రాలేదు. ఇది జరిగిందో లేదో తెలియదు. సిగ్నల్ వచ్చాక ఒకసారి చూసి, ఆ తర్వాతే మళ్లీ ప్రయత్నించండి.', en: 'No answer yet — we cannot tell whether that went through. Check when the signal is back, before trying it again.' },
   auditFailed: { te: 'ఈ చర్య రికార్డు కాలేదు. లాగ్‌లో ఇది కనిపించదు.', en: 'That action was not recorded. It will not appear in the log.' },
   syncPartial: { te: 'మీ క్రేట్లలో ఒకటి మాత్రమే మారింది. బాక్స్ దగ్గరకు వెళ్లి చూడండి.', en: 'Only one of your crates changed. Go to the box and check.' },
   loadingTitle: { te: 'సంఖ్యలు వస్తున్నాయి…', en: 'Getting the numbers…' },

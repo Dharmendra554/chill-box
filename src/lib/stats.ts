@@ -83,6 +83,14 @@ export function boatUsage(ledger: LedgerEntry[], key: string): BoatUsage[] {
     .sort((a, b) => b.crates - a.crates || a.boatId.localeCompare(b.boatId))
 }
 
+/** Built once; these run inside a 1 Hz render on the admin console. */
+const DAY_OF_MONTH = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', day: 'numeric' })
+const HOUR_OF_DAY = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Kolkata',
+  hour: '2-digit',
+  hour12: false,
+})
+
 /** Crates per day for the month, padded so the bar chart has no gaps. */
 export function dailyCrates(
   ledger: LedgerEntry[],
@@ -92,12 +100,9 @@ export function dailyCrates(
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate()
   const series = Array.from({ length: days }, (_, i) => ({ day: i + 1, crates: 0 }))
   for (const e of entriesForMonth(ledger, key)) {
-    const d = Number(
-      new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Kolkata',
-        day: 'numeric',
-      }).format(new Date(e.releasedAt)),
-    )
+    // The shared formatter: this ran once per ledger row, up to 1 500 of
+    // them, every time the admin console re-rendered.
+    const d = Number(DAY_OF_MONTH.format(new Date(e.releasedAt)))
     const bucket = series[d - 1]
     if (bucket) bucket.crates += e.crates
   }
@@ -129,15 +134,23 @@ function daysIn(key: string): number {
 /**
  * Days of the month that have actually happened. The current month is only
  * part-elapsed, and dividing its crate-hours by a full 31 days reported a
- * busy harbour as 6%% utilised.
+ * busy harbour as 6% utilised.
+ *
+ * The denominator is the MONTH's capacity, deliberately, and that has one
+ * consequence worth stating rather than hiding: a harbour that opened on the
+ * 12th is measured against days 1–11 as well, so its first month reads low.
+ *
+ * Anchoring to the first ledger row instead was tried and is worse. It makes
+ * the figure depend on when the first crate happened to come out, so a
+ * harbour open since the 1st whose first release was on the 20th would be
+ * measured over a single day and read as busy — overstating occupancy to a
+ * society deciding whether it needs a fourth box, which is the direction
+ * that costs money. Understating one month is the safer error, and the
+ * month after it is exact.
  */
 function daysElapsed(key: string, now: number): number {
   if (key !== monthKey(now)) return daysIn(key)
-  const day = Number(
-    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', day: 'numeric' }).format(
-      new Date(now),
-    ),
-  )
+  const day = Number(DAY_OF_MONTH.format(new Date(now)))
   return Math.max(1, day)
 }
 
@@ -223,13 +236,8 @@ export function monthInsight(
 export function hourHistogram(ledger: LedgerEntry[], key: string): number[] {
   const hours = new Array<number>(24).fill(0)
   for (const e of entriesForMonth(ledger, key)) {
-    const hour = Number(
-      new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Asia/Kolkata',
-        hour: '2-digit',
-        hour12: false,
-      }).format(new Date(e.depositedAt)),
-    )
+    // Shared, like the others: this was one construction per ledger row.
+    const hour = Number(HOUR_OF_DAY.format(new Date(e.depositedAt)))
     if (Number.isInteger(hour) && hour >= 0 && hour < 24) hours[hour] += 1
   }
   return hours
