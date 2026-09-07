@@ -375,7 +375,7 @@ export function watchRoster(
           // Skip anything malformed rather than letting it into the roster.
           // A row written by an older build reached the store with no mobile
           // at all, and every later write of that boat threw on it.
-          .filter(([, b]) => b && typeof b.name === 'string' && /^[0-9]{4}$/.test(b.mobileLast4))
+          .filter(([, b]) => b && typeof b.name === 'string' && /^\d{4}$/.test(b.mobileLast4))
           .map(([id, b]) => ({
           id,
           harbourId,
@@ -641,7 +641,7 @@ function toWireBoat(boat: Boat): WireBoat {
 function writableBoat(boat: Boat): boolean {
   const wire = toWireBoat(boat)
   return (
-    /^[0-9]{4}$/.test(wire.mobileLast4) &&
+    /^\d{4}$/.test(wire.mobileLast4) &&
     wire.name.length >= 2 &&
     wire.name.length <= 40 &&
     wire.owner.length >= 2 &&
@@ -840,7 +840,7 @@ async function changeOwnSlot(
   const result = await a.runTransaction(
     a.ref(a.db, `harbours/${harbourId}/boxes/${boxId}/${index}`),
     (current: WireSlot | null) => {
-      if (!current || current.boatId !== boatId) return undefined
+      if (current?.boatId !== boatId) return undefined
       if (!statuses.includes(current.status)) return undefined
       return pruneWire(change(current))
     },
@@ -861,7 +861,7 @@ function ownSlots(
     if (onlyBoxId && boxId !== onlyBoxId) continue
     for (const [index, slot] of Object.entries(wire[boxId] ?? {})) {
       if (onlyIndexes && !onlyIndexes.includes(Number(index))) continue
-      if (slot && slot.boatId === boatId && statuses.includes(slot.status)) {
+      if (slot?.boatId === boatId && statuses.includes(slot.status)) {
         found.push({ boxId, index: Number(index), slot })
       }
     }
@@ -931,7 +931,7 @@ export async function reserveRemote(
       (n, id) =>
         n +
         Object.values(wire[id] ?? {}).filter(
-          (s) => s && s.boatId === boatId && s.status !== 'empty' && !claimable(s, now),
+          (s) => s?.boatId === boatId && s.status !== 'empty' && !claimable(s, now),
         ).length,
       0,
     )
@@ -1108,7 +1108,16 @@ export async function releaseRemote(
     // the society bills from and nothing ever retries this write, so a
     // swallowed failure means the trip is never billed and nobody is told.
     // Round 11 gave the AUDIT row a message and left the BILLING row mute.
-    return { ok: false, error: 'ledgerLost', freed: freed.freed.length }
+    //
+    // `settle` FIRST, and only then the billing message. Returning from the
+    // catch skipped `settle` entirely, so a release that freed one crate of
+    // two and then lost the ledger row reported "the crate is free, the
+    // trip was not recorded" — and said nothing about the crate still in
+    // the box with fish in it. A missing bill is an argument next month; a
+    // crate nobody is looking for is a spoiled catch tonight, so when both
+    // go wrong the skipper hears about the crate.
+    const outcome = settle(freed)
+    return outcome.ok ? { ok: false, error: 'ledgerLost', freed: freed.freed.length } : outcome
   }
   // Freed some but not all: the skipper has crates still in the box and must
   // be told so, even though the rows for what did come out are written.

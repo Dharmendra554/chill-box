@@ -128,6 +128,12 @@ let storageFailed = false
 /** Set by `resetStorage`, so nothing can write the store back afterwards. */
 let wiped = false
 
+/**
+ * The tail of the audit-log write chain. See `record`: appending is
+ * read-digest-write, and two of those interleaved lose a row silently.
+ */
+let auditChain: Promise<void> = Promise.resolve()
+
 function commitWrite(): void {
   writeTimer = null
   if (wiped) return
@@ -202,7 +208,7 @@ const safeStorage: Storage = {
   setItem: (key, value) => {
     if (wiped) return
     pendingWrite = { key, value }
-    if (writeTimer === null) writeTimer = setTimeout(commitWrite, WRITE_EVERY_MS)
+    writeTimer ??= setTimeout(commitWrite, WRITE_EVERY_MS)
   },
   removeItem: (key) => {
     try {
@@ -869,12 +875,26 @@ export const useDockStore = create<DockState>()(
          * in green over a log with a hole in it, which is worse than an
          * obviously broken log: it is a receipt that vouches for itself.
          */
-        record: async (action, target, detail = '') => {
-          try {
-            set({ audit: await appendAudit(get().audit, action, target, detail) })
-          } catch {
-            set({ toast: toast('warn', t(get().lang, 'auditFailed')) })
-          }
+        /*
+         * Serialised, because two overlapping calls used to delete a row.
+         *
+         * `appendAudit` awaits a digest between reading the tip of the chain
+         * and writing the new one, so two calls that overlap on that await
+         * both read the same tip and the second `set` overwrites the first.
+         * The surviving chain is perfectly well-formed — a hole is not a
+         * break — so `verifyAudit` still painted "Audit intact" in green.
+         * Blocking and Unblocking two boats in quick succession does it: the
+         * Block button has no busy guard, unlike Approve and Reject.
+         */
+        record: (action, target, detail = '') => {
+          auditChain = auditChain
+            .then(async () => {
+              set({ audit: await appendAudit(get().audit, action, target, detail) })
+            })
+            .catch(() => {
+              set({ toast: toast('warn', t(get().lang, 'auditFailed')) })
+            })
+          return auditChain
         },
 
         approveBoat: async (id) => {

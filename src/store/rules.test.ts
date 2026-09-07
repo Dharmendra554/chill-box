@@ -15,7 +15,9 @@ import {
   holdRemainingMs,
   isOverdue,
   forceReleasable,
+  LEDGER_LIMIT,
   occupancyRows,
+  PLAN_HOURS,
   QUOTA,
   remainingQuota,
   slotsForBoat,
@@ -275,9 +277,17 @@ describe('edge cases a busy dock produces', () => {
     expect(slot.boatId).toBe('11')
   })
 
-  it('counts a promised collection window that is under the overstay line', () => {
-    // The picker must never offer a time that flags the moment it arrives.
-    expect(Math.max(2, 4, 5) * HOUR_MS).toBeLessThan(OVERSTAY_MS)
+  it('offers no collection window that flags the moment it arrives', () => {
+    // Reads PLAN_HOURS, the array the picker actually renders. It used to
+    // assert `Math.max(2, 4, 5) < 6 h` against literals copied out of a
+    // component const the test could not import — so a picker changed to
+    // offer 8 h would have left this green, while the crate it promised
+    // went `overstay` two hours before the skipper's own promised time and
+    // any phone in the harbour could clear it.
+    expect(PLAN_HOURS.length).toBeGreaterThan(0)
+    for (const hours of PLAN_HOURS) {
+      expect(hours * HOUR_MS).toBeLessThan(OVERSTAY_MS)
+    }
   })
 
   it('reports the true free count when a box has one slot left', () => {
@@ -400,10 +410,48 @@ describe('utilisation over a part-elapsed month', () => {
     ]
     const partial = monthInsight(ledger, '2026-08', undefined, day2)
     const whole = monthInsight(ledger, '2026-08', undefined, Date.parse('2026-10-01T00:00:00+05:30'))
-    expect(partial.utilisation).toBeGreaterThan(whole.utilisation)
-    // 10 crates x 6 h = 60 crate-hours, over 30 slots x 24 h x 2 days.
+    // 10 crates x 6 h = 60 crate-hours, over 30 slots x 24 h x 2 days — so
+    // the part-elapsed month reads higher than the same rows spread over a
+    // whole one. Exact values rather than a comparison, because they pin the
+    // denominator as well as the ordering.
     expect(partial.utilisation).toBe(4)
     expect(whole.utilisation).toBe(0)
+  })
+
+  it('shows no utilisation for a month the ledger cap has cut into', () => {
+    // The oldest month in a capped window survives only in part, and
+    // dividing what is left by the WHOLE month's capacity read 8% against an
+    // honest ~27% in the live console — one line above the trend, which was
+    // correctly hidden for exactly this reason. A truncated month has no
+    // honest percentage, so it has none.
+    const rows: LedgerEntry[] = []
+    for (let i = 0; i < LEDGER_LIMIT; i += 1) {
+      // All inside July, but starting on the 20th: the cap ate the rest.
+      const at = Date.parse('2026-07-20T06:00:00+05:30') + i * 60_000
+      rows.push({
+        id: `row${i}`,
+        harbourId: 'nizampatnam',
+        boatId: '04',
+        boxId: 'box1',
+        crates: 1,
+        species: 'prawn',
+        depositedAt: at,
+        releasedAt: at + HOUR_MS,
+        overstay: false,
+      })
+    }
+    const capped = monthInsight(rows, '2026-07', undefined, Date.parse('2026-09-07T06:00:00+05:30'))
+    expect(capped.utilisation).toBeNull()
+
+    // One row short of the cap, nothing was dropped, and the same short
+    // month is a real one — a harbour that opened on the 20th.
+    const young = monthInsight(
+      rows.slice(1),
+      '2026-07',
+      undefined,
+      Date.parse('2026-09-07T06:00:00+05:30'),
+    )
+    expect(young.utilisation).not.toBeNull()
   })
 
   it('hides the month-on-month trend while the month is still running', () => {

@@ -52,7 +52,11 @@ export function formatClock(ts: number): string {
  * very different tides — while fitting the cell.
  */
 export function formatClockShort(ts: number): string {
-  return formatClock(ts).replace(/\s*([ap])m$/i, '$1')
+  // `\s?`, not `\s*`. Intl emits exactly one separator — a narrow no-break
+  // space on newer ICU, which `\s` covers — and an unbounded quantifier in
+  // front of a literal backtracks over every whitespace run on a failed
+  // match for nothing.
+  return formatClock(ts).replace(/\s?([ap])m$/i, '$1')
 }
 
 export function formatDayClock(ts: number, lang: 'te' | 'en'): string {
@@ -78,13 +82,23 @@ export function startOfLocalDay(ts: number): number {
   return Date.parse(`${day}T00:00:00+05:30`)
 }
 
+/**
+ * Built once, not per call.
+ *
+ * `monthKey` runs once per ledger row — 1 500 of them on the admin console —
+ * and constructing an `Intl.DateTimeFormat` is the expensive half of it. A
+ * fresh one per row cost 224 ms per pass on a desktop, several times that on
+ * the target phone. The formatter is stateless, so one is enough.
+ */
+const MONTH_KEY_FORMAT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: TZ,
+  year: 'numeric',
+  month: '2-digit',
+})
+
 /** `2026-09` in harbour local time — the bucket key for monthly reports. */
 export function monthKey(ts: number): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date(ts))
+  const parts = MONTH_KEY_FORMAT.formatToParts(new Date(ts))
   const y = parts.find((p) => p.type === 'year')?.value ?? '0000'
   const m = parts.find((p) => p.type === 'month')?.value ?? '00'
   return `${y}-${m}`

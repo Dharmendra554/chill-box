@@ -940,3 +940,64 @@ per-slot security property genuinely holds.
 
 **Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
 of webfonts, the demo/live toggle. One subsystem per round.
+
+---
+
+## 23. Thirteenth review — 5.5 and 5.5 → fixed, and the rules finally went live
+
+**The database rules are deployed.** Rounds 8–12 hardened a file the server
+was not running; `verify-rules.sh` now prints *all checks passed against the
+deployed rules* — 45 assertions, including the four unauthenticated ones.
+Every claim this project makes about who may write what is, for the first
+time, a claim about the server.
+
+Both auditors held at 5.5. Both led with the same defect, found
+independently, and it is the same defect for the third round running:
+
+**The swell reading's clock, wrong in a third direction.** Round 11 aged it
+against the wrong clock, round 12 fixed that and wrapped `measured` — an
+absolute instant off Open-Meteo's wire — in `toHarbourTime`, which exists to
+add the device's clock error to a *device* instant. So the error came back,
+mirrored: forty minutes slow and the 25-minute staleness gate could not fire
+until a reading was 65 minutes old, while the strip printed a reading time in
+the future. `toHarbourTime` now wraps the fallback only, and `marine.test.ts`
+stubs a 40-minute skew and asserts the wire instant survives it untouched.
+Mutation-checked against the round-12 line.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **A partial release that also lost its ledger row reported only the missing bill.** The `catch` returned before `settle`, so `partial` was discarded | The skipper is told "the crate is free, the trip was not recorded" while a second crate of his fish is still in the box. A missing bill is an argument next month; an unattended crate is a spoiled catch tonight. `settle` runs first now, and `ledgerLost` had no test at all — the ledger is written with `set`, which nothing in the suite could fail |
+| **The breakers card captioned a live 3.4 m warning "Nothing current."** Round 12 dated the card by reusing `waveStale`, which is the strip's *too-old-to-trust* sentence, at every age | Third time this card has got the same split wrong, in three directions, on the one screen that exists for a boat in trouble. It has its own `waveTaken` key now |
+| **A harbour rule lived in a `.tsx` and its test could not fail.** `PLAN_HOURS` was a private const in `DockScreen`; `rules.test.ts` asserted `5 h < 6 h` against hand-copied literals | Change the picker to offer 8 h and the test stays green while the crate it promised flags `overstay` two hours early — at which point any phone in the harbour may clear it. Exported from `selectors.ts`, read by the test, mutation-checked |
+| **The admin console still fabricated one number.** Round 12 guarded the *trend* against a cap-truncated month and left *utilisation*, which divides the surviving crate-hours by the whole month's capacity: 8 % against an honest ~27 % | The guarded number was correctly hidden and the unguarded one sat one line above it. Now null — rendered `—` — but only when the ledger is actually at the cap, so a harbour that opened on the 12th still gets a real figure |
+| **`#admin` spent roughly half of every second in `Intl`.** `months` was keyed on `now`, so `monthKeys` walked 1 500 rows at 1 Hz, each row constructing a fresh `Intl.DateTimeFormat` | Measured at 224 ms per pass. Every Approve and Force-release queued behind it. The formatter is a module constant now and the memo no longer sees the clock |
+| **Two overlapping `record()` calls silently deleted an audit row**, and a hole does not break a hash chain — only an alteration does — so the console printed "Audit intact" in green over it | Block and Unblock have no busy guard, so two quick taps did it. Serialised behind one promise chain, with a test that fires two concurrently |
+| **Three keyboard-focusable links inside the `role="img"` chart** — Leaflet's own zoom and attribution controls. Rounds 11 and 12 each fixed a marker type and neither looked at the chrome | Silent tab stops, and the attribution one navigates a `standalone` PWA to leafletjs.com with no way back. Both controls are off; the tile credit moved to the caption |
+| **The roster rendered in `Object.entries` order: #10–#21, then #01–#09** | The claim grid is the only path a registered skipper takes, and the demo's own boat #04 was sixteenth of twenty-one. Local mode was sorted and shared mode was not, so no rehearsal without a live database could see it. Sorted in `boatsAt`, once |
+| The Google-Fonts service-worker rule had no `cacheableResponse`, so it cached nothing: the stylesheet is opaque and `CacheFirst` drops it | An offline cold start lost the Telugu webfont once the 24 h HTTP cache lapsed |
+| A toast was a `<button role="alert">` — a control announced as a line of text, with no hint it could be dismissed | And a refusal never fades on its own. `role="alert"` is on a wrapper now |
+| `aria-pressed` on the box card was permanently false and announced a one-shot action as a toggle | |
+| README described a layout `508c051` removed, and contradicted itself 265 lines later | |
+
+**The CI guard that never fires, third version.** Round 12 found
+`if: secrets.X != ''` could never be true and replaced it with
+`if: env.X != ''` — and a step's own `env:` block is not visible to that
+step's `if:` either. Skipped on every run, including runs where the secret
+exists, still green, still silent. There is no `if:` now: the step always
+runs and the check is in the shell, where a skip emits a `::warning`.
+
+**Sonar, and what was refused.** Security findings closed properly rather
+than silenced: `npm ci --ignore-scripts` (verified in a clean-room install —
+tsc, 93 tests and the build all pass without lifecycle scripts),
+`--no-install` on every `npx` so a gate cannot silently become a stranger's
+package, `firebase-tools` pinned exactly, and workflow permissions scoped per
+job so the build job cannot publish Pages. Not taken: `<img alt>` in place of
+`role="img"` on the chart and the SVG icons — that rule is wrong for a live
+map and for inline SVG, and following it would cost accessibility rather than
+buy it.
+
+**Product.** Map pins now name the thing rather than the place — "Auction
+hall box", "Ice plant box", "Diesel box" — verified at 320 px in both
+languages with no overflow and no collisions. The line under the chart is the
+ODbL tile credit and nothing else; the "free, no account needed" half was
+about our hosting bill, not about anything a skipper needs.

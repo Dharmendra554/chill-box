@@ -181,11 +181,13 @@ function Field({
   value,
   onChange,
   ...rest
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-} & Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'>) {
+}: Readonly<
+  {
+    label: string
+    value: string
+    onChange: (value: string) => void
+  } & Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'>
+>) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-sm font-extrabold uppercase">{label}</span>
@@ -208,11 +210,11 @@ function ClaimBoat({
   boatId,
   label,
   onClose,
-}: {
+}: Readonly<{
   boatId: string
   label: string
   onClose: () => void
-}) {
+}>) {
   const t = useT()
   const signInAs = useDockStore((s) => s.signInAs)
   const [digits, setDigits] = useState('')

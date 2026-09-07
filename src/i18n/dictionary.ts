@@ -105,6 +105,11 @@ const S = {
   waveLoading: { te: 'అలల సమాచారం…', en: 'Fetching swell…' },
   waveError: { te: 'అలల సమాచారం లేదు', en: 'Swell data offline' },
   waveStale: { te: 'ఈ అలల కొలత {0} నాటిది. ఇప్పటి సమాచారం లేదు.', en: 'This swell reading is from {0}. Nothing current.' },
+  // Dates a reading without judging it. `waveStale` says a second thing —
+  // "nothing current" — and the breakers card was reusing it at EVERY age,
+  // so a live 3.4 m warning carried "Nothing current." four lines under
+  // "Delay your landing", on the one screen a boat in trouble reads.
+  waveTaken: { te: 'ఈ అలల కొలత {0} నాటిది.', en: 'Swell reading taken {0}.' },
 
   // — Navigation ——————————————————————————————————
   navTitle: { te: 'దగ్గరలోని కోల్డ్ బాక్సులు', en: 'Cold boxes near you' },
@@ -163,7 +168,15 @@ const S = {
   navEta: { te: 'చేరే సమయం', en: 'ETA' },
   navBearing: { te: 'దిక్కు', en: 'Bearing' },
   navAtBox: { te: 'బాక్స్ చేరుకున్నారు', en: 'You are at the box' },
-  navMapNote: { te: 'ఉచిత OpenStreetMap + OpenSeaMap. ఖాతా అవసరం లేదు.', en: 'Free OpenStreetMap + OpenSeaMap. No account needed.' },
+  // The tile licence credit, and nothing else. It used to advertise that the
+  // map is free and needs no account, which is a fact about our hosting bill
+  // and not something a skipper on a quay has any use for. ODbL requires the
+  // credit itself, so it stays — quietly.
+  navMapNote: { te: '© OpenStreetMap, OpenSeaMap', en: '© OpenStreetMap, OpenSeaMap' },
+  // A pin on the chart says what the thing IS, not only where it is. "Auction
+  // hall" is a building a skipper can see from the water; "Auction hall box"
+  // is the cold box beside it, which is what the pin actually marks.
+  boxNamed: { te: '{0} బాక్స్', en: '{0} box' },
   navOffline: { te: 'మ్యాప్ లోడ్ కాలేదు — దిక్సూచి పని చేస్తోంది.', en: 'Map tiles unavailable — the compass still works.' },
   boxAway: { te: '{0} దూరం', en: '{0} away' },
   offlineTitle: { te: 'నెట్ లేదు', en: 'No signal' },

@@ -31,7 +31,7 @@ export async function fetchWaveHeight(
   }
   const waveHeight = data.current?.wave_height
   if (typeof waveHeight !== 'number' || Number.isNaN(waveHeight)) {
-    throw new Error('marine missing wave_height')
+    throw new TypeError('marine missing wave_height')
   }
 
   /**
@@ -55,10 +55,20 @@ export async function fetchWaveHeight(
    * `current.time` is Open-Meteo's own instant for the reading, in the
    * timezone we asked for. Falling back to the fetch time is no worse than
    * before when the field is missing.
+   *
+   * `toHarbourTime` goes on the FALLBACK ONLY, and that distinction is the
+   * whole of this line. It adds the device's clock error to convert a
+   * device instant into harbour time — so applying it to `measured`, which
+   * is already an absolute instant off the wire and owes nothing to this
+   * phone's clock, re-injects exactly the error the round-12 fix removed.
+   * A phone forty minutes slow then stamped a 4:00 reading as 4:40: the age
+   * came out forty minutes short, the 25-minute gate could not fire until
+   * the reading was 65 minutes old, and the strip printed a reading time in
+   * the future. Third round for this class, second direction.
    */
-  const measured = data.current?.time ? Date.parse(`${data.current.time}+05:30`) : NaN
+  const measured = data.current?.time ? Date.parse(`${data.current.time}+05:30`) : Number.NaN
   return {
     waveHeight,
-    fetchedAt: toHarbourTime(Number.isNaN(measured) ? Date.now() : measured),
+    fetchedAt: Number.isNaN(measured) ? toHarbourTime(Date.now()) : measured,
   }
 }

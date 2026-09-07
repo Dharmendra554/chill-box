@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { useDockStore as Store } from './useDockStore'
 import type * as SyncModule from '../lib/harbourSync'
+import { verifyAudit } from '../lib/adminAuth'
 
 /**
  * The shared-harbour branch, which the rest of the suite cannot reach.
@@ -53,6 +54,13 @@ const db: Record<string, unknown> = {}
 const refuse = new Set<string>()
 /** Slot paths whose transaction aborts with a bare, code-less Error. */
 const abort = new Set<string>()
+/**
+ * Path prefixes whose plain `set` rejects.
+ *
+ * The ledger is written with `set`, not a transaction, so `refuse` could not
+ * reach it and nothing in thirteen rounds had ever failed a billing write.
+ */
+const refuseSet = new Set<string>()
 
 /** Whether writing a boat that carries a `uid` throws, as old rules do. */
 let rejectUid = false
@@ -83,6 +91,11 @@ vi.mock('firebase/database', () => ({
   },
   set: async (r: { path: string }, value: unknown) => {
     writes.push(`set ${r.path}`)
+    for (const prefix of refuseSet) {
+      if (r.path.startsWith(prefix)) {
+        throw Object.assign(new Error('permission_denied'), { code: 'PERMISSION_DENIED' })
+      }
+    }
     db[r.path] = value
   },
   update: async (r: { path: string }, values: Record<string, unknown>) => {
@@ -146,6 +159,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   useDockStore.setState({ toast: null })
+  refuseSet.clear()
 })
 
 /**
@@ -369,6 +383,46 @@ describe('a write that only half lands', () => {
     expect(rows.length).toBe(1)
     expect(rows[0].crates).toBe(1)
   })
+
+  it('says the trip was not recorded when the release itself was complete', async () => {
+    // The `ledgerLost` branch had no test at all: the ledger is written with
+    // `set`, which nothing in this file could make fail.
+    await publishedHarbour()
+    await sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn')
+    await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)
+    refuseSet.add('harbours/nizampatnam/ledger')
+
+    expect(await sync.releaseRemote('nizampatnam', '04')).toMatchObject({
+      ok: false,
+      error: 'ledgerLost',
+      freed: 1,
+    })
+  })
+
+  it('reports the crate still in the box, not the missing bill, when both fail', async () => {
+    // Freed one of two AND lost the ledger row. Returning from the `catch`
+    // skipped `settle` entirely, so the skipper was told "the crate is free,
+    // the trip was not recorded" — and nothing at all about the crate still
+    // in the box with his fish in it. A missing bill is an argument next
+    // month; an unattended crate is a spoiled catch tonight.
+    await publishedHarbour()
+    await sync.reserveRemote('nizampatnam', 'box3', '04', 2, 'prawn')
+    await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)
+
+    const stored = Object.keys(db).filter(
+      (path) =>
+        path.startsWith('harbours/nizampatnam/boxes/box3/') &&
+        (db[path] as { boatId?: string })?.boatId === '04',
+    )
+    expect(stored.length).toBe(2)
+    refuse.add(stored[1])
+    refuseSet.add('harbours/nizampatnam/ledger')
+
+    expect(await sync.releaseRemote('nizampatnam', '04')).toMatchObject({
+      ok: false,
+      error: 'partial',
+    })
+  })
 })
 
 describe('a client running ahead of the published rules', () => {
@@ -497,5 +551,29 @@ describe('a booking that cannot win every crate', () => {
         (db[path] as { boatId?: string })?.boatId === '04',
     )
     expect(stillHeld).toEqual([])
+  })
+})
+
+describe('the action log a dispute is settled with', () => {
+  it('keeps both rows when two admin actions overlap', async () => {
+    // `appendAudit` reads the tip of the chain, awaits a digest, then writes
+    // the whole array back. Two calls that overlap on that await both read
+    // the same tip and the second `set` overwrites the first — and a MISSING
+    // row does not break a hash chain, only an altered one does, so the
+    // console went on reporting "Audit intact" in green over the hole.
+    // Block and Unblock have no busy guard, so two taps do exactly this.
+    await Promise.all([
+      useDockStore.getState().record('boat.block', '#07', 'nizampatnam'),
+      useDockStore.getState().record('boat.block', '#08', 'nizampatnam'),
+    ])
+
+    // Both rows present — not a count, because the seeded log this store
+    // starts with is not the point. The race drops one of these two.
+    const log = useDockStore.getState().audit
+    const blocks = log.filter((row) => row.action === 'boat.block').map((row) => row.target)
+    expect(blocks).toContain('#07')
+    expect(blocks).toContain('#08')
+    // And the chain over them is whole, rather than merely well-formed.
+    expect(await verifyAudit(log)).toBe(-1)
   })
 })

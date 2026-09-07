@@ -53,7 +53,8 @@ export function primeVoices(): void {
  * readout is short enough that the round trip does not matter.
  */
 function findVoice(prefix: string): SpeechSynthesisVoice | undefined {
-  const list = voices.length ? voices : (voices = speechSynthesis.getVoices())
+  if (!voices.length) voices = speechSynthesis.getVoices()
+  const list = voices
   const score = (v: SpeechSynthesisVoice) => {
     const tag = v.lang.toLowerCase().replace('_', '-')
     if (!tag.startsWith(prefix)) return -1

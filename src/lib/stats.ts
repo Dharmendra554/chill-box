@@ -1,3 +1,4 @@
+import { LEDGER_LIMIT } from '../store/selectors'
 import { HOUR_MS, monthKey } from './time'
 import { SPECIES } from '../types'
 import type { BoxId, HarbourId, LedgerEntry, Species } from '../types'
@@ -33,7 +34,10 @@ export function ledgerFor(ledger: LedgerEntry[], harbourId: HarbourId): LedgerEn
 /** Month buckets present in the ledger, newest first. */
 export function monthKeys(ledger: LedgerEntry[]): string[] {
   const keys = new Set(ledger.map((e) => monthKey(e.releasedAt)))
-  return [...keys].sort().reverse()
+  // `YYYY-MM`, so a descending string comparison IS newest-first. Explicit
+  // rather than `.sort().reverse()`: the default sort has no comparator and
+  // a reader has to know the key format to see that it is safe.
+  return [...keys].sort((a, b) => b.localeCompare(a))
 }
 
 export function entriesForMonth(ledger: LedgerEntry[], key: string): LedgerEntry[] {
@@ -138,8 +142,12 @@ function daysElapsed(key: string, now: number): number {
 }
 
 export interface MonthInsight {
-  /** Share of the harbour's crate-hours actually used, 0–100. */
-  utilisation: number
+  /**
+   * Share of the harbour's crate-hours actually used, 0–100, or null when
+   * the ledger does not reach back to the month's first day and the figure
+   * would be a fraction of a month divided by all of it.
+   */
+  utilisation: number | null
   /** Mean hours a crate sat in a box. */
   dwellHours: number
   /** Share of trips that ran past the 6 h line, 0–100. */
@@ -179,6 +187,19 @@ export function monthInsight(
   const complete = key !== monthKey(now)
   const oldest = ledger.reduce((min, e) => (e.releasedAt < min ? e.releasedAt : min), Infinity)
   const covered = previousKey ? oldest <= Date.parse(`${previousKey}-01T00:00:00+05:30`) : false
+  // The SELECTED month needs the same test, and did not have it. Round 12
+  // guarded the trend and left utilisation, which divides the surviving
+  // crate-hours by the WHOLE month's capacity: the oldest month in a capped
+  // window rendered 8% against an honest ~27%, one line above the trend that
+  // had been correctly hidden for exactly this reason.
+  //
+  // The cap is the only thing that can hide rows, so it is the only reason
+  // to distrust the figure. A young harbour whose first row is the 12th of
+  // the month has a short month because it was not open, not because
+  // anything was dropped — and its utilisation is real. Asking `oldest`
+  // alone would have blanked that too.
+  const truncated = ledger.length >= LEDGER_LIMIT
+  const reaches = !truncated || oldest <= Date.parse(`${key}-01T00:00:00+05:30`)
   const previous = previousKey && complete && covered ? monthTotals(ledger, previousKey) : null
   const cratesDelta =
     previous && previous.crates > 0
@@ -186,7 +207,7 @@ export function monthInsight(
       : null
 
   return {
-    utilisation: Math.round((totals.crateHours / capacityHours) * 100),
+    utilisation: reaches ? Math.round((totals.crateHours / capacityHours) * 100) : null,
     dwellHours: rows.length ? Number((totals.crateHours / totals.crates).toFixed(1)) : 0,
     overstayRate: rows.length ? Math.round((totals.overstays / rows.length) * 100) : 0,
     cratesDelta,

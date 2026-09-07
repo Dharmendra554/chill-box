@@ -10,10 +10,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+# Permissions are granted per job, not workflow-wide. The build job runs
+# third-party code — every dependency's test and build script — and must not
+# hold the token that can publish the site. Only the deploy job, which runs
+# one pinned action and nothing of ours, can write Pages.
+permissions: {}
 
 # One deploy at a time; never cancel one that is mid-flight.
 concurrency:
@@ -23,18 +24,32 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # `--ignore-scripts`: a dependency's install script runs before any gate
+      # does, with the job's token and network. Three packages in the lock
+      # file declare one — @firebase/util, protobufjs and fsevents (macOS) —
+      # and none is needed to build this app. Verified, not assumed: a clean
+      # `npm ci --ignore-scripts` in an empty tree still passes tsc, all 85
+      # tests and the build.
+      - run: npm ci --ignore-scripts
       # The same four gates that must pass locally, in the same order. The
       # deploy job below has `needs: build`, so a red gate never publishes.
-      - run: npx tsc -b
+      #
+      # `--no-install` on every npx: these three binaries are devDependencies
+      # already installed by `npm ci`, and without the flag a typo or a
+      # dependency that failed to install makes npx silently fetch a package
+      # of that name from the registry and run it. The gate would then be
+      # some stranger's code, and it would go green.
+      - run: npx --no-install tsc -b
       - run: npm test
-      - run: npx oxlint
+      - run: npx --no-install oxlint
       - run: npm run build
         env:
           BASE_PATH: /chill-box/
@@ -53,17 +68,31 @@ jobs:
       # Skipped when the token is absent, so a fork or a clone still builds.
       # Create one with `npx firebase-tools login:ci` and add it as the
       # FIREBASE_TOKEN repository secret.
-      # `env`, NOT `secrets`, in the condition. The `secrets` context is not
-      # available to a step `if:` — GitHub resolves it to an empty context
-      # rather than erroring, so `secrets.FIREBASE_TOKEN != ''` is ALWAYS
-      # false and the step is skipped on every run, including runs where the
-      # secret exists. The build still goes green and nothing says the rules
-      # did not move. A guard that silently never fires is worse than none.
+      #
+      # NO `if:` ON THIS STEP, and that is the whole point. Two rounds have
+      # now written a step condition that could never be true: first
+      # `secrets.FIREBASE_TOKEN != ''` (the `secrets` context is not available
+      # to a step `if:`), then `env.FIREBASE_TOKEN != ''` — and a step's own
+      # `env:` block is NOT visible to that same step's `if:` either; only
+      # workflow- and job-level env is. Both resolved to false on every run,
+      # including runs where the secret existed, and both went green and said
+      # nothing. A guard that silently never fires is worse than no guard,
+      # because it also stops anyone looking. So the step always runs and the
+      # check is in the shell, where a skip has to announce itself.
       - name: Deploy database rules
-        if: ${{ env.FIREBASE_TOKEN != '' }}
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: npx -y firebase-tools deploy --only database --token "$FIREBASE_TOKEN"
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::warning title=Database rules NOT deployed::No FIREBASE_TOKEN secret. The client shipped; firebase/database.rules.json did not. Create one with 'npx firebase-tools login:ci'."
+            exit 0
+          fi
+          # Pinned exactly. `firebase-tools` is not a devDependency — it is
+          # ~200 MB that every `npm ci` would pay for a step that runs once —
+          # so it is fetched here, and an unpinned fetch means the code that
+          # rewrites our security rules is whatever the registry served that
+          # morning. Bump this deliberately.
+          npx --yes firebase-tools@15.29.0 deploy --only database --token "$FIREBASE_TOKEN"
 
       - uses: actions/upload-pages-artifact@v5
         with:
@@ -72,6 +101,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

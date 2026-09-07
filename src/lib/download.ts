@@ -30,7 +30,7 @@ export function saveCsv(filename: string, rows: Array<Array<string | number>>): 
       row
         .map((cell) => {
           const text = String(cell)
-          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+          return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
         })
         .join(','),
     )

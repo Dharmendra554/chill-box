@@ -26,14 +26,14 @@ export function CrateRow({
   boat,
   now,
   hideBox = false,
-}: {
+}: Readonly<{
   t: T
   lang: Lang
   row: Occupancy
   boat: Boat | undefined
   now: number
   hideBox?: boolean
-}) {
+}>) {
   return (
     <li className="card flex flex-col gap-2 p-3">
       <div className="flex items-start gap-3">
@@ -124,7 +124,7 @@ export function CrateRow({
 }
 
 /** Catch tag as icon + name, so the list reads without colour alone. */
-export function CatchTag({ t, species }: { t: T; species: Species }) {
+export function CatchTag({ t, species }: Readonly<{ t: T; species: Species }>) {
   const Icon = SPECIES_ICON[species]
   return (
     <span className="inline-flex items-center gap-1 border-3 border-rule px-1 py-0.5 text-xs font-extrabold">
@@ -135,7 +135,7 @@ export function CatchTag({ t, species }: { t: T; species: Species }) {
 }
 
 /** The catch's own icon, which is what a stored crate shows in the grid. */
-function SpeciesMark({ species }: { species: Species }) {
+function SpeciesMark({ species }: Readonly<{ species: Species }>) {
   const Icon = SPECIES_ICON[species]
   return <Icon size={12} />
 }

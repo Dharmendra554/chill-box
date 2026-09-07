@@ -17,7 +17,7 @@ export function ConfirmButton({
   hint,
   disabled = false,
   onConfirm,
-}: {
+}: Readonly<{
   label: string
   className: string
   /** One line saying what this does, on hover. Nothing on a touch screen. */
@@ -25,7 +25,7 @@ export function ConfirmButton({
   /** Held open by a sibling action on the same row. */
   disabled?: boolean
   onConfirm: () => void | Promise<void>
-}) {
+}>) {
   const t = useT()
   const [armed, setArmed] = useState(false)
   /**

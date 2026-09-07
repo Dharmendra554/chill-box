@@ -23,7 +23,7 @@ interface Cached {
   error: boolean
 }
 
-const EMPTY: Cached = { lat: NaN, lon: NaN, reading: null, error: false }
+const EMPTY: Cached = { lat: Number.NaN, lon: Number.NaN, reading: null, error: false }
 
 /**
  * Swell at one harbour, from Open-Meteo Marine.

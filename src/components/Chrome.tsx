@@ -41,7 +41,7 @@ export function TopBar({
   onLang,
   onTheme,
   onSpeak,
-}: {
+}: Readonly<{
   t: T
   lang: Lang
   theme: Theme
@@ -51,7 +51,7 @@ export function TopBar({
   onLang: (lang: Lang) => void
   onTheme: (theme: Theme) => void
   onSpeak: () => void
-}) {
+}>) {
   const h = HARBOURS[harbourId]
   const here = {
     name: (l: Lang) => (l === 'te' ? h.nameTe : h.nameEn),
@@ -124,7 +124,7 @@ export function WaveStrip({
   reading,
   band,
   error,
-}: {
+}: Readonly<{
   t: T
   reading: MarineReading | null
   /**
@@ -137,7 +137,7 @@ export function WaveStrip({
    */
   band: WaveBand | null
   error: boolean
-}) {
+}>) {
   if (!reading) {
     return (
       <p className="border-b-3 border-rule bg-paper-2 px-3 py-1.5 text-sm font-bold">
@@ -196,17 +196,14 @@ export function WaveStrip({
  * them rather than let a stale "2 free" send a boat to a full box. Honest
  * staleness beats confident wrongness.
  */
-export function OfflineBanner({ t, since }: { t: T; since: number | null }) {
+export function OfflineBanner({ t, since }: Readonly<{ t: T; since: number | null }>) {
   return (
-    <p
-      className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-late px-3 py-1.5 text-sm font-extrabold text-late-ink"
-      role="status"
-    >
+    <output className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-late px-3 py-1.5 text-sm font-extrabold text-late-ink">
       <span>{t('offlineTitle')}</span>
       <span className="font-bold">
         {since === null ? t('staleNever') : t('staleBody', formatClock(since))}
       </span>
-    </p>
+    </output>
   )
 }
 
@@ -220,15 +217,12 @@ export function OfflineBanner({ t, since }: { t: T; since: number | null }) {
  * slot and same weight as the offline banner, because it is the same
  * promise: never a confident number we cannot stand behind.
  */
-export function LoadingBanner({ t }: { t: T }) {
+export function LoadingBanner({ t }: Readonly<{ t: T }>) {
   return (
-    <p
-      className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-hold-wash px-3 py-1.5 text-sm font-extrabold"
-      role="status"
-    >
+    <output className="flex flex-wrap items-baseline gap-x-2 border-b-3 border-rule bg-hold-wash px-3 py-1.5 text-sm font-extrabold">
       <span>{t('loadingTitle')}</span>
       <span className="font-bold">{t('loadingBody')}</span>
-    </p>
+    </output>
   )
 }
 
@@ -242,7 +236,7 @@ const TABS = [
   { id: 'harbour', key: 'tabHarbour', Icon: ShoalIcon },
 ] as const
 
-export function TabBar({ t, tab, onTab }: { t: T; tab: Tab; onTab: (tab: Tab) => void }) {
+export function TabBar({ t, tab, onTab }: Readonly<{ t: T; tab: Tab; onTab: (tab: Tab) => void }>) {
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-[200] border-t-3 border-rule bg-paper pb-[env(safe-area-inset-bottom)]"
@@ -278,10 +272,10 @@ const TOAST_STYLE = { error: 'toast-error', warn: 'toast-warn', ok: 'toast-ok' }
 export function Toast({
   toast,
   onDismiss,
-}: {
+}: Readonly<{
   toast: ToastMessage | null
   onDismiss: () => void
-}) {
+}>) {
   // The live drag, tagged with the message it belongs to so a new toast
   // cannot inherit the last one's offset — derived here rather than reset in
   // an effect, which would cost a second render on every message.
@@ -302,50 +296,59 @@ export function Toast({
   }
 
   return (
-    <button
-      type="button"
-      key={toast.id}
-      className={cx('toast sheet-in text-left touch-pan-y', TOAST_STYLE[toast.tone])}
-      role="alert"
-      // Swipe it away in either direction, or tap it. A refusal deliberately
-      // does not fade on its own — it is often the only record that a
-      // booking did NOT happen — so there has to be a way to move it that
-      // does not mean aiming a wet thumb at a small target. A flick works
-      // with gloves on, and it is the gesture a phone user already knows.
-      style={{
-        transform: dx ? `translateX(${dx}px)` : undefined,
-        opacity: dx ? Math.max(0.25, 1 - Math.abs(dx) / 200) : undefined,
-        transition: drag ? undefined : 'transform 150ms, opacity 150ms',
-      }}
-      onPointerDown={(e) => {
-        swiped.current = false
-        setDrag({ id: toast.id, from: e.clientX, dx: 0 })
-        e.currentTarget.setPointerCapture(e.pointerId)
-      }}
-      onPointerMove={(e) => {
-        setDrag((d) => {
-          if (!d) return null
-          if (Math.abs(e.clientX - d.from) > 4) swiped.current = true
-          return { ...d, dx: e.clientX - d.from }
-        })
-      }}
-      onPointerUp={settle}
-      onPointerCancel={settle}
-      onClick={() => {
-        // A drag ends in a click too, so only a real tap dismisses. Reset
-        // afterwards: leaving it set meant a nudge under the swipe
-        // threshold latched the flag, and the toast could then never be
-        // dismissed by keyboard or by a screen reader's activation, neither
-        // of which produces a pointer sequence to clear it. A refusal does
-        // not fade by itself, so that was a permanent band across the
-        // bottom of the screen with no advertised way to remove it.
-        const dragged = swiped.current
-        swiped.current = false
-        if (!dragged) onDismiss()
-      }}
-    >
-      {toast.text}
-    </button>
+    // `role="alert"` sits on the wrapper, not on the button.
+    //
+    // A button carrying a non-interactive role IS that role to a screen
+    // reader: the toast was announced as a line of text with no hint that it
+    // could be activated, and dismissing it — the only way to clear a
+    // refusal, which never fades on its own — was undiscoverable. The
+    // wrapper is out of flow (`.toast` is `position: fixed`), so this is a
+    // semantic change and not a layout one.
+    <div role="alert">
+      <button
+        type="button"
+        key={toast.id}
+        className={cx('toast sheet-in text-left touch-pan-y', TOAST_STYLE[toast.tone])}
+        // Swipe it away in either direction, or tap it. A refusal deliberately
+        // does not fade on its own — it is often the only record that a
+        // booking did NOT happen — so there has to be a way to move it that
+        // does not mean aiming a wet thumb at a small target. A flick works
+        // with gloves on, and it is the gesture a phone user already knows.
+        style={{
+          transform: dx ? `translateX(${dx}px)` : undefined,
+          opacity: dx ? Math.max(0.25, 1 - Math.abs(dx) / 200) : undefined,
+          transition: drag ? undefined : 'transform 150ms, opacity 150ms',
+        }}
+        onPointerDown={(e) => {
+          swiped.current = false
+          setDrag({ id: toast.id, from: e.clientX, dx: 0 })
+          e.currentTarget.setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          setDrag((d) => {
+            if (!d) return null
+            if (Math.abs(e.clientX - d.from) > 4) swiped.current = true
+            return { ...d, dx: e.clientX - d.from }
+          })
+        }}
+        onPointerUp={settle}
+        onPointerCancel={settle}
+        onClick={() => {
+          // A drag ends in a click too, so only a real tap dismisses. Reset
+          // afterwards: leaving it set meant a nudge under the swipe
+          // threshold latched the flag, and the toast could then never be
+          // dismissed by keyboard or by a screen reader's activation, neither
+          // of which produces a pointer sequence to clear it. A refusal does
+          // not fade by itself, so that was a permanent band across the
+          // bottom of the screen with no advertised way to remove it.
+          const dragged = swiped.current
+          swiped.current = false
+          if (!dragged) onDismiss()
+        }}
+      >
+        {toast.text}
+      </button>
+    </div>
   )
 }
 

@@ -37,7 +37,7 @@ export function SeaMap({
   offlineLabel,
   mapLabel,
   onPick,
-}: {
+}: Readonly<{
   harbour: Harbour
   fix: GeoFix | null
   boxes: BoxMarker[]
@@ -47,7 +47,7 @@ export function SeaMap({
   offlineLabel: string
   mapLabel: string
   onPick?: (id: BoxId) => void
-}) {
+}>) {
   const host = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const overlay = useRef<L.LayerGroup | null>(null)
@@ -81,15 +81,28 @@ export function SeaMap({
     // On a touch screen the chart sits mid-page, so one-finger drag must
     // scroll the PAGE, not pan the map — otherwise a thumb landing on the
     // chart traps the scroll and the box list below becomes unreachable.
-    // Pinch-zoom and the +/- buttons still work, and panning is not the
-    // point here: the three boxes are framed for you.
+    // Pinch-zoom still works, and panning is not the point here: the three
+    // boxes are framed for you.
     const touch = window.matchMedia('(pointer: coarse)').matches
     const instance = L.map(host.current, {
-      attributionControl: true,
+      // No attribution control. It renders an `<a href="leafletjs.com">`
+      // inside this `role="img"` subtree: a tab stop that announces nothing
+      // and, in a `display: standalone` PWA, navigates the whole window off
+      // the app with no back button and no way to the booking screen. The
+      // OpenStreetMap and OpenSeaMap credit is not lost — it is in the
+      // caption under the chart (`navMapNote`), where it is readable rather
+      // than 9 px in the corner.
+      attributionControl: false,
+      // And no zoom control, for the same two reasons plus a third. Its
+      // `<a href="#">` buttons were the other pair of silent tab stops in
+      // here, and at 320 px they sit on top of the north-west box's own
+      // label — the pin that says "Auction hall box · 1" was half covered by
+      // a minus sign. Pinch is the gesture that zooms a chart on a phone
+      // anyway, and this view is deliberately framed rather than explored.
+      zoomControl: false,
       dragging: !touch,
       scrollWheelZoom: !touch,
       touchZoom: true,
-
     }).setView([harbourRef.current.lat, harbourRef.current.lon], 15)
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {

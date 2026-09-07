@@ -39,7 +39,7 @@ export function SafetyCard({
   seaKnown,
   seaFailed,
   readingAt,
-}: {
+}: Readonly<{
   band: WaveBand | null
   fix: GeoFix | null
   /** Whether a position may still arrive. False once we know none will. */
@@ -50,7 +50,7 @@ export function SafetyCard({
   seaFailed: boolean
   /** When the reading on screen was taken, in harbour time. */
   readingAt: number | null
-}) {
+}>) {
   const t = useT()
   const harbour = useDockStore(selectHarbour)
   const notify = useDockStore((s) => s.notify)
@@ -116,7 +116,7 @@ export function SafetyCard({
               acts on. §2 makes no exception for warnings. */}
           {readingAt !== null ? (
             <p className="text-sm font-bold text-ink-2">
-              {t('waveStale', formatClock(readingAt))}
+              {t('waveTaken', formatClock(readingAt))}
             </p>
           ) : null}
         </>
@@ -162,7 +162,7 @@ export function SafetyCard({
  * crackly VHF — and hand it to the phone's own share sheet, which reaches
  * whatever they already use to reach the shore.
  */
-function ShareLocation({ fix, locating }: { fix: GeoFix | null; locating: boolean }) {
+function ShareLocation({ fix, locating }: Readonly<{ fix: GeoFix | null; locating: boolean }>) {
   const t = useT()
   const now = useNow()
   const lang = useDockStore((s) => s.lang)

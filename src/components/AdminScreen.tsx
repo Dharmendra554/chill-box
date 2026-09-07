@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useNow } from '../hooks/useClock'
 import { boatName, boatsAt } from '../data/boats'
 import { BOX_SHORT } from '../i18n/dictionary'
@@ -124,13 +124,43 @@ function Console() {
   const touchAdmin = useDockStore((s) => s.touchAdmin)
   const record = useDockStore((s) => s.record)
 
+  /**
+   * Any interaction inside the console defers the idle lock.
+   *
+   * Listeners on the node, not `onPointerDown`/`onKeyDown` in the JSX: a
+   * plain `<div>` carrying interaction handlers claims to be a control, and
+   * this one is not — it is a container that happens to notice activity, and
+   * there is nothing here to activate. Nothing in this subtree is portalled,
+   * so a native listener sees every event React's would.
+   */
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const node = root.current
+    if (!node) return
+    const wake = () => touchAdmin()
+    node.addEventListener('pointerdown', wake)
+    node.addEventListener('keydown', wake)
+    return () => {
+      node.removeEventListener('pointerdown', wake)
+      node.removeEventListener('keydown', wake)
+    }
+  }, [touchAdmin])
+
   const boats = boatsAt(allBoats, harbour.id)
   const ledger = useMemo(() => ledgerFor(allLedger, harbour.id), [allLedger, harbour.id])
 
-  const months = useMemo(() => {
-    const keys = monthKeys(ledger)
-    return keys.length ? keys : [monthKey(now)]
-  }, [ledger, now])
+  /**
+   * NOT keyed on `now`, which ticks at 1 Hz.
+   *
+   * `monthKeys` walks every ledger row — up to LEDGER_LIMIT of them — so
+   * with `now` in the dependencies this recomputed once a second and put
+   * roughly half of every second of main thread into a list that changes
+   * once a month. Every Approve and Force-release on the console queued
+   * behind it. `now` is only the fallback for an empty ledger, where the
+   * exact second cannot matter: it names the current month.
+   */
+  const ledgerMonths = useMemo(() => monthKeys(ledger), [ledger])
+  const months = ledgerMonths.length ? ledgerMonths : [monthKey(now)]
   const [month, setMonth] = useState(months[0])
   const active = months.includes(month) ? month : months[0]
 
@@ -199,7 +229,7 @@ function Console() {
   }
 
   return (
-    <div className="flex flex-col gap-5" onPointerDown={touchAdmin} onKeyDown={touchAdmin}>
+    <div className="flex flex-col gap-5" ref={root}>
       <header className="flex items-center gap-2">
         <HelmIcon size={28} />
         <div className="min-w-0 flex-1">
@@ -336,7 +366,10 @@ function Console() {
 
         <h4 className="text-lg">{t('adminInsights')}</h4>
         <dl className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <Metric label={t('adminUtilisation')} value={`${insight.utilisation}%`} />
+          <Metric
+            label={t('adminUtilisation')}
+            value={insight.utilisation === null ? '—' : `${insight.utilisation}%`}
+          />
           <Metric label={t('adminDwell')} value={`${insight.dwellHours} h`} />
           <Metric
             label={t('adminOverstayRate')}
@@ -522,11 +555,11 @@ function Metric({
   label,
   value,
   tone,
-}: {
+}: Readonly<{
   label: string
   value: string | number
   tone?: 'late'
-}) {
+}>) {
   return (
     <div className={cx('card p-3', tone === 'late' && value !== 0 && 'bg-late-wash')}>
       <dt className="text-xs font-extrabold uppercase text-ink-2">{label}</dt>
@@ -550,11 +583,11 @@ function Bars({
   title,
   rows,
   compact,
-}: {
+}: Readonly<{
   title: string
   rows: BarRow[]
   compact?: boolean
-}) {
+}>) {
   const max = Math.max(1, ...rows.map((r) => r.value))
 
   if (compact) {

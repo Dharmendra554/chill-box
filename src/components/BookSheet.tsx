@@ -19,7 +19,7 @@ export function BookSheet({
   capReached,
   onConfirm,
   onClose,
-}: {
+}: Readonly<{
   t: T
   boxLabel: string
   maxCrates: number
@@ -27,7 +27,7 @@ export function BookSheet({
   capReached: boolean
   onConfirm: (crates: 1 | 2, species: Species) => void | Promise<void>
   onClose: () => void
-}) {
+}>) {
   const ref = useRef<HTMLDialogElement>(null)
   const [species, setSpecies] = useState<Species>('mixed')
   /**

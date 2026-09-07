@@ -74,7 +74,7 @@ export function HarbourScreen() {
   )
 }
 
-function BoatRow({ boat, stored }: { boat: Boat; stored: number }) {
+function BoatRow({ boat, stored }: Readonly<{ boat: Boat; stored: number }>) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
 

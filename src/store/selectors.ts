@@ -4,6 +4,20 @@ import type { BoatState, BoxId, ColdBox, Slot, Species } from '../types'
 export const QUOTA = 2
 
 /**
+ * Collection windows a skipper can promise, in hours. All are strictly under
+ * the 6 h overstay line — offering "6 h" would let the app suggest a time
+ * that flags the moment it arrives, and a flagged crate is one any phone in
+ * the harbour may clear over its owner's head.
+ *
+ * Here rather than in `DockScreen`, because it is a harbour rule and rules
+ * live in the store. While it was a private const in the component the test
+ * that guards it could not read it: `rules.test.ts` asserted `5 h < 6 h`
+ * against hand-copied literals, so changing the picker to offer 8 h left the
+ * test green.
+ */
+export const PLAN_HOURS = [2, 4, 5]
+
+/**
  * Newest ledger rows any one harbour keeps — and follows.
  *
  * One number, in one place. It was declared twice, once for the store's cap

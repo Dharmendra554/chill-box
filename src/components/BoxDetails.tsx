@@ -2,8 +2,7 @@ import { useEffect, useRef } from 'react'
 import { boatsAt } from '../data/boats'
 import { useNow } from '../hooks/useClock'
 import { useT } from '../i18n/useT'
-import { emptyCount } from '../store/selectors'
-import { occupancyRows } from '../store/selectors'
+import { emptyCount, occupancyRows } from '../store/selectors'
 import { selectBoxes, useDockStore } from '../store/useDockStore'
 import type { ColdBox } from '../types'
 import { CrateRow } from './CrateRow'
@@ -16,7 +15,7 @@ import { CrateRow } from './CrateRow'
  * room is the box you most need to understand. "Full" on its own starts an
  * argument at the quay; "#11 since 4:10 am, out at 7 am" ends one.
  */
-export function BoxDetails({ box, onClose }: { box: ColdBox; onClose: () => void }) {
+export function BoxDetails({ box, onClose }: Readonly<{ box: ColdBox; onClose: () => void }>) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
   const harbourId = useDockStore((s) => s.harbourId)

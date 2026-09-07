@@ -78,8 +78,9 @@ Two tabs. That is the whole app.
 - **Book** (front page) — my boat's status, then a live chart of this
   harbour's boxes with free-crate counts. **Tapping a pin books that box.**
   Distance to each box is shown before you choose; once booked, the route,
-  bearing, ETA and compass appear on the same screen. Below: the spoken
-  capacity readout, the box cards, and the safety card.
+  bearing, ETA and compass appear on the same screen. Below: the box cards
+  and the safety card. The spoken readout is a button in the top bar, which
+  every screen shares.
 - **Harbour** — every crate ordered by soonest to free up, then the roster.
 
 The harbour-master console is **not a tab**. It lives at `#admin`, behind a

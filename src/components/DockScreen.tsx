@@ -16,6 +16,7 @@ import {
   emptyCount,
   holdRemainingMs,
   isFull,
+  PLAN_HOURS,
   plannedOutAtForBoat,
   QUOTA,
   remainingQuota,
@@ -33,18 +34,15 @@ import { CompassRose } from './CompassRose'
 import { ConfirmButton } from './ConfirmButton'
 import { SafetyCard } from './SafetyCard'
 import { CompassIcon, CrateIcon, TideClockIcon } from '../icons/marine'
+// Aliased to PascalCase because it is used as a JSX tag here, and a
+// lower/upper-snake tag is parsed as an intrinsic element, not a component.
 import { SPECIES_ICON } from '../icons/species'
+
+const MixedCatchIcon = SPECIES_ICON.mixed
 
 // Leaflet is ~44 kB gzipped. It loads alongside the page rather than
 // blocking the booking flow behind it on a 2G tether.
 const SeaMap = lazy(() => import('./SeaMap').then((m) => ({ default: m.SeaMap })))
-
-/**
- * Collection windows a skipper can promise, in hours. All are strictly
- * under the 6 h overstay line — offering "6 h" would let the app suggest a
- * time that flags the moment it arrives.
- */
-const PLAN_HOURS = [2, 4, 5]
 
 /**
  * The front page: what my boat is doing, the chart of this harbour's cold
@@ -63,7 +61,7 @@ export function DockScreen({
   readingAt,
   onChangeHarbour,
   onResetDemo,
-}: {
+}: Readonly<{
   band: WaveBand | null
   /** Whether a swell reading has EVER landed for this harbour. */
   seaKnown: boolean
@@ -73,7 +71,7 @@ export function DockScreen({
   readingAt: number | null
   onChangeHarbour: () => void
   onResetDemo: () => void | Promise<void>
-}) {
+}>) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
   const harbour = useDockStore(selectHarbour)
@@ -101,7 +99,7 @@ export function DockScreen({
     () =>
       boxes.map((box) => ({
         id: box.id,
-        label: t(BOX_SHORT[box.id]),
+        label: t('boxNamed', t(BOX_SHORT[box.id])),
         free: emptyCount(box),
         full: isFull(box),
       })),
@@ -316,7 +314,7 @@ export function DockScreen({
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div>
       <dt className="text-xs font-extrabold uppercase text-ink-2">{label}</dt>
@@ -346,7 +344,7 @@ function Legend() {
   const items = [
     ['legendFree', 'bg-free-wash text-ink border-dashed', <span key="d">·</span>],
     ['legendHold', 'bg-hold text-hold-ink', <TideClockIcon key="h" size={13} />],
-    ['legendFull', 'bg-full text-full-ink', <SPECIES_ICON.mixed key="f" size={13} />],
+    ['legendFull', 'bg-full text-full-ink', <MixedCatchIcon key="f" size={13} />],
     ['legendLate', 'bg-late text-late-ink', <span key="l">!</span>],
   ] as const
 
@@ -380,13 +378,13 @@ function BookingConfirmed({
   crates,
   depositBy,
   onClose,
-}: {
+}: Readonly<{
   boxId: BoxId
   code: string
   crates: number
   depositBy: number
   onClose: () => void
-}) {
+}>) {
   const t = useT()
   const ref = useRef<HTMLDialogElement>(null)
 
@@ -454,7 +452,7 @@ function MyStatusCard({
   onDeposit,
   onCancel,
   onRelease,
-}: {
+}: Readonly<{
   state: 'hold' | 'stored' | 'overstay'
   /** A blocked or pending boat may look, but not move crates. */
   approved: boolean
@@ -467,7 +465,7 @@ function MyStatusCard({
   onDeposit: () => void
   onCancel: () => void | Promise<void>
   onRelease: () => void | Promise<void>
-}) {
+}>) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
   const boxName = boxId ? t(boxId) : ''
@@ -564,12 +562,12 @@ function DemoTools({
   onSimulate,
   onChangeHarbour,
   onResetDemo,
-}: {
+}: Readonly<{
   simulating: boolean
   onSimulate: () => void
   onChangeHarbour: () => void
   onResetDemo: () => void | Promise<void>
-}) {
+}>) {
   const t = useT()
   return (
     <section className="card-soft flex flex-col gap-2 p-3">
@@ -622,8 +620,8 @@ function DemoTools({
 function BlockedNote() {
   const t = useT()
   return (
-    <p className="border-3 border-rule bg-full px-3 py-2 font-extrabold text-full-ink" role="status">
+    <output className="block border-3 border-rule bg-full px-3 py-2 font-extrabold text-full-ink">
       {t('blockedBody')}
-    </p>
+    </output>
   )
 }

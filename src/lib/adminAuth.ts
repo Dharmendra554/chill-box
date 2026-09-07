@@ -67,7 +67,7 @@ function toHex(buffer: ArrayBuffer): string {
 }
 
 function fromHex(hex: string): ArrayBuffer {
-  return Uint8Array.from(hex.match(/../g)?.map((byte) => parseInt(byte, 16)) ?? []).buffer
+  return Uint8Array.from(hex.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []).buffer
 }
 
 /**
@@ -81,7 +81,7 @@ function fromHex(hex: string): ArrayBuffer {
 function timingSafeEqual(a: string, b: string): boolean {
   let diff = a.length ^ b.length
   for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
-    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0)
+    diff |= (a.codePointAt(i) ?? 0) ^ (b.codePointAt(i) ?? 0)
   }
   return diff === 0
 }

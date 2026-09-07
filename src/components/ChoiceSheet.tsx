@@ -19,14 +19,14 @@ export function ChoiceSheet<V extends string | number>({
   closeLabel,
   onPick,
   onClose,
-}: {
+}: Readonly<{
   title: string
   body?: string
   options: Array<Choice<V>>
   closeLabel: string
   onPick: (value: V) => void | Promise<void>
   onClose: () => void
-}) {
+}>) {
   const ref = useRef<HTMLDialogElement>(null)
   // Picking a collection time writes to the shared harbour, so the same
   // double-tap hazard applies here as on the booking sheet.

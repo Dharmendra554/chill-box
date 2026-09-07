@@ -110,7 +110,16 @@ export function seedPending(now: number): Boat[] {
 }
 
 export function boatsAt(boats: Boat[], harbourId: HarbourId): Boat[] {
-  return boats.filter((b) => b.harbourId === harbourId)
+  // Sorted by hull number, HERE, so every screen that lists boats agrees.
+  //
+  // The shared roster arrives as an object keyed "01".."21", and
+  // `Object.entries` returns canonical integer keys first: #10..#21, then
+  // #01..#09. The claim grid — the only path an already-registered skipper
+  // takes — therefore ran to #21 before it reached #01, with the demo's own
+  // boat #04 sixteenth of twenty-one. Local mode was sorted (it seeds from
+  // an array) and shared mode was not, so no rehearsal without a live
+  // database could ever see it.
+  return boats.filter((b) => b.harbourId === harbourId).sort((a, b) => a.id.localeCompare(b.id))
 }
 
 export function boatName(boat: Boat, lang: Lang): string {

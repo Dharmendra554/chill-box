@@ -97,6 +97,14 @@ export default defineConfig({
             options: {
               cacheName: 'google-fonts',
               expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              // Without this the rule cached nothing it was written for.
+              // The stylesheet link carries no `crossorigin`, so the
+              // response is opaque — status 0 — and `CacheFirst` rejects
+              // anything but a 200 by default. Once the 24 h HTTP cache
+              // lapsed, an offline cold start lost the Telugu webfont and
+              // fell back to whatever the device had. The tile rule above
+              // has always set this; the fonts rule was simply missed.
+              cacheableResponse: { statuses: [0, 200] },
             },
           },
         ],

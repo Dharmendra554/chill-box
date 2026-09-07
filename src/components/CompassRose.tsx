@@ -11,14 +11,14 @@ export function CompassRose({
   atTarget,
   label,
   bearingLabel,
-}: {
+}: Readonly<{
   bearing: number
   atTarget: boolean
   /** Spoken only once the boat has actually arrived. */
   label: string
   /** Spoken the rest of the time — the heading the dial is showing. */
   bearingLabel: string
-}) {
+}>) {
   return (
     <figure className="card flex items-center justify-center p-4">
       {/* `label` used to be the aria-label unconditionally, so a skipper

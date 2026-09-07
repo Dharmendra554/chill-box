@@ -21,7 +21,7 @@ export function BoxCard({
   distanceLabel,
   onPick,
   onDetails,
-}: {
+}: Readonly<{
   t: T
   box: ColdBox
   now: number
@@ -32,7 +32,7 @@ export function BoxCard({
   onPick?: (box: ColdBox) => void
   /** Opens the "who is in here and until when" sheet. */
   onDetails?: (box: ColdBox) => void
-}) {
+}>) {
   const used = usedCount(box)
   const free = emptyCount(box)
   const full = isFull(box)
@@ -114,8 +114,12 @@ export function BoxCard({
   return (
     <button
       type="button"
+      // No `aria-pressed`: this is a one-shot action, not a toggle, and
+      // announcing it as an unpressed toggle told a screen-reader user the
+      // card had a state it does not have. It was also permanently false —
+      // `onPick` arrives only when this boat can book, which requires it to
+      // hold nothing, which is exactly when `selected` cannot be true.
       className={cx(shell, 'cursor-pointer active:translate-y-0.5')}
-      aria-pressed={selected}
       onClick={() => onPick?.(box)}
     >
       {body}
@@ -128,7 +132,7 @@ export function BoxCard({
  * promised collection hour underneath, which is what turns the grid from
  * a status light into something a skipper can plan against.
  */
-function SlotCell({ t, slot, now }: { t: T; slot: Slot; now: number }) {
+function SlotCell({ t, slot, now }: Readonly<{ t: T; slot: Slot; now: number }>) {
   const Tag = slot.species ? SPECIES_ICON[slot.species] : null
   const out = slot.plannedOutAt
   const overdue = out !== null && out < now
