@@ -27,7 +27,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 116 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 124 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
 **First paint, re-measured at round 19 against `npm run build`** — every
 figure here was wrong for four rounds running and auditor B caught it each
@@ -83,6 +83,8 @@ Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
+| `5ebb2d9` | Round 19b: two auditors, 4.5 and 5.5, and the reclaim never worked |
+| `aee9961` | The chrome the sheets could cover, and the warning that scrolled away |
 | `90480c1` | Nobody is in charge: approval, blocking and force-release deleted |
 | `b772460` | Spec: nobody is in charge |
 | `eaf0869` | Spec: admission by majority (superseded, deleted unbuilt) |
@@ -1371,3 +1373,59 @@ landing is the gauges now; identity is asked at the first tap on Book.
 
 Still open from that list: **C1** (`BookSheet` clipping the demo banner at
 320 px) and **C3** (the stale-figures banner still scrolls away).
+
+---
+
+## 31. Round 19's audit — 4.5 (store) and 5.5 (UI), both DO NOT SHIP
+
+The store side fell from 7.0, and it deserved to. **The headline feature of
+the round freed nothing**, and the browser check that "verified" it passed for
+the reason this file keeps recording: it landed on the one case that works.
+
+`reclaimOverdue` ran BEFORE `set(patch)` in `tick`. `patch.boxesByHarbour` was
+computed from PRE-tick boxes, so the reclaim emptied the slot and the same
+tick put the crate back. The ledger row is not in `patch`, so it survived: the
+board published "not collected", named the boat, billed the cycle, and the
+crate never moved. It only bites when `applyTick` also moved something —
+because `patch.boxesByHarbour` is assigned only when `changed` — so a quiet
+second reclaims correctly. A cold start is never a quiet second: the auditor
+measured **twenty false accusations naming sixteen boats, and zero crates
+freed**.
+
+**One line's position was the whole feature, and no test could see it, because
+nothing in 116 green tests had ever called `tick`.** `src/store/reclaim.test.ts`
+exists now and is mutation-checked: restoring the ordering fails two cases.
+
+| Defect | Why it mattered |
+| --- | --- |
+| The ordering above | Above |
+| **The retry guard cleared on `.catch`, and `reclaimCrates` has no throwing path** — a dead link, a refusal, a lost race and a deadline all RESOLVE, carrying their outcome in a `RemoteResult` | So the first failure dropped that crate from the eight-hour rule for the rest of the session. On 2G, where a deadline is the ordinary outcome, that is every crate exactly once. It reads the outcome now, and its key is the CRATE (`since`) rather than the slot — keyed on the slot, the next crate a boat put there inherited the latch |
+| The staleness guard read `syncLive`, which carries no age | It says a listener has not errored. A phone waking from sleep still has it true over a pre-sleep snapshot, in exactly the window that matters. It reads the snapshot's age now, and the write re-checks `depositedAt` inside the transaction — without which a boat that collected and re-deposited into the same slot had its FRESH crate emptied and was named publicly for not collecting |
+| The background reclaim called `reportFailure` | Nobody tapped anything. Two phones reaching eight hours together is the DESIGNED case, and the loser popped "that is already done" on the screen of a skipper looking at a gauge, about a crate that is not his |
+| **Reset demo was the last power, and a bigger one than the four this round deleted** | Behind PIN 2468 it wiped every stored crate and hold for every phone in the society — strictly more than the Force release it outlived. Meanwhile the Harbour tab said "nobody clears anyone's crate by hand" and the record said "nobody can edit this". Demo-only now, so those sentences are true. `resetRemoteBoxes` and `putBoat` went with it |
+| `reclaimed` shipped on EVERY ledger row into a node ending `"$other": {".validate": false}`, with the rules deploy gated on a secret that does not exist | §16 again, third occurrence. Sent only when true now, so a client reaching phones before the rules loses reclaim rows rather than every trip's billing |
+| `verify-rules.sh` asserted neither direction of the status change nor `reclaimed` | It would have printed *all checks passed* against the old rules and the new ones identically, while the Definition of Done hangs on it |
+| The CSV dropped `reclaimed` | The one column the ledger carries that nothing else can reconstruct — which is exactly why it is recorded rather than derived |
+
+And from the UI side:
+
+| Defect | Why it mattered |
+| --- | --- |
+| **The tab bar was a dead control during the identify flow**, and "← back to the boxes" landed on whatever tab was behind it | The only navigation in the app lit up, moved `aria-current`, and changed nothing. AGENTS §2 forbids that by name |
+| **The sheets still covered the header above 640 px** — `sm:mb-6` sat outside the cap the same commit had just added | The commit's own headline claim, false on every tablet and landscape phone |
+| `BoxDetails` clipped its own Close button — `80vh` knows nothing about chrome | 9 px of a 72 px target below the fold, up to 49 px with one line more chrome |
+| `--chrome-h` published 133 against a 136 px header | The dangerous direction. `ResizeObserver` delivers on the rendering lifecycle, so an occluded document keeps the first value; it publishes in a layout effect after every render now, which catches every real cause of the change |
+| **The spoken readout still said "ఒక క్రేట్లు" — one crates** | The written plurals were fixed a commit earlier and this was missed, in the channel built for the people who cannot read the screen |
+| The eight-hour rule was not in the seed, and the README promised a judge would see it | The oldest seeded crate is seven hours old and the rule fires at eight. One reclaimed ledger row is seeded now — a row, not a nine-hour crate, which the first tick would empty in front of the judge |
+| The overstay flag vanished from the box at the moment the space was reassigned | The brief's fifth MUST is a flag on crates blocking others. `BoxDetails` carries it now: the slot reads free and the fish may not have moved |
+| Two comments argued for a second `ModeSwitch` on a screen that no longer needed one, and the README's step 0 routed a judge through the registration form to reach it | It is on the landing screen. One copy |
+
+**What neither auditor could break:** the identity deletion, verified across
+all seven gates; the v4→v5 migration on every shape they tried; the `status`
+pinning and `toWireBoat`'s consistency; the three Telugu tab labels at 320 px;
+that no mobile number reaches any screen or the CSV; and — for the first round
+in five — **every number in §2 and the README survived re-measurement**.
+
+Measured after the fixes: 320×640 Telugu, chrome 153 px, sheet margin-top 153,
+overlap 0, three tabs at 107 px each on one line. 700×600, header 136,
+margin-top 136, overlap 0, Close button fully visible.
