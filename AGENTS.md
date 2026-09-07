@@ -88,8 +88,11 @@ These are hard limits. Breaking one disqualifies the entry.
 - Must run on free hosting (Vercel).
 - Must be responsive and touch-friendly on low-end mobile.
 - Must ship with realistic seed data so it works the moment it opens.
-- The written trade-offs note must stay **under 300 words**. Check it:
-  `sed '1,2d' TRADEOFFS.md | sed 's/\*\*//g' | wc -w`
+- The written trade-offs note is submitted through the **entry form**, not
+  kept in the repo. `TRADEOFFS.md` was deleted once the form provided a field
+  for it; its substance now lives in the README's anti-hoarding table and its
+  "What this is not" section, and those must stay accurate because nothing
+  else carries them any more.
 
 ---
 
