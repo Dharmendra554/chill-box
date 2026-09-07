@@ -68,6 +68,7 @@ export type BookingError =
   | 'partial'
   | 'unsettled'
   | 'ledgerLost'
+  | 'pending'
 
 /**
  * What happened to a shared write. Every caller must be able to tell the
@@ -77,6 +78,38 @@ export type RemoteResult =
   | { ok: true; freed?: number }
   /** `freed` is how many crates DID move, even when the whole did not. */
   | { ok: false; error: BookingError; freed?: number }
+
+/**
+ * How long a skipper waits before we admit we do not know.
+ *
+ * Twelve seconds is long enough for a 2G round trip on this coast and short
+ * enough that nobody stands over a spinner wondering whether to tap again.
+ */
+const SETTLE_DEADLINE_MS = 12_000
+
+/**
+ * Every shared write, with a deadline on it.
+ *
+ * A dropped socket does NOT reject: the SDK queues the write and the promise
+ * stays pending until the link returns. `reserve` awaits it with the booking
+ * sheet deliberately held open, so a skipper who walks the twenty metres
+ * behind the ice plant mid-booking got a spinner with no reason, no cancel
+ * and no end — and every mapped reason in `BookingError` describes a promise
+ * that settled, so there was nothing to say even if we had noticed.
+ *
+ * `pending` is not `offline` and must never be reported as one. The queued
+ * write may still commit when the signal returns — the SDK gives us no way
+ * to call it back — so telling the skipper "nothing was saved" would send
+ * him to book a second crate over a first he already holds. What is true is
+ * that we do not know yet, and that the box is the place to find out.
+ */
+function withDeadline(work: Promise<RemoteResult>): Promise<RemoteResult> {
+  let timer: ReturnType<typeof setTimeout>
+  const deadline = new Promise<RemoteResult>((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, error: 'pending' }), SETTLE_DEADLINE_MS)
+  })
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer))
+}
 
 /**
  * Tell a dead link apart from a database that said no. They need different
@@ -284,7 +317,7 @@ export function boxesFromWire(wire: WireBoxes): ColdBox[] {
 export function expireHolds(wire: WireBoxes, now: number): void {
   for (const boxId of BOX_IDS) {
     for (const [index, slot] of Object.entries(wire[boxId] ?? {})) {
-      if (slot.status === 'reserved' && (slot.reservedAt ?? now) + HOLD_MS <= now) {
+      if (slot.status === 'reserved' && (slot.reservedAt ?? 0) + HOLD_MS <= now) {
         wire[boxId][index] = { status: 'empty' }
       }
     }
@@ -455,7 +488,7 @@ export function watchConnection(onChange: (live: boolean) => void): () => void {
  * check is only worth having if every boat that books is really there, so
  * registration and approval both write through here.
  */
-export async function putBoat(harbourId: HarbourId, boat: Boat): Promise<RemoteResult> {
+async function putBoatImpl(harbourId: HarbourId, boat: Boat): Promise<RemoteResult> {
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
   try {
@@ -667,9 +700,9 @@ export async function seedHarbour(
   boxes: ColdBox[],
   boats: Boat[],
   ledger: LedgerEntry[],
-): Promise<{ failed: number; boxesOk: boolean }> {
+): Promise<{ failed: number; boxesOk: boolean; historyLost: number }> {
   const a = await api()
-  if (!a) return { failed: boats.length, boxesOk: false }
+  if (!a) return { failed: boats.length, boxesOk: false, historyLost: 0 }
 
   // Roster first, always. The rules refuse a slot naming a boat the database
   // has never heard of, and the seeded boxes arrive with crates already in
@@ -698,7 +731,7 @@ export async function seedHarbour(
     // exactly the total failure the line above promised not to report — the
     // admin was told "21 boats were refused" when all 21 had landed. Pressing
     // Publish again is all that is needed, so say which half failed.
-    return { failed: skipped, boxesOk: false }
+    return { failed: skipped, boxesOk: false, historyLost: 0 }
   }
 
   // The harbour's history. Without it the shared copy becomes the whole
@@ -711,13 +744,45 @@ export async function seedHarbour(
   // second time. Checking "is the ledger empty?" first could not do that —
   // two admins pressing Publish at the same moment both saw empty and both
   // wrote the lot, and no rule can ever delete the duplicates.
-  await Promise.allSettled(
+  //
+  // The result of these writes was computed and thrown away, so the admin
+  // was told "Published" whether every history row landed or none did — on
+  // the one write that puts the months of reporting the console bills from
+  // into the shared copy. It is not as simple as counting rejections,
+  // though: on a SECOND publish every row is refused on purpose, by the
+  // append-only rule, and reporting twenty refusals for working idempotency
+  // would be the same lie pointing the other way.
+  //
+  // So ask, once and cheaply, whether the harbour had any history before we
+  // started. If it did, refusals are the design. If it did not, a refused
+  // row is a row that is genuinely not there.
+  const hadHistory = await historyExists(a, harbourId)
+  const rows = await Promise.allSettled(
     ledger.map(({ id, harbourId: _h, ...row }) =>
       a.set(a.ref(a.db, `harbours/${harbourId}/ledger/${ledgerKey(id)}`), row),
     ),
   )
+  const historyLost = hadHistory ? 0 : rows.filter((r) => r.status === 'rejected').length
 
-  return { failed: skipped + results.filter((r) => r.status === 'rejected').length, boxesOk: true }
+  return {
+    failed: skipped + results.filter((r) => r.status === 'rejected').length,
+    boxesOk: true,
+    historyLost,
+  }
+}
+
+/** One key is enough to know whether this harbour has been published before. */
+async function historyExists(a: Api, harbourId: HarbourId): Promise<boolean> {
+  try {
+    const snap = await a.get(
+      a.query(a.ref(a.db, `harbours/${harbourId}/ledger`), a.limitToLast(1)),
+    )
+    return snap.exists()
+  } catch {
+    // Unreadable is not empty. Assuming empty here would report every
+    // refusal below as lost history on a harbour that has all of it.
+    return true
+  }
 }
 
 /**
@@ -790,10 +855,22 @@ async function readBoxes(a: Api, harbourId: HarbourId): Promise<WireBoxes | null
   return snap.exists() ? (snap.val() as WireBoxes) : null
 }
 
-/** Is this slot free right now — empty, or a hold that has run out? */
+/**
+ * Is this slot free right now — empty, or a hold that has run out?
+ *
+ * `?? 0`, not `?? now`. A hold with no clock is malformed: the deployed
+ * rules refuse to write one, and the app never does. But if one ever reached
+ * the database — legacy data, or a rules deployment that lagged the client —
+ * `?? now` made the comparison permanently false, so the slot could never
+ * expire, never be claimed by anyone, and never be force-released, while the
+ * card counted down from a frozen 4:00:00. One of thirty crates gone for the
+ * life of the deployment, with no remedy. `?? 0` treats a clock nobody set
+ * as a clock that has already run out, which is the direction that frees the
+ * box rather than the one that strands it.
+ */
 function claimable(slot: WireSlot | undefined, now: number): boolean {
   if (!slot || slot.status === 'empty') return true
-  return slot.status === 'reserved' && (slot.reservedAt ?? now) + HOLD_MS <= now
+  return slot.status === 'reserved' && (slot.reservedAt ?? 0) + HOLD_MS <= now
 }
 
 /**
@@ -907,7 +984,7 @@ function rowsFor(freed: Freed[], now: number): Omit<LedgerEntry, 'id' | 'harbour
 /**
  * Take `crates` slots in one box, or fail with a reason.
  */
-export async function reserveRemote(
+async function reserveRemoteImpl(
   harbourId: HarbourId,
   boxId: BoxId,
   boatId: string,
@@ -1032,7 +1109,7 @@ export function pruneWire(slot: WireSlot): WireSlot {
  * Depositing at one used to mark both occupied, so a physically empty crate
  * showed as full to the whole harbour and blocked a real booking for hours.
  */
-export async function depositRemote(
+async function depositRemoteImpl(
   harbourId: HarbourId,
   boatId: string,
   plannedOutAt: number,
@@ -1056,7 +1133,7 @@ export async function depositRemote(
 }
 
 /** Give back a hold that was never filled, in one box for the same reason. */
-export async function cancelRemote(
+async function cancelRemoteImpl(
   harbourId: HarbourId,
   boatId: string,
   onlyBoxId?: BoxId,
@@ -1067,7 +1144,7 @@ export async function cancelRemote(
 }
 
 /** Free stored crates and append the ledger rows they earned. */
-export async function releaseRemote(
+async function releaseRemoteImpl(
   harbourId: HarbourId,
   boatId: string,
   onlyBoxId?: BoxId,
@@ -1225,4 +1302,52 @@ function settle(result: SlotChange): RemoteResult {
   const freed = result.freed.length
   if (freed === 0) return { ok: false, error: 'stale', freed }
   return freed === result.total ? { ok: true, freed } : { ok: false, error: 'partial', freed }
+}
+
+/*
+ * The shared writes a skipper waits on, each with a deadline.
+ *
+ * One list, in one place, so a new remote operation is an obvious omission
+ * rather than a silent one. The implementations above are unchanged; all
+ * that happens here is that none of them may hang forever with a sheet open
+ * over them. See `withDeadline` for why `pending` is not `offline`.
+ */
+export function putBoat(harbourId: HarbourId, boat: Boat): Promise<RemoteResult> {
+  return withDeadline(putBoatImpl(harbourId, boat))
+}
+
+export function reserveRemote(
+  harbourId: HarbourId,
+  boxId: BoxId,
+  boatId: string,
+  crates: number,
+  species: Species,
+): Promise<RemoteResult> {
+  return withDeadline(reserveRemoteImpl(harbourId, boxId, boatId, crates, species))
+}
+
+export function depositRemote(
+  harbourId: HarbourId,
+  boatId: string,
+  plannedOutAt: number,
+  onlyBoxId?: BoxId,
+): Promise<RemoteResult> {
+  return withDeadline(depositRemoteImpl(harbourId, boatId, plannedOutAt, onlyBoxId))
+}
+
+export function cancelRemote(
+  harbourId: HarbourId,
+  boatId: string,
+  onlyBoxId?: BoxId,
+): Promise<RemoteResult> {
+  return withDeadline(cancelRemoteImpl(harbourId, boatId, onlyBoxId))
+}
+
+export function releaseRemote(
+  harbourId: HarbourId,
+  boatId: string,
+  onlyBoxId?: BoxId,
+  onlyIndexes?: number[],
+): Promise<RemoteResult> {
+  return withDeadline(releaseRemoteImpl(harbourId, boatId, onlyBoxId, onlyIndexes))
 }

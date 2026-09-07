@@ -582,8 +582,8 @@ describe('regressions the audit caught', () => {
     // The button says the roster and past records are kept. `...seed()`
     // replaced both, for all three harbours, and destroyed any registration
     // that had not reached the shared copy yet.
-    expect(after.boats.length).toBe(boats)
-    expect(after.ledger.length).toBe(rows)
+    expect(after.boats).toHaveLength(boats)
+    expect(after.ledger).toHaveLength(rows)
     expect(after.boxesByHarbour.kakinada).toBe(otherHarbour)
   })
 

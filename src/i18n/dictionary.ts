@@ -41,6 +41,9 @@ const S = {
   errMobileTaken: { te: 'ఈ నంబర్ ఇప్పటికే నమోదైంది', en: 'That number is already registered' },
 
   pendingTitle: { te: 'అడ్మిన్ ఆమోదం కోసం వేచి ఉంది', en: 'Waiting for admin approval' },
+  // Short forms, for the claim grid where a full sentence does not fit.
+  legendWaiting: { te: 'ఆమోదం కోసం', en: 'Not approved' },
+  legendBlocked: { te: 'నిలిపివేయబడింది', en: 'Blocked' },
   pendingBody: { te: 'హార్బర్ అడ్మిన్ ఆమోదించగానే మీరు బాక్స్ బుక్ చేయవచ్చు. ఇప్పటికీ అందరి స్థలం చూడవచ్చు.', en: 'You can book a box the moment the harbour admin approves you. Until then you can still watch every box.' },
   blockedTitle: { te: 'మీ బోటు ఆపబడింది', en: 'Your boat is on hold' },
   blockedBody: { te: 'హార్బర్ అడ్మిన్‌ను సంప్రదించండి.', en: 'Please speak to the harbour admin.' },
@@ -189,6 +192,10 @@ const S = {
   syncRefused: { te: 'హార్బర్ రికార్డు దీన్ని ఒప్పుకోలేదు. బాక్స్ దగ్గర ఒకసారి చెప్పండి.', en: 'The harbour record refused that. Tell someone at the box.' },
   syncLedgerLost: { te: 'క్రేట్ ఖాళీ అయింది, కానీ రికార్డులో నమోదు కాలేదు. అడ్మిన్‌కు చెప్పండి.', en: 'The crate is free, but the trip was not recorded. Tell the harbour admin.' },
   syncBusy: { te: 'హార్బర్ రికార్డు బిజీగా ఉంది. ఏదీ మారలేదు — మళ్లీ నొక్కండి.', en: 'The harbour record was busy. Nothing changed — tap again.' },
+  // Deliberately does NOT say "nothing was saved". A queued write can still
+  // land when the signal returns, and telling a skipper it failed sends him
+  // to take a second crate over the one he may already hold.
+  syncPending: { te: 'సమాధానం రాలేదు. ఇది జరిగిందో లేదో తెలియదు. సిగ్నల్ వచ్చాక బాక్స్ దగ్గర చూసి, ఆ తర్వాతే మళ్లీ బుక్ చేయండి.', en: 'No answer yet — we cannot tell whether that went through. Check the box when the signal is back, before booking again.' },
   auditFailed: { te: 'ఈ చర్య రికార్డు కాలేదు. లాగ్‌లో ఇది కనిపించదు.', en: 'That action was not recorded. It will not appear in the log.' },
   syncPartial: { te: 'మీ క్రేట్లలో ఒకటి మాత్రమే మారింది. బాక్స్ దగ్గరకు వెళ్లి చూడండి.', en: 'Only one of your crates changed. Go to the box and check.' },
   loadingTitle: { te: 'సంఖ్యలు వస్తున్నాయి…', en: 'Getting the numbers…' },
@@ -281,6 +288,10 @@ const S = {
   adminPublishBody: { te: 'కొత్త డేటాబేస్‌కు మొదటిసారి మాత్రమే. ఇప్పటికే ఉన్న సమాచారం చెరిగిపోదు.', en: 'First-time setup for an empty database. It cannot overwrite data that is already there.' },
   adminPublishDone: { te: 'హార్బర్ పంపబడింది.', en: 'Harbour published.' },
   adminPublishPartial: { te: 'హార్బర్ పంపబడింది, కానీ {0} బోట్లు కుదరలేదు.', en: 'Harbour published, but {0} boats were refused.' },
+  // Only ever shown when the shared harbour had NO history before this
+  // publish, so a refusal here means those rows are genuinely not there —
+  // and the monthly report is what the society bills from.
+  adminPublishNoHistory: { te: 'బోట్లు, బాక్సులు పంపబడ్డాయి. కానీ {0} పాత రికార్డులు కుదరలేదు — నెలవారీ రిపోర్ట్ అసంపూర్ణంగా ఉంటుంది.', en: 'Boats and boxes published, but {0} history rows were refused — the monthly report will be incomplete.' },
   adminPublishRetry: { te: 'బోట్ల జాబితా పంపబడింది. బాక్సులు కుదరలేదు — మళ్లీ ఒకసారి నొక్కండి.', en: 'The roster is published. The boxes were refused — press this once more.' },
   adminPublishFailed: { te: 'పంపడం కుదరలేదు. నెట్ చూసి మళ్లీ ప్రయత్నించండి.', en: 'Could not publish. Check the connection and try again.' },
   confirmQ: { te: 'ఖచ్చితమా?', en: 'Sure?' },

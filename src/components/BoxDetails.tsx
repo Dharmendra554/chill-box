@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { openModal } from '../lib/dialog'
 import { boatsAt } from '../data/boats'
 import { useNow } from '../hooks/useClock'
 import { useT } from '../i18n/useT'
@@ -31,15 +32,7 @@ export function BoxDetails({ box, onClose }: Readonly<{ box: ColdBox; onClose: (
   const byId = new Map(boatsAt(allBoats, harbourId).map((b) => [b.id, b]))
   const free = emptyCount(live)
 
-  useEffect(() => {
-    const el = ref.current
-    // Feature-detected: an old Android WebView without showModal() should
-    // still show the sheet rather than throw into the error boundary.
-    if (el && !el.open) {
-      if (typeof el.showModal === 'function') el.showModal()
-      else el.setAttribute('open', '')
-    }
-  }, [])
+  useEffect(() => openModal(ref.current, onClose), [onClose])
 
   return (
     <dialog

@@ -129,3 +129,21 @@ describe('expireHolds', () => {
     expect(wire.box1[0].status).toBe('reserved')
   })
 })
+
+describe('a hold with no clock', () => {
+  it('is treated as expired, not as one that can never run out', () => {
+    // The rules refuse to write a `reserved` slot with no `reservedAt` and
+    // the app never makes one — but if legacy data or a lagging rules
+    // deployment ever produced one, `?? now` made it permanently unexpired:
+    // no phone could claim it, no admin could force-release it, and the card
+    // counted down from a frozen 4:00:00 for the life of the deployment.
+    const now = Date.parse('2026-09-07T06:00:00+05:30')
+    const wire = {
+      box1: { 0: { status: 'reserved' as const, boatId: '04', reservedAt: null } },
+    } as unknown as Parameters<typeof expireHolds>[0]
+
+    expireHolds(wire, now)
+
+    expect(wire.box1[0].status).toBe('empty')
+  })
+})

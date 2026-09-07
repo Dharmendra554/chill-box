@@ -65,6 +65,16 @@ const refuseSet = new Set<string>()
 /** Whether writing a boat that carries a `uid` throws, as old rules do. */
 let rejectUid = false
 
+/**
+ * Whether every transaction hangs forever, the way a dropped socket does.
+ *
+ * The SDK does not reject when the link goes down — it queues the write and
+ * the promise stays pending until the link returns. Nothing here had ever
+ * modelled that, so the branch a skipper hits by walking twenty metres
+ * behind the ice plant mid-booking was the one branch with no test.
+ */
+let hangAll = false
+
 /** Assemble a node from the leaves beneath it, the way a snapshot reads. */
 function readPath(path: string): unknown {
   if (path in db) return db[path]
@@ -107,6 +117,7 @@ vi.mock('firebase/database', () => ({
   push: (r: { path: string }) => ({ path: `${r.path}/gen${Object.keys(db).length}` }),
   runTransaction: async (r: { path: string }, fn: (current: unknown) => unknown) => {
     writes.push(`txn ${r.path}`)
+    if (hangAll) return new Promise(() => {})
     if (refuse.has(r.path)) {
       throw Object.assign(new Error('permission_denied'), { code: 'PERMISSION_DENIED' })
     }
@@ -138,6 +149,7 @@ async function publishedHarbour() {
   refuse.clear()
   abort.clear()
   rejectUid = false
+  hangAll = false
   writes.length = 0
   // A clean local store too: `publishHarbour` publishes this phone's boxes,
   // so a crate left behind by an earlier test would be seeded into the
@@ -317,7 +329,7 @@ describe('a write that only half lands', () => {
         path.startsWith('harbours/nizampatnam/boxes/box3/') &&
         (db[path] as { boatId?: string })?.boatId === '04',
     )
-    expect(held.length).toBe(2)
+    expect(held).toHaveLength(2)
     refuse.add(held[1])
 
     expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toMatchObject({
@@ -340,7 +352,7 @@ describe('a write that only half lands', () => {
         path.startsWith('harbours/nizampatnam/boxes/box3/') &&
         (db[path] as { boatId?: string })?.boatId === '04',
     )
-    expect(stored.length).toBe(2)
+    expect(stored).toHaveLength(2)
     refuse.add(stored[1])
 
     expect(await sync.releaseRemote('nizampatnam', '04')).toMatchObject({
@@ -370,7 +382,7 @@ describe('a write that only half lands', () => {
         /harbours\/nizampatnam\/boxes\/box[13]\//.test(path) &&
         (db[path] as { boatId?: string })?.boatId === '04',
     )
-    expect(stored.length).toBe(2)
+    expect(stored).toHaveLength(2)
     refuse.add(stored[1])
 
     const outcome = await sync.releaseRemote('nizampatnam', '04')
@@ -380,7 +392,7 @@ describe('a write that only half lands', () => {
     const rows = Object.keys(db)
       .filter((path) => path.startsWith('harbours/nizampatnam/ledger/gen'))
       .map((path) => db[path] as { crates: number; boxId: string })
-    expect(rows.length).toBe(1)
+    expect(rows).toHaveLength(1)
     expect(rows[0].crates).toBe(1)
   })
 
@@ -414,7 +426,7 @@ describe('a write that only half lands', () => {
         path.startsWith('harbours/nizampatnam/boxes/box3/') &&
         (db[path] as { boatId?: string })?.boatId === '04',
     )
-    expect(stored.length).toBe(2)
+    expect(stored).toHaveLength(2)
     refuse.add(stored[1])
     refuseSet.add('harbours/nizampatnam/ledger')
 
@@ -482,7 +494,7 @@ describe('a database that says no', () => {
         path.startsWith('harbours/nizampatnam/boxes/box3/') &&
         (db[path] as { boatId?: string })?.boatId === '04',
     )
-    expect(held.length).toBe(1)
+    expect(held).toHaveLength(1)
     refuse.add(held[0])
 
     expect(await sync.depositRemote('nizampatnam', '04', Date.now() + 3600_000)).toMatchObject({
@@ -508,7 +520,7 @@ describe('a transaction that aborts without a code', () => {
         path.startsWith('harbours/nizampatnam/boxes/box3/') &&
         (db[path] as { boatId?: string })?.boatId === '04',
     )
-    expect(held.length).toBe(1)
+    expect(held).toHaveLength(1)
     abort.add(held[0])
 
     // Asserted POSITIVELY.  passed for every other value in the
@@ -575,5 +587,35 @@ describe('the action log a dispute is settled with', () => {
     expect(blocks).toContain('#08')
     // And the chain over them is whole, rather than merely well-formed.
     expect(await verifyAudit(log)).toBe(-1)
+  })
+})
+
+describe('a link that dies mid-booking', () => {
+  it('stops waiting and says it does not know, rather than hanging or lying', async () => {
+    // A dropped socket does not reject: the SDK queues the write and the
+    // promise never settles. The booking sheet is deliberately held open
+    // until the claim settles, so this was a spinner with no reason, no
+    // cancel and no end. And the answer must not be "nothing was saved" —
+    // the queued write can still commit, and a skipper told it failed takes
+    // a second crate over the one he may already hold.
+    await publishedHarbour()
+    hangAll = true
+    vi.useFakeTimers()
+    try {
+      const inFlight = sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn')
+
+      // Still waiting at eleven seconds: the deadline is a deadline, not an
+      // instant give-up, and a 2G round trip on this coast is allowed to be
+      // slow. Asserted rather than assumed, so shortening the wait to
+      // nothing would fail here rather than quietly pass below.
+      await vi.advanceTimersByTimeAsync(11_000)
+      await expect(Promise.race([inFlight, Promise.resolve('waiting')])).resolves.toBe('waiting')
+
+      await vi.advanceTimersByTimeAsync(1_500)
+      await expect(inFlight).resolves.toMatchObject({ ok: false, error: 'pending' })
+    } finally {
+      vi.useRealTimers()
+      hangAll = false
+    }
   })
 })

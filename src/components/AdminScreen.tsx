@@ -308,7 +308,10 @@ function Console() {
                   {nameOf(row.boatId)} <span className="tabular">#{row.boatId}</span>
                 </p>
                 <p className="text-sm font-bold text-ink-2">
-                  {t(row.boxId)} · {row.crates} {t('crates')}
+                  {/* `crateOne` exists for exactly this and was never used
+                      here: every row in Live usage is one or two crates, so
+                      the console read "1 crates" on almost every line. */}
+                  {t(row.boxId)} · {row.crates} {t(row.crates === 1 ? 'crateOne' : 'crates')}
                   {row.plannedOutAt !== null
                     ? ` · ${formatGap(row.plannedOutAt - now, lang)}`
                     : ''}

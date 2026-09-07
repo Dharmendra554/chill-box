@@ -473,6 +473,14 @@ export const useDockStore = create<DockState>()(
           set({ toast: toast('warn', t(lang, 'syncLedgerLost')) })
           return
         }
+        if (result.error === 'pending') {
+          // We stopped waiting; the write did not. It may still commit, so
+          // this must not read as a failure — the box is the only place that
+          // can answer, and booking again first is how a boat ends up over
+          // its cap with a crate nobody is looking for.
+          set({ toast: toast('warn', t(lang, 'syncPending')) })
+          return
+        }
         if (result.error === 'unsettled') {
           // Nothing was written and the link is fine. Trying again is the
           // right move, and "no signal" on full bars is not.
@@ -1021,7 +1029,7 @@ export const useDockStore = create<DockState>()(
           const { harbourId, boxesByHarbour, boats, ledger, lang } = get()
           if (!requireLink()) return
           try {
-            const { failed, boxesOk } = await seedHarbour(
+            const { failed, boxesOk, historyLost } = await seedHarbour(
               harbourId,
               boxesByHarbour[harbourId],
               boats.filter((b) => b.harbourId === harbourId),
@@ -1031,14 +1039,25 @@ export const useDockStore = create<DockState>()(
             // and reporting it as either would be a lie. The boxes failing is
             // its own case: the roster landed, and pressing this again is all
             // that is needed.
+            // History is its own case for the same reason. It only counts
+            // when the harbour had none before — a refusal on a second
+            // publish is the append-only rule working — and when it does
+            // count, the months the console bills from are the thing that
+            // did not arrive, which is not something to report as "done".
             set({
               toast: !boxesOk
                 ? toast('warn', t(lang, 'adminPublishRetry'))
-                : failed === 0
-                  ? toast('ok', t(lang, 'adminPublishDone'))
-                  : toast('warn', t(lang, 'adminPublishPartial', failed)),
+                : failed > 0
+                  ? toast('warn', t(lang, 'adminPublishPartial', failed))
+                  : historyLost > 0
+                    ? toast('warn', t(lang, 'adminPublishNoHistory', historyLost))
+                    : toast('ok', t(lang, 'adminPublishDone')),
             })
-            void get().record('harbour.publish', harbourId, `${failed} refused`)
+            void get().record(
+              'harbour.publish',
+              harbourId,
+              `${failed} refused · ${historyLost} history rows lost`,
+            )
           } catch {
             // Say it failed. A silent failure here looks identical to success
             // and the harbour would go on believing it is synced.

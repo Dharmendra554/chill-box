@@ -167,6 +167,15 @@ export function RegisterScreen() {
                 <BoatIcon size={20} />
                 <span className="w-full truncate">{boatName(boat, lang)}</span>
                 <span className="tabular text-xs font-bold">#{boat.id}</span>
+                {/* A boat still waiting on the admin cannot book anything.
+                    Offering it here unmarked meant a skipper picked it,
+                    passed the four-digit check, reached the dock and only
+                    then found out — shape and text, never colour alone. */}
+                {boat.status !== 'active' ? (
+                  <span className="w-full truncate border-2 border-rule bg-hold-wash text-xs font-extrabold">
+                    {t(boat.status === 'pending' ? 'legendWaiting' : 'legendBlocked')}
+                  </span>
+                ) : null}
               </button>
             </li>
           ))}

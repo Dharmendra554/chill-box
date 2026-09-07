@@ -149,6 +149,16 @@ server — moving `verifyPin` and `appendAudit` behind an API route is the only
 change required. Claiming client-side security is unbreakable would be false,
 so we don't.
 
+**One more limit, stated because it is easy to miss.** Registration refuses a
+mobile number that is already on the roster, and on a shared harbour that
+check only sees the numbers *this* phone registered: the shared roster carries
+only the last four digits of everyone else's, deliberately, so a ten-digit
+comparison never matches them. So the duplicate-number refusal is reliable on
+one device and best-effort across the fleet, and a determined skipper could
+register a second boat to get past the two-crate cap. The admin approves every
+registration, which is where that is actually caught — the check is a
+convenience, not a control.
+
 ## Multi-user: shared, or local
 
 The app runs in one of two modes, decided by whether a Firebase config is

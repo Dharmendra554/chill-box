@@ -9,6 +9,7 @@ import type { WaveBand } from '../lib/marine'
 import { distanceToBox, formatEta, formatKm, navigateTo } from '../lib/nav'
 import { formatClock, formatCountdown, formatElapsed, formatGap, HOUR_MS } from '../lib/time'
 import { cx } from '../lib/ui'
+import { openModal } from '../lib/dialog'
 import {
   activeBoxId,
   boatState,
@@ -395,18 +396,7 @@ function BookingConfirmed({
   // make him certain the slot is his, so he does not hedge by taking a
   // second one somewhere else. A screen-reader user was never told it had
   // appeared at all.
-  useEffect(() => {
-    const el = ref.current
-    // Feature-detected, like the other three dialogs. An unguarded
-    // showModal() throws on an old Android WebView — and it would throw
-    // exactly ONE FRAME after a booking succeeded, so a skipper whose crate
-    // was already claimed in the shared database would get the crash screen
-    // and its "Reset this phone" button instead of the code he came for.
-    if (el && !el.open) {
-      if (typeof el.showModal === 'function') el.showModal()
-      else el.setAttribute('open', '')
-    }
-  }, [])
+  useEffect(() => openModal(ref.current, onClose), [onClose])
 
   return (
     <dialog

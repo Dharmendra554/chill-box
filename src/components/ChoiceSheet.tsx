@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { openModal } from '../lib/dialog'
 
 export interface Choice<V> {
   value: V
@@ -32,13 +33,7 @@ export function ChoiceSheet<V extends string | number>({
   // double-tap hazard applies here as on the booking sheet.
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    const el = ref.current
-    if (el && !el.open) {
-      if (typeof el.showModal === 'function') el.showModal()
-      else el.setAttribute('open', '')
-    }
-  }, [])
+  useEffect(() => openModal(ref.current, onClose), [onClose])
 
   return (
     <dialog

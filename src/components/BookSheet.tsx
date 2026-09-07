@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { T } from '../i18n/dictionary'
 import { cx } from '../lib/ui'
+import { openModal } from '../lib/dialog'
 import { SPECIES, type Species } from '../types'
 import { SPECIES_ICON } from '../icons/species'
 
@@ -38,15 +39,7 @@ export function BookSheet({
    */
   const [claiming, setClaiming] = useState(false)
 
-  useEffect(() => {
-    const el = ref.current
-    // Feature-detected: an old Android WebView without showModal() should
-    // still show the sheet rather than throw into the error boundary.
-    if (el && !el.open) {
-      if (typeof el.showModal === 'function') el.showModal()
-      else el.setAttribute('open', '')
-    }
-  }, [])
+  useEffect(() => openModal(ref.current, onClose), [onClose])
 
   return (
     <dialog
