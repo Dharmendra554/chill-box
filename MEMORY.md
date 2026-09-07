@@ -1194,3 +1194,38 @@ the old key and passes on the new one, verified both ways.
 **What neither auditor could break, for the third round running:** the
 crate-moving core, the caps and deadlines, the rules file and its probe, the
 deploy workflow, and every reporting-layer fix from rounds 14 and 15.
+
+## 29. Eighteenth review — 7.0 and 6.5 → the store half fixed
+
+Both scores rose, and A called the rise "earned and specific". Its headline
+was mine to answer and it is the sharpest kind of defect: **a build with no
+Firebase config was being called a demo.**
+
+`demoMode` was `syncEnabled ? readFlag() : true`. But the README sells the
+no-config build as a real local deployment — "the booking rules still hold
+on that device" — so its crates are a harbour master's real crates. Two
+things followed from the lie. `freshenDemoHarbour` felt entitled to delete
+them overnight and fabricate replacements: no ledger row to bill from, no
+audit row to explain it, a box the app called free and the quay called full.
+And every screen of it was stamped "not a real booking".
+
+`demoMode = syncEnabled && readFlag()`. A demo is a thing you ask for; if
+nobody asked, this is somebody's harbour. `src/store/demoHarbour.test.ts`
+holds the regression, and it needed the configured-env harness from
+`mode.test.ts` — in the suite's default no-config shape the whole path is
+now unreachable, which is the fix.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **`freshenDemoHarbour` reseeded the ACTIVE harbour by reading it and then replacing all three.** Both auditors measured real crate destruction | Looking around a second harbour deleted the crates a skipper deposited in the first an hour ago. Now scoped by identity, and gated on `demoMode` |
+| **"Reset this phone" was `localStorage.clear()`** | It took the mode flag (returning a demo user to the real harbour), the OTHER mode's store — including the live audit chain, which is local-only and is the artefact the README offers to settle a quay dispute with — and Firebase Auth's anonymous session, which binds a boat to the phone and can never be reassigned. Two `removeItem`s now |
+| **`publishHarbour` was guarded only by JSX.** `requireLink()` returns true when there is no shared harbour: it guards the link, not the mode | One refactor away from seeding the society's live database with invented boats. The store refuses it now, and `publishGuard.test.ts` proves the live path still works |
+
+Auditor B (UI/honesty) reported after the round closed, against `679360a`,
+so its list is **unanswered** and two of its items are already stale: C2's
+dead `staleNever` arm is reachable again now that `demoMode` requires
+`syncEnabled`, and L4 cites `keepMode()`, which this round deleted. The
+rest — the 320 px Telugu banner clip under `BookSheet`, the stale-figures
+banner still scrolling away, the README sending judges to the removed
+toggle and running its judge script on the live harbour, and MEMORY §2's
+numbers wrong again — stands for round 19.

@@ -122,27 +122,6 @@ describe('which harbour this session is on', () => {
     expect(location.reload).not.toHaveBeenCalled()
   })
 
-  it('keeps the mode across the crash screen wiping everything', async () => {
-    const before = await load()
-    before.setDemoMode(true)
-    // The session the app is actually running in after the switch. `keepMode`
-    // re-asserts THAT session's mode, so it has to be called on it.
-    const demoSession = await load()
-    expect(demoSession.demoMode).toBe(true)
-
-    // A bare clear, which is what "Reset this phone" used to do: the flag
-    // goes with everything else and the phone comes back on the real
-    // harbour, where the next thing it touches is somebody else's crate.
-    storage.clear()
-    expect((await load()).demoMode).toBe(false)
-
-    // And with the re-assertion `resetStorage` now performs.
-    demoSession.setDemoMode(true)
-    storage.clear()
-    demoSession.keepMode()
-    expect((await load()).demoMode).toBe(true)
-  })
-
   it('falls back to the real harbour when storage cannot be read at all', async () => {
     vi.stubGlobal('localStorage', {
       getItem() {

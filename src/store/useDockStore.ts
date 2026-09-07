@@ -34,7 +34,7 @@ import {
   watchRoster,
   type RemoteResult,
 } from '../lib/harbourSync'
-import { demoMode, keepMode, sharedActive } from '../lib/mode'
+import { demoMode, sharedActive } from '../lib/mode'
 import { HOUR_MS } from '../lib/time'
 import type {
   AuditEntry,
@@ -91,6 +91,13 @@ import {
  * reload. The flag now lives under `.mode`; these two own `.store`.
  */
 export const STORAGE_KEY = demoMode ? 'ap-chill-box.store.demo' : 'ap-chill-box'
+/**
+ * A store written under the key round 16 briefly shared with the mode flag.
+ * It is unreadable garbage to both modes and would otherwise sit in a 5 MB
+ * budget for ever, so the crash-screen reset takes it as it goes past.
+ */
+const LEGACY_DEMO_KEY = 'ap-chill-box.demo'
+
 const STORAGE_VERSION = 4
 
 /**
@@ -211,14 +218,27 @@ export function resetStorage(): void {
   writeTimer = null
   pendingWrite = null
   try {
-    localStorage.clear()
-    // Put the mode back. The flag lives under its own key, so a blanket
-    // clear took it too — and the crash screen then returned a judge who had
-    // deliberately chosen the demo into the REAL harbour, writing to other
-    // people's crates. `mode.ts` argues that demo is never given quietly;
-    // the same is true of live, and here the mistake points at a shared
-    // database rather than at nobody.
-    keepMode()
+    // THIS mode's store, and the orphan an earlier key scheme left behind.
+    // Not `localStorage.clear()`, which took three things it had no business
+    // touching:
+    //
+    //  · the mode flag, so a judge who chose the demo came back on the REAL
+    //    harbour and the next crate they touched was somebody else's;
+    //  · the OTHER mode's store — including the live harbour's audit chain,
+    //    which is local-only and is the artefact the README offers to settle
+    //    a quay dispute with;
+    //  · Firebase Auth's anonymous session. On a phone where IndexedDB is
+    //    unavailable — cheap Androids and WebViews, which is the target — it
+    //    persists in localStorage. A new `uid` can never be reassigned to a
+    //    boat (`database.rules.json`), so the skipper could never sign in as
+    //    his own boat again, on any device, with no admin remedy, and could
+    //    not release the crate his catch was already in until it aged past
+    //    the overstay line and the whole harbour could take it.
+    //
+    // The caption under that button says "clears what is saved on this
+    // phone". This is now what it does.
+    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(LEGACY_DEMO_KEY)
   } catch {
     /* nothing left to do; the reload is still worth attempting */
   }
@@ -1171,6 +1191,14 @@ export const useDockStore = create<DockState>()(
          */
         publishHarbour: async () => {
           const { harbourId, boxesByHarbour, boats, ledger, lang } = get()
+          // The store refuses this, not just the screen. `requireLink()`
+          // returns true when there is no shared harbour — it guards the
+          // link, not the mode — so the only thing standing between a demo
+          // session and a real publish was a `{sharedActive ? …}` in
+          // AdminScreen's JSX. That is one refactor away from seeding the
+          // society's live database with invented boats and pretend crates,
+          // and no rule can delete a boat once it is written.
+          if (!sharedActive) return
           if (!requireLink()) return
           try {
             const { failed, boxesOk, historyLost, historyVerified, timedOut } = await seedHarbour(
@@ -1357,7 +1385,14 @@ export const useDockStore = create<DockState>()(
  * purpose.
  */
 export function freshenDemoHarbour(): void {
-  if (sharedActive) return
+  // `demoMode`, NOT `!sharedActive`. Those differ for a build with no
+  // Firebase config, which is a local DEPLOYMENT and not a sandbox: one
+  // device, no sync, and real crates belonging to a real harbour master. It
+  // used to qualify here, so two skippers' fish deposited at 22:00 were
+  // deleted at the 05:00 cold start and replaced with fabricated occupancy —
+  // silently, with no ledger row to bill from and no audit row to explain
+  // it. One crate six hours and one minute old was enough.
+  if (!demoMode) return
   const { boxesByHarbour, harbourId } = useDockStore.getState()
   const now = serverNow()
   const held = boxesByHarbour[harbourId]

@@ -61,12 +61,22 @@ function readFlag(): boolean {
 }
 
 /**
- * Whether this session is running on its own local copy of the harbour.
+ * Whether the user asked for a sandbox — a pretend harbour on this phone.
  *
- * Always true when no database is configured — there is nothing else it
- * could be, and calling that "live" would be the app's own first lie.
+ * NOT the same question as "is there a database". A build with no Firebase
+ * config is a LOCAL DEPLOYMENT: one device, no sync, and the README sells it
+ * as exactly that — "the booking rules still hold on that device". The
+ * crates in it are a real harbour master's real crates.
+ *
+ * This used to be `syncEnabled ? readFlag() : true`, which called that
+ * deployment a demo, and two things followed from the lie. `freshenDemoHarbour`
+ * felt entitled to delete its crates overnight and fabricate replacements —
+ * no ledger row, no audit row, a box the app called free and the quay called
+ * full. And every screen of it was stamped "not a real booking".
+ *
+ * A demo is a thing you ask for. If nobody asked, this is somebody's harbour.
  */
-export const demoMode = syncEnabled ? readFlag() : true
+export const demoMode = syncEnabled && readFlag()
 
 /**
  * Whether writes go to the shared harbour every phone reads.
@@ -101,17 +111,3 @@ export function setDemoMode(on: boolean): boolean {
   return true
 }
 
-/**
- * Re-assert the current mode after a blanket `localStorage.clear()`.
- *
- * The crash screen's "Reset this phone" clears everything, and the flag
- * lives under its own key — so a reset silently returned a demo user to the
- * live harbour, where the next thing they touched was somebody else's crate.
- */
-export function keepMode(): void {
-  try {
-    localStorage.setItem(MODE_KEY, demoMode ? '1' : '0')
-  } catch {
-    /* nothing to do; the reload will fall back to live, which is the default */
-  }
-}

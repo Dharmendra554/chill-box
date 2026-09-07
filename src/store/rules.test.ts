@@ -24,7 +24,6 @@ import {
   suggestedBoxId,
 } from './selectors'
 import {
-  freshenDemoHarbour,
   releaseSlots,
   seed,
   selectBoxes,
@@ -745,48 +744,6 @@ describe('the month-on-month trend', () => {
   it('reports the trend once the previous month is fully covered', () => {
     const full = [row(JUN), row(JUL_LATE, 5), row(AUG, 4)]
     expect(monthInsight(full, '2026-08', '2026-07', SEP).cratesDelta).toBe(-20)
-  })
-})
-
-describe('waking a demo harbour that slept through its own overstay window', () => {
-  /** An aged harbour: the hold has expired and every crate left is overdue. */
-  const slept = () => applyTick(createMockBoxes(H, Date.now() - 12 * HOUR_MS), Date.now()).boxes
-  const held = (list: ColdBox[]) =>
-    list.flatMap((b) => b.slots).filter((s) => s.status !== 'empty')
-
-  it('reseeds the harbour it checked, and touches no other', () => {
-    // The defect this exists for: the guard read the ACTIVE harbour and the
-    // write replaced all three. So looking around a second harbour whose
-    // seed had aged out — and whose seed contains no hold for the guard to
-    // catch on — destroyed the crates a skipper had deposited an hour ago in
-    // the first one. No ledger row, no audit row, no toast.
-    const mine = createMockBoxes('kakinada', Date.now())
-    useDockStore.setState({
-      harbourId: H,
-      boxesByHarbour: { ...useDockStore.getState().boxesByHarbour, [H]: slept(), kakinada: mine },
-    })
-
-    freshenDemoHarbour()
-
-    const after = useDockStore.getState().boxesByHarbour
-    // The stale one woke up…
-    expect(held(after[H]).every((s) => isOverdue(s, Date.now()))).toBe(false)
-    // …and the other one is untouched, by identity, not by resemblance.
-    expect(after.kakinada).toBe(mine)
-  })
-
-  it('leaves a harbour alone while anything in it is still live', () => {
-    // A demo in use has fresh crates in it, which is the entire safety
-    // argument for reseeding at all. One live crate is enough to stop it.
-    const busy = createMockBoxes(H, Date.now())
-    useDockStore.setState({
-      harbourId: H,
-      boxesByHarbour: { ...useDockStore.getState().boxesByHarbour, [H]: busy },
-    })
-
-    freshenDemoHarbour()
-
-    expect(useDockStore.getState().boxesByHarbour[H]).toBe(busy)
   })
 })
 
