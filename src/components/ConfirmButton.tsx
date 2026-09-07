@@ -43,6 +43,11 @@ export function ConfirmButton({
     return () => window.clearTimeout(id)
   }, [armed])
 
+  // Three states in the order they happen: resting, armed, then in flight.
+  let face = label
+  if (busy) face = t('saving')
+  else if (armed) face = t('confirmQ')
+
   return (
     <button
       type="button"
@@ -65,7 +70,7 @@ export function ConfirmButton({
         }
       }}
     >
-      {busy ? t('saving') : armed ? t('confirmQ') : label}
+      {face}
     </button>
   )
 }

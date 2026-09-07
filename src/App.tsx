@@ -83,12 +83,10 @@ export default function App() {
   // the box figures, not the wave height, that send a boat to a full box.
   // While the socket is live the figures are current by definition; once it
   // drops, they are only as fresh as the last thing it told us.
-  const reachedAt = syncEnabled
-    ? syncLive
-      ? now
-      : syncedAt
-    : (marine.reading?.fetchedAt ?? null)
+  let reachedAt = marine.reading?.fetchedAt ?? null
+  if (syncEnabled) reachedAt = syncLive ? now : syncedAt
   const reach = useConnectivity(reachedAt, now, syncEnabled ? SYNC_STALE_MS : STALE_MS)
+
 
   useEffect(() => {
     document.documentElement.lang = lang
@@ -188,6 +186,21 @@ export default function App() {
     return marine.error || old ? null : of
   })()
 
+  /**
+   * The one line under the header, and which of the three it is.
+   *
+   * Named rather than nested in the JSX because these three cases are the
+   * app's whole freshness policy: still asking, current, or behind.
+   * Local-only mode has no shared copy to be behind, and `reachedAt` is then
+   * the weather poll — dating the box figures to it said something true
+   * about the wrong thing, so `staleNever` is the honest line there.
+   */
+  let banner = <OfflineBanner t={t} since={syncEnabled ? reachedAt : null} />
+  if (reach === 'checking' && syncEnabled) banner = <LoadingBanner t={t} />
+  else if (reach !== 'stale') {
+    banner = <WaveStrip t={t} reading={marine.reading} band={band} error={marine.error} />
+  }
+
   return (
     <div className="min-h-dvh bg-paper text-ink">
       <TopBar
@@ -211,16 +224,7 @@ export default function App() {
         inside those twenty seconds. It fails in the dangerous direction: he
         sees crates that do not exist, rather than none at all.
       */}
-      {reach === 'checking' && syncEnabled ? (
-        <LoadingBanner t={t} />
-      ) : reach !== 'stale' ? (
-        <WaveStrip t={t} reading={marine.reading} band={band} error={marine.error} />
-      ) : (
-        // Local-only mode has no shared copy to be behind, and `reachedAt` is
-        // then the weather poll — dating the box figures to it said something
-        // true about the wrong thing. `staleNever` is the honest line there.
-        <OfflineBanner t={t} since={syncEnabled ? reachedAt : null} />
-      )}
+      {banner}
 
       <main className="mx-auto max-w-6xl px-3 py-4 pb-28">
         {/* The admin fallback is not `null`: on 2G the console's chunk takes

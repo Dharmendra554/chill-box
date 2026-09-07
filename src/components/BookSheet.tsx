@@ -5,6 +5,12 @@ import { openModal } from '../lib/dialog'
 import { SPECIES, type Species } from '../types'
 import { SPECIES_ICON } from '../icons/species'
 
+/** The button's face: what it is about to do, or that it is doing it. */
+function crateLabel(claiming: boolean, count: 1 | 2) {
+  if (claiming) return 'booking'
+  return count === 1 ? 'crate1' : 'crate2'
+}
+
 /**
  * Booking in one sheet: tag the catch, then commit with the crate count.
  *
@@ -110,7 +116,7 @@ export function BookSheet({
                   }
                 }}
               >
-                {t(claiming ? 'booking' : count === 1 ? 'crate1' : 'crate2')}
+                {t(crateLabel(claiming, count))}
               </button>
             ))}
           </div>

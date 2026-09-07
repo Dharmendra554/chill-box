@@ -72,3 +72,34 @@ export async function fetchWaveHeight(
     fetchedAt: Number.isNaN(measured) ? toHarbourTime(Date.now()) : measured,
   }
 }
+
+/**
+ * The one thing the safety card can honestly say about the sea right now.
+ *
+ * Here rather than in the component, because it is a rule and rules do not
+ * live in components — and because this exact decision has been wrong in
+ * three separate rounds, in three different directions: a card that said a
+ * reading was on its way when the fetch had already failed, a card that said
+ * nothing was current over a live breakers warning, and a strip and a card
+ * giving two answers about the same sea in one viewport.
+ *
+ * The order is the priority order. `rough` outlives its own staleness gate
+ * on purpose — warning about breakers that may have passed is the safe
+ * direction — so it is asked first. `band === null` means the reading is too
+ * old to act on, which is NOT the same as never having had one, and that
+ * distinction is the whole of the last two clauses.
+ */
+export function seaAdvice(
+  rough: boolean,
+  band: WaveBand | null,
+  seaKnown: boolean,
+  seaFailed: boolean,
+): 'safetyRough' | 'safetyCalm' | 'safetyUnknown' | 'safetyLoading' {
+  if (rough) return 'safetyRough'
+  if (band !== null) return 'safetyCalm'
+  // A reading landed and aged out, or the last attempt failed: either way
+  // there is nothing current to stand behind, and saying so is the honest
+  // answer. Only a first fetch still in flight is genuinely loading.
+  if (seaKnown || seaFailed) return 'safetyUnknown'
+  return 'safetyLoading'
+}

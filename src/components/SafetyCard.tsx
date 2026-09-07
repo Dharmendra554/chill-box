@@ -1,7 +1,7 @@
 import { useT } from '../i18n/useT'
 import { useNow } from '../hooks/useClock'
 import { saveContacts, type Contact } from '../lib/download'
-import type { WaveBand } from '../lib/marine'
+import { seaAdvice, type WaveBand } from '../lib/marine'
 import { formatClock, formatElapsed, MINUTE_MS } from '../lib/time'
 import { cx } from '../lib/ui'
 import { toHarbourTime } from '../lib/harbourSync'
@@ -90,15 +90,7 @@ export function SafetyCard({
           skipper waits for something that is not coming. It takes both
           questions: has one ever landed, and did the last attempt fail. */}
       <p className="font-bold">
-        {t(
-          rough
-            ? 'safetyRough'
-            : band !== null
-              ? 'safetyCalm'
-              : seaKnown || seaFailed
-                ? 'safetyUnknown'
-                : 'safetyLoading',
-        )}
+        {t(seaAdvice(rough, band, seaKnown, seaFailed))}
       </p>
 
       {rough ? (

@@ -607,7 +607,12 @@ async function writeNewBoat(
   try {
     const result = await a.runTransaction(
       a.ref(a.db, `harbours/${harbourId}/boats/${id}`),
-      (current: WireBoat | null) => (current ? undefined : bind ? { ...wire, uid: bind } : wire),
+      (current: WireBoat | null) => {
+        // Someone else got this hull number first: abort rather than
+        // overwrite, and the caller reports it as `taken`.
+        if (current) return undefined
+        return bind ? { ...wire, uid: bind } : wire
+      },
     )
     return result.committed ? 'won' : 'taken'
   } catch (error) {

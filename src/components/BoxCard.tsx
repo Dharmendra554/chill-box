@@ -4,8 +4,8 @@ import { formatClockShort } from '../lib/time'
 import { cx, STATUS_LABEL, STATUS_STYLE } from '../lib/ui'
 import { emptyCount, isFull, usedCount } from '../store/selectors'
 import type { ColdBox, Slot } from '../types'
-import { IceIcon, TideClockIcon } from '../icons/marine'
-import { SPECIES_ICON } from '../icons/species'
+import { IceIcon } from '../icons/marine'
+import { crateMark } from '../icons/crateMark'
 
 /**
  * One chill-box: capacity headline, fill bar, and a 10-cell grid where
@@ -37,6 +37,11 @@ export function BoxCard({
   const free = emptyCount(box)
   const full = isFull(box)
   const late = box.slots.some((s) => s.status === 'overstay')
+  // Worst state wins the fill: a full box that also has an overdue crate
+  // reads as full, because that is what stops a skipper booking it.
+  let fillTone = 'bg-free'
+  if (full) fillTone = 'bg-full'
+  else if (late) fillTone = 'bg-late'
   const pickable = Boolean(onPick) && !full
 
   const body = (
@@ -73,7 +78,7 @@ export function BoxCard({
 
       <div className="h-3 w-full border-3 border-rule bg-card" aria-hidden>
         <div
-          className={cx('h-full', full ? 'bg-full' : late ? 'bg-late' : 'bg-free')}
+          className={cx('h-full', fillTone)}
           style={{ width: `${(used / box.slots.length) * 100}%` }}
         />
       </div>
@@ -133,7 +138,6 @@ export function BoxCard({
  * a status light into something a skipper can plan against.
  */
 function SlotCell({ t, slot, now }: Readonly<{ t: T; slot: Slot; now: number }>) {
-  const Tag = slot.species ? SPECIES_ICON[slot.species] : null
   const out = slot.plannedOutAt
   const overdue = out !== null && out < now
 
@@ -167,13 +171,7 @@ function SlotCell({ t, slot, now }: Readonly<{ t: T; slot: Slot; now: number }>)
         Four shapes, readable with the colour taken away.
       */}
       <span className="flex items-center gap-0.5 font-display text-sm leading-none font-extrabold">
-        {slot.status === 'overstay' ? (
-          <span aria-hidden>!</span>
-        ) : slot.status === 'reserved' ? (
-          <TideClockIcon size={13} />
-        ) : Tag ? (
-          <Tag size={13} />
-        ) : null}
+        {crateMark(slot.status, slot.species, 13)}
         {slot.boatId ? `#${slot.boatId}` : '·'}
       </span>
       {out !== null ? (

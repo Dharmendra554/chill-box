@@ -185,7 +185,7 @@ export function monthInsight(
   // is −2%. A month is only comparable if the ledger reaches back past its
   // first day.
   const complete = key !== monthKey(now)
-  const oldest = ledger.reduce((min, e) => (e.releasedAt < min ? e.releasedAt : min), Infinity)
+  const oldest = ledger.reduce((min, e) => Math.min(min, e.releasedAt), Infinity)
   const covered = previousKey ? oldest <= Date.parse(`${previousKey}-01T00:00:00+05:30`) : false
   // The SELECTED month needs the same test, and did not have it. Round 12
   // guarded the trend and left utilisation, which divides the surviving

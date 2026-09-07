@@ -61,7 +61,9 @@ function PinGate() {
         event.preventDefault()
         const result = await unlockAdmin(pin)
         setPin('')
-        setProblem(result === 'wrong' ? 'wrong' : result === 'unavailable' ? 'unavailable' : null)
+        // `locked` and `ok` are not problems to report here: one is already
+        // shown by the lockout counter, the other is the door opening.
+        setProblem(result === 'wrong' || result === 'unavailable' ? result : null)
       }}
     >
       <h2 className="flex items-center gap-2 text-2xl">

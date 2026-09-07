@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchWaveHeight, waveBand } from './marine'
+import { fetchWaveHeight, seaAdvice, waveBand } from './marine'
 
 /**
  * The clock the sea state is dated by.
@@ -73,5 +73,27 @@ describe('waveBand', () => {
     expect(waveBand(1)).toBe('moderate')
     expect(waveBand(2)).toBe('moderate')
     expect(waveBand(2.01)).toBe('rough')
+  })
+})
+
+describe('what the safety card may say about the sea', () => {
+  it('answers every reachable combination the way a boat in trouble needs', () => {
+    // Six reachable states, pinned. This card has been wrong three times in
+    // three directions, and each time the branch looked obviously right in
+    // isolation — so the whole table lives here rather than in a reviewer's
+    // head. `band === null` means "too old to act on", which is NOT the same
+    // as "never had one": that distinction is the last two rows.
+    expect(seaAdvice(true, 'rough', true, false)).toBe('safetyRough')
+    // Rough deliberately outlives its own staleness gate — a warning that
+    // may have passed is the safe direction — so it wins even with no band.
+    expect(seaAdvice(true, null, true, false)).toBe('safetyRough')
+    expect(seaAdvice(false, 'calm', true, false)).toBe('safetyCalm')
+    expect(seaAdvice(false, 'moderate', true, false)).toBe('safetyCalm')
+    // A reading landed and aged out: nothing current to stand behind.
+    expect(seaAdvice(false, null, true, false)).toBe('safetyUnknown')
+    // The fetch failed and none ever landed — still not "on its way".
+    expect(seaAdvice(false, null, false, true)).toBe('safetyUnknown')
+    // The only genuinely loading state: a first fetch still in flight.
+    expect(seaAdvice(false, null, false, false)).toBe('safetyLoading')
   })
 })

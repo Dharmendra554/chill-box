@@ -5,7 +5,7 @@ import type { Occupancy } from '../store/selectors'
 import type { T } from '../i18n/dictionary'
 import type { Boat, Lang, Species } from '../types'
 import { SPECIES_ICON } from '../icons/species'
-import { TideClockIcon } from '../icons/marine'
+import { crateMark } from '../icons/crateMark'
 
 /**
  * One boat's hold on one box: who, what, and when it frees.
@@ -63,13 +63,7 @@ export function CrateRow({
                 matters most here: a hold is an EMPTY crate someone has
                 claimed; occupied has fish in it. Reversing those at 4 a.m.
                 is a dispute at the quay. */}
-            {row.status === 'overstay' ? (
-              '!'
-            ) : row.status === 'reserved' ? (
-              <TideClockIcon size={12} />
-            ) : row.species ? (
-              <SpeciesMark species={row.species} />
-            ) : null}
+            {crateMark(row.status, row.species, 12)}
             #{row.boatId}
           </span>
         </span>
@@ -134,8 +128,3 @@ export function CatchTag({ t, species }: Readonly<{ t: T; species: Species }>) {
   )
 }
 
-/** The catch's own icon, which is what a stored crate shows in the grid. */
-function SpeciesMark({ species }: Readonly<{ species: Species }>) {
-  const Icon = SPECIES_ICON[species]
-  return <Icon size={12} />
-}

@@ -119,6 +119,20 @@ const WAVE_STYLE = {
   rough: 'bg-full text-full-ink',
 } as const
 
+/**
+ * The band's name and its landing advice, keyed by the band.
+ *
+ * Records rather than ternary chains, next to the style record they belong
+ * with: three of these were spelled out as nested conditionals, and a band
+ * added later would have had to be remembered in each one.
+ */
+const WAVE_LABEL = { calm: 'waveCalm', moderate: 'waveModerate', rough: 'waveRough' } as const
+const WAVE_HINT = {
+  calm: 'waveCalmHint',
+  moderate: 'waveModerateHint',
+  rough: 'waveRoughHint',
+} as const
+
 export function WaveStrip({
   t,
   reading,
@@ -166,7 +180,7 @@ export function WaveStrip({
       )}
     >
       <WaveIcon size={18} />
-      {t(band === 'calm' ? 'waveCalm' : band === 'moderate' ? 'waveModerate' : 'waveRough')}
+      {t(WAVE_LABEL[band])}
       <span className="tabular">{reading.waveHeight.toFixed(1)} m</span>
       {/* The age is ALWAYS shown, not only when the last fetch errored. A
           backgrounded tab stops polling without erroring, so a two-hour-old
@@ -176,13 +190,7 @@ export function WaveStrip({
           in a rough sea the time is what decides whether to trust it. */}
       <span className="ml-auto flex min-w-0 items-baseline gap-2 font-bold">
         <span className="hidden truncate min-[380px]:inline">
-          {t(
-            band === 'calm'
-              ? 'waveCalmHint'
-              : band === 'moderate'
-                ? 'waveModerateHint'
-                : 'waveRoughHint',
-          )}
+          {t(WAVE_HINT[band])}
         </span>
         <span className="tabular shrink-0">{formatClock(reading.fetchedAt)}</span>
       </span>
