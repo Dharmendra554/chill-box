@@ -69,9 +69,38 @@ one. Create it with `npx firebase-tools login:ci`.
 Until that secret exists the rules still need a human:
 
 ```bash
+npx -y firebase-tools login           # ON THE DEV MACHINE, not Cloud Shell
 npx -y firebase-tools deploy --only database --project chill-box-e5d6b
 bash scripts/verify-rules.sh          # must print: all checks passed
 ```
+
+**Done on 7 Sept 2026, after round 19b.** Rules released to
+`chill-box-e5d6b-default-rtdb`, and the probe printed *all checks passed* —
+50 checks, including the three the round added:
+
+- `[DENY] no phone may block a boat`
+- `[DENY] …nor put one back in a queue`
+- `[PASS] a boat with no status at all is fine`
+
+Plus the append of a ledger row carrying `reclaimed`, which the previous
+rules would have refused. **So the hole the rules used to name as "the
+biggest thing these rules do not stop" is closed in the DATABASE, not only in
+the file** — and the forward path is open: the client can stop sending
+`status` whenever no old bundle is left in use.
+
+**Do it on the dev machine.** An attempt through Google Cloud Shell failed
+and it is worth writing down why, because it will look like a Firebase
+problem and is not: `login`/`login:ci` start a callback server on the
+machine running the command and redirect to `localhost:9005`, so a browser
+on a different computer reaches its own machine and gets
+`ERR_CONNECTION_REFUSED`. Cloud Shell is the wrong place regardless — it has
+no clone of the repo, and `verify-rules.sh` reads `.env.local`, which is
+gitignored and exists only on the dev machine. If a browser never opens at
+all, `login --no-localhost` prints a URL and takes a pasted code instead.
+
+Each probe run leaves a `harbours/probe-<timestamp>` node and one ledger row
+that no rule can delete. Nothing reads them; delete them from the console
+when they bother you.
 
 Every push has always shipped new client code while the rules moved only
 when someone remembered. That asymmetry is not a process problem, it is a
