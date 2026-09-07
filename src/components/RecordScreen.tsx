@@ -89,7 +89,7 @@ function PinGate() {
 
   return (
     <form
-      className="card flex flex-col gap-3 p-4"
+      className="flex flex-col gap-3"
       onSubmit={async (event) => {
         event.preventDefault()
         const result = await unlockAdmin(pin)
@@ -99,10 +99,9 @@ function PinGate() {
         setProblem(result === 'wrong' || result === 'unavailable' ? result : null)
       }}
     >
-      <h2 className="flex items-center gap-2 text-2xl">
-        <HelmIcon size={28} />
-        {t('adminTitle')}
-      </h2>
+      {/* No heading. This form is nested inside the tools section, which
+          already has one — and while it WAS the door to the whole screen it
+          repeated the page title back at the reader on a 320 px phone. */}
       <label className="flex flex-col gap-1">
         <span className="text-sm font-extrabold uppercase">{t('adminPinLabel')}</span>
         <input

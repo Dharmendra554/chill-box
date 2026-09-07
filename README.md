@@ -1,8 +1,14 @@
 # Chill-Box · చిల్-బాక్స్
 
 Slot reservation and catch checkout for the community solar chill-boxes at
-Andhra Pradesh fishing harbours. No harbour master, patchy signal, twenty
-boats to a society. Mobile-first, Telugu by default, no password.
+Andhra Pradesh fishing harbours. Patchy signal, twenty boats to a society,
+Telugu by default, no password.
+
+**And no harbour master — in the code, not only in the description.** Nobody
+approves a registration, nobody can block a boat, and no person frees a crate:
+a boat books the second it registers, and at eight hours the harbour takes an
+abandoned space back by itself. The record of all of it is a tab anyone can
+open. The rules decide; everyone can watch them decide.
 
 **Source:** https://github.com/Dharmendra554/chill-box
 **Live demo:** https://dharmendra554.github.io/chill-box/
@@ -47,10 +53,10 @@ them the app builds and runs in local mode.
 | Requirement | How |
 | --- | --- |
 | Live capacity gauge per box | Fill bar + 10-cell grid; each cell shows the boat number, its catch tag and the hour it frees up |
-| One-tap reservation, 4 h hold | Tap a box on the chart → tap catch → tap crate count, then a receipt with a booking code. A live countdown runs; the slot returns to the pool at 4 h |
+| One-tap reservation, 4 h hold | Tap a box on the chart, tap **1 crate**, done — the catch tag is preselected, so booking is genuinely one tap after choosing the box. A receipt carries a code to read out; a live countdown runs and the slot returns to the pool at 4 h |
 | Catch tagging, minimal typing | Six-icon grid, `Mixed` preselected — booking needs zero decisions |
 | Checkout | **Sold — release the slot** frees the space and writes a ledger row |
-| Overstay flag | Past 6 h a crate turns amber and pulses harbour-wide with the boat number |
+| Overstay flag | Past 6 h a crate turns amber and pulses harbour-wide with the boat number; past 8 h the harbour takes the space back by itself and lists it under **Not collected**, by name. Nobody presses anything |
 
 ## Harbours and societies
 
@@ -73,7 +79,9 @@ remember that "box 2" means "the one by the ice plant".
 
 ## Screens
 
-Two tabs. That is the whole app.
+Three tabs. That is the whole app — and the first thing anyone opening the
+link sees is the capacity gauges, with no sign-in of any kind. Identity is
+asked for at the moment you want a crate, and not before.
 
 - **Book** (front page) — my boat's status, then a live chart of this
   harbour's boxes with free-crate counts. **Tapping a pin books that box.**
@@ -81,10 +89,17 @@ Two tabs. That is the whole app.
   bearing, ETA and compass appear on the same screen. Below: the box cards
   and the safety card. The spoken readout is a button in the top bar, which
   every screen shares.
-- **Harbour** — every crate ordered by soonest to free up, then the roster.
+- **Harbour** — anything the harbour took back at 8 h, then every crate
+  ordered by soonest to free up, then the roster with a **New** mark on any
+  boat that joined this week.
+- **Record** — the harbour's record of itself: live usage, three months of
+  reporting, the numbers that change a decision, and every action ever taken.
 
-The harbour-master console is **not a tab**. It lives at `#admin`, behind a
-PIN, so skippers never see a door they have no reason to open.
+**The third tab used to be a PIN-gated console at `#admin`,** deliberately off
+the tab bar so skippers never saw a door they had no reason to open. That was
+right while it held Approve, Reject, Block and Force release. It holds none of
+them, and hiding a harbour's own record from the harbour needed a better
+reason than habit.
 
 ## Safety
 
@@ -102,33 +117,64 @@ needed is the moment nobody goes looking:
 - When the swell reads rough the card leads with what to do — hold off the
   mouth, life jackets on, call early — before it lists who to call.
 
-## Registration, not login
+## Registration, not login, and nobody approves it
 
-Boat name, owner name and mobile number. The admin approves once; after that
-the phone remembers the boat forever. A pending boat can watch every box but
-cannot book. No password anywhere in the skipper's product — on this dock a
-shared secret is painted on a hull within a week. Claiming a boat that is
-already on the roster needs the last four digits of its registered number, so
-the list is not a one-tap "become anyone".
+Boat name, owner name and mobile number — and then you book. **There is no
+approval step and no approver.** There used to be: a boat registered as
+`pending` and was refused every crate until somebody opened a PIN-gated
+console and pressed Approve. In a village whose defining condition is that
+nobody is in charge, that put a person on the critical path at 4 a.m., and in
+a real society it is a monopoly — whoever holds the PIN decides who may store
+fish.
 
-## Admin console
+No password anywhere in the skipper's product either: on this dock a shared
+secret is painted on a hull within a week, and the brief forbids
+authentication services outright. Claiming a boat already on the roster needs
+the last four digits of its registered number, so the list is not a one-tap
+"become anyone" — those digits identify a boat, they do not authenticate one.
 
-Open `/#admin`. Demo PIN: **2468**.
+A boat that joined in the last week carries a **New** mark in the harbour
+list. That is the whole of what replaced approval: nobody vets a new boat and
+nobody can stop it booking, but the harbour can see it turned up — which is
+what twenty people on a quay would see anyway.
 
-Approvals, live usage with force-release, monthly reporting, per-boat and
+## The harbour record
+
+The third tab, open to everyone. No PIN, no hidden URL — though `/#admin`
+still opens it, because eighteen rounds of documentation point there.
+
+**This was the admin console**, and what changed is not cosmetic. It held
+Approve, Reject, Block and Force release: the only four powers in the app, all
+behind one PIN. They are gone. Nobody approves a registration, nobody blocks a
+boat, and an abandoned crate is freed by the clock at eight hours rather than
+by whoever happens to hold the password. What is left was never authority —
+it is the harbour's record of itself, and hiding that from the harbour was the
+thing that needed justifying.
+
+Deleting those powers also closed the largest hole the database rules
+documented about themselves. There is no admin identity for a rule to check
+against, so whatever the client may write, *anyone* may write: any signed-in
+phone could set any boat's status — approving itself past the queue, or
+setting all twenty to blocked and stopping the harbour. No rule could fix that
+while the feature existed. The field is now optional and pinned to one value.
+
+Live usage, monthly reporting, per-boat and
 per-catch breakdowns, an **insight strip** (utilisation, average dwell,
 overstay rate, month-on-month trend and the hour boats actually land — the
 number that staffs the quay), and **Download for Excel** — the raw ledger for the
 selected month as CSV with a UTF-8 BOM, so Telugu names survive the trip into
-Excel on Windows. It copies the controls a government portal uses:
+Excel on Windows. The PIN survives on two controls only — **Publish harbour** and **Reset
+demo** — which are deployment and demonstration tools, not harbour policy.
+Both are destructive and neither is something twenty skippers should meet by
+scrolling, so they keep the lock a government portal would use:
 
 - the PIN is **not in the source** — only a PBKDF2-SHA-256 hash (150 000
   iterations, salted), verified with Web Crypto
 - **lockout with exponential backoff** after three wrong attempts, to 15 min
 - **idle auto-lock** after 5 minutes
 - **two-tap confirmation** on every irreversible action
-- a **hash-chained action log**: every admin action records who, what, when and
-  a SHA-256 over the previous entry, and the console verifies the chain live.
+- a **hash-chained action log**: every recorded action carries who, what, when and
+  a SHA-256 over the previous entry, and the record verifies the chain live.
   This catches accidental corruption and a casual edit. It does **not** stop a
   determined tamperer, who can delete a row and recompute every hash after it —
   an unkeyed chain cannot, and an HMAC would not help because the key would
@@ -155,15 +201,22 @@ check only sees the numbers *this* phone registered: the shared roster carries
 only the last four digits of everyone else's, deliberately, so a ten-digit
 comparison never matches them. So the duplicate-number refusal is reliable on
 one device and best-effort across the fleet, and a determined skipper could
-register a second boat to get past the two-crate cap. The admin approves every
-registration, which is where that is actually caught — the check is a
-convenience, not a control.
+register a second boat to get past the two-crate cap.
+
+**There is no longer an approver who would catch that**, and we would rather
+state the hole than pretend a queue we deleted is still guarding it. What
+catches it instead is the same thing that catches it on a real quay: every
+crate on the board carries a hull number, a boat that joined this week is
+marked as new, and twenty people know each other. Closing it properly needs
+an authentication service, which the brief forbids.
 
 ## Multi-user: shared, or local
 
 The app runs in one of two modes. Whether the choice EXISTS is decided at
-build time by the Firebase config; which one you are in is a toggle at the
-bottom of the Book screen, under **Demo tools**.
+build time by the Firebase config; which one you are in is a toggle under
+**Demo tools**, at the bottom of the "which boat are you" screen — the one
+place a judge can reach before putting a fictitious boat on a real society's
+permanent roster.
 
 **Demo** is the same app — same rules, same screens, same refusals — on a
 copy of the harbour that lives on this phone alone. Nobody else's crates
@@ -250,19 +303,24 @@ The moment a skipper signs in on their phone, that boat's crates are theirs.
 **What the rules still cannot do.** Named here rather than implied to be
 covered:
 
-- **Any signed-in phone can set any boat's status.** There is no admin
-  identity, so a client could approve its own boat — or block all twenty and
-  stop the whole harbour booking. This is the largest remaining gap.
 - **The 2-crate cap is counted on the client.** No rule can count a boat's
   crates in boxes it is not writing to.
 - **A crate the harbour has given up on — an expired hold, or a stored crate
-  past its overstay hour — can be cleared by anyone.** That is how
-  force-release works without an admin account, and it is a deliberate
+  past its overstay hour — can be cleared by anyone.** That is how the
+  eight-hour reclaim works without an admin account, and it is a deliberate
   community rule rather than an oversight. The rule reads the crate's
   `depositedAt`, the same timestamp the screen counts from.
 - **Ledger rows can be added, never edited.** A padded report is still a
   problem for a society billing off the CSV.
 
+**One that used to head this list and no longer exists.** It read: *any
+signed-in phone can set any boat's status — approving its own boat, or
+blocking all twenty and stopping the whole harbour.* That was true and
+unfixable for as long as the feature existed, because there is no admin
+identity for a rule to check against, so whatever the client may write anyone
+may write. It closed by deleting approval and blocking rather than by writing
+a cleverer rule. Worth stating because it is the general shape: **the security
+hole a client-only app cannot close is usually a feature it should not have.**
 These need a server-held identity, which needs a paid plan. Everything that
 could be closed on the free tier has been.
 
@@ -270,17 +328,18 @@ could be closed on the free tier has been.
 is what makes crate ownership enforceable, and it means a skipper who clears
 their browser, reinstalls the app, or loses the phone gets a new anonymous
 identity and **can never sign in as their own boat again, on any device**.
-No admin control can release it, because a rule an admin could override
-would not be a rule. On a real deployment this needs an out-of-band answer —
-a harbour master who can retire a hull number and issue a new one — and the
-app does not have one yet.
+No control anywhere can release it, because a rule somebody could override
+would not be a rule — and there is now nobody to override it. On a real
+deployment this needs an out-of-band answer: the society retires a hull number
+and issues a new one. The app does not have one yet, and this is the sharpest
+cost of having no authority in it.
 
 **Local (no config).** Exactly the old behaviour: one device, no sync, useful
 for an offline demo. The booking rules still hold on that device, but two
 phones will disagree, and the app says so rather than pretending.
 
-Either way, the harbour's *policy* is the client's word — the cap, the
-approval queue, the hold length. What the database now enforces on its own is
+Either way, the harbour's *policy* is the client's word — the cap, the hold
+length, the eight-hour reclaim. What the database now enforces on its own is
 who owns a crate: the rules refuse a write to a slot held by a boat bound to
 another phone, and there is no path that writes more than one crate without
 being checked against that crate's owner.
@@ -325,14 +384,15 @@ The skipper is never asked whether they have signal — the app works it out:
   time: *these figures are from this phone only*.
 - Nothing blocks on the network. Bearing, distance, ETA and every harbour rule
   are local maths.
-- The map, the database client and the admin console are separate chunks —
-  though only the map and the console are genuinely off the critical path.
-  Measured, gzipped: entry **95 kB**, CSS **12 kB**, service worker **11 kB**,
-  and **88 kB of Firebase**, which is fetched at start-up because the
+- The map, the database client and the harbour record are separate chunks —
+  though only the map and the record are genuinely off the critical path.
+  Measured, gzipped, against `npm run build` on the commit that ships this
+  README: entry **100 kB**, CSS **13 kB**, service worker and workbox
+  **11 kB**, and **90 kB of Firebase**, which is fetched at start-up because the
   "numbers are still coming" banner cannot clear until the first snapshot
-  arrives through it. That is **~205 kB of our own code** before the app can
+  arrives through it. That is **~213 kB of our own code** before the app can
   stand behind a figure, plus **265 kB of webfonts** on a cold visit — Noto
-  Sans Telugu alone is 124 kB. **~470 kB in total**, and the fonts are the
+  Sans Telugu alone is 124 kB. **~478 kB in total**, and the fonts are the
   largest single item. Self-hosting and subsetting them is the next real
   win, and it has not been done. And
   tiles are cached first-hit, so a route drawn once redraws with no signal.
@@ -347,7 +407,7 @@ The skipper is never asked whether they have signal — the app works it out:
 | --- | --- |
 | Two boats want the last slot | Capacity is re-checked at commit, not at render — the loser is told another boat just took it |
 | Hold expires while the deposit sheet is open | Deposit is refused and the expiry explained, not silently dropped |
-| Wet-screen phantom taps | Release, cancel-hold, reject and force-release are two-tap and disarm after four seconds |
+| Wet-screen phantom taps | Release, cancel-hold and the demo tools are two-tap and disarm after four seconds |
 | Device clock jumps backwards | A future timestamp never reads as an elapsed hold or an overstay |
 | Promised collection lands on the overstay line | The picker offers 2/4/5 h only — never a time that flags on arrival |
 | Box fills between opening the sheet and tapping | Crate buttons are bounded by the box's real free count, and the commit re-checks |
@@ -355,6 +415,9 @@ The skipper is never asked whether they have signal — the app works it out:
 | Map tiles unreachable | Compass, bearing and ETA carry on, with a notice on the chart |
 | Pins overlap when zoomed out | The idle chart frames the harbour, not the boat, so the three pins stay tappable |
 | No Telugu voice on the phone | Speaks Telugu words in Latin script through an Indian voice, so the readout stays Telugu instead of switching language or going silent |
+| **A crate nobody comes back for** | Amber at 6 h, and at 8 h the space is returned to the harbour automatically. The slot is free to book and a **Not collected** row names the boat for 24 h — the app never claims the fish left the box, only that the space did |
+| Two phones reach the 8-hour line in the same second | The reclaim is a transaction on each slot: the first phone wins and the rest are no-ops. Nothing fires at all while a phone's snapshot is stale, so waking from sleep cannot empty a harbour on an hour-old picture |
+| A brand-new boat lands at 4 a.m. | It registers and books in the same minute. There is no approver to wake |
 | A part-elapsed month | Utilisation divides by days elapsed, and the month-on-month trend is hidden until the month is complete |
 | A crash in the UI | An error boundary offers reload, then reset — never a white screen on a dock |
 | Same hull number at two harbours | Switching harbour always re-asks who you are |
@@ -385,8 +448,9 @@ The skipper is never asked whether they have signal — the app works it out:
   every screen shares, so the spoken readout is reachable without scrolling
   to wherever the boxes are. It always speaks Telugu, whatever the screen
   language is set to, and it says first if the figures are not current.
-- Mobile numbers are visible only in the admin console, never on the public
-  roster.
+- Mobile numbers are on no screen at all. They used to be in the admin
+  console; that screen is open to everyone now, so they left it — and the
+  Excel export lost its Mobile column with them.
 
 ## Rules
 
@@ -398,20 +462,39 @@ The skipper is never asked whether they have signal — the app works it out:
 
 ## Judge demo
 
-1. Pick **Nizampatnam**, then boat **Ramu #04**.
-2. Tap the **Diesel Bunk** pin on the chart → **Prawn → 1 crate**. A receipt
-   appears with a booking code to read out at the box.
-3. Tap **Simulate 8 km out** — distance, bearing, ETA and the compass appear.
-4. **Fish deposited** → promise a collection time. It shows up instantly in the
-   box grid and in the Harbour list.
-5. The **Ice Plant box** is full and cannot be picked; the **Auction Hall box**
-   carries #11's overstay, pulsing amber.
-6. Open **`/#admin`** (PIN 2468): approvals, live usage with force-release,
-   three months of reporting, **Download for Excel**, and the verified audit
-   log.
-7. **Reset demo** (in `#admin` when the harbour is shared) clears this
-   harbour’s crates for every phone and signs you out. The roster and past
-   records are kept — the ledger is append-only by rule, even for an admin.
+**Step 0, and it matters.** The link opens on the real shared harbour, where
+other people's crates are real. Tap **Which boat I am…**, scroll to **Demo
+tools** at the bottom, and choose **Switch to a demo copy**. The app reloads
+into an identical harbour that lives on your phone alone — same rules, same
+screens, same refusals — and a blue **Demo** strip stays in the header on
+every screen. Everything below is then yours to break.
+
+1. The link opens on the **three capacity gauges**, with no sign-in of any
+   kind. That is the whole answer to "is there room, and where?"
+2. Tap **Which boat I am…** → **Ramu #04** → last four digits **2004**. There
+   is no approval step: you can book immediately.
+3. Tap the **Diesel Bunk** pin on the chart → **1 crate**. A receipt appears
+   with a booking code to read out at the box. One tap books it — the catch
+   tag defaults to *mixed* and is an upgrade, never a toll gate.
+4. Tap **Pretend I am 8 km out at sea** — distance, bearing, ETA and compass.
+5. **Fish deposited** → promise a collection time. It appears instantly in the
+   box grid and in the Harbour list, so others plan around a real opening.
+6. The **Ice Plant box** is full and cannot be picked; the **Auction Hall box**
+   carries #11's overstay, pulsing amber. At six hours it goes amber; at
+   eight the harbour takes the space back by itself and the Harbour tab lists
+   it under **Not collected**, by name.
+7. Open the **Record** tab — no password. Live usage, utilisation, average
+   dwell, overstay rate, the hour boats actually land, three months of
+   reporting, **Download for Excel**, and the hash-chained action log. Note
+   what is *not* there: nothing on this screen can approve, block or release
+   anybody.
+8. In the harbour list, **Deepika #21** carries a **New** mark — a boat that
+   joined this week, visible to everyone, stoppable by nobody.
+
+**Reset demo** lives at the bottom of the Record tab behind PIN **2468**, with
+Publish harbour. In the shared harbour it clears every phone's crates and
+signs you out; the roster and past records are kept, because the ledger is
+append-only by rule and there is no longer anyone who could override that.
 
 ## Layout
 

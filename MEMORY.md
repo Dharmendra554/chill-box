@@ -27,18 +27,22 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 104 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 116 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
-**First paint, measured, all of it:**
+**First paint, re-measured at round 19 against `npm run build`** — every
+figure here was wrong for four rounds running and auditor B caught it each
+time. Vite's own gzip report is the basis; `gzip -9` gives slightly less
+(entry 98 990 B) and a real server picks its own level, so vite's number is
+the one to quote.
 
 | | |
 | --- | --- |
-| Entry JS | 97 kB gz |
-| CSS | 12 kB gz |
+| Entry JS | 100 kB gz |
+| CSS | 13 kB gz |
 | Service worker + workbox runtime + workbox-window, first visit | 11 kB gz |
-| **Firebase**, fetched at start-up by `main.tsx` | **88 kB gz** |
+| **Firebase**, fetched at start-up by `main.tsx` | **90 kB gz** |
 | **Google Fonts** — three families; Noto Sans Telugu alone is 124 kB | **265 kB** |
-| **Total before the app can answer "is there room"** | **~470 kB** |
+| **Total before the app can answer "is there room"** | **~478 kB** |
 
 Two rounds got this number wrong in the same direction. Round 7 called
 ~110 kB "honest" and omitted the fonts; round 8 added the fonts and omitted
@@ -79,6 +83,12 @@ Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
+| `90480c1` | Nobody is in charge: approval, blocking and force-release deleted |
+| `b772460` | Spec: nobody is in charge |
+| `eaf0869` | Spec: admission by majority (superseded, deleted unbuilt) |
+| `9ffb97a` | Round 18: a build with no database is a harbour, not a demo |
+| `679360a` | Round 17: the flag and the store had the same name |
+| `7b1344e` | Round 16: the toggle audited at 3.0, and why |
 | `7812fff` | The demo/live toggle, decided once at start-up |
 | `0fafed5` | Round 15b: the sea's verdict keeps its own date |
 | `8a3681b` | Round 15a: the reporting layer, where the last bugs live |
@@ -317,7 +327,19 @@ Each of these was deliberate. Change them only with a reason.
 - **No login, ever.** A shared secret on a dock phone is painted on a hull
   within a week. Registration plus admin approval is the gate; claiming an
   existing boat needs the last 4 digits of its registered number.
-- **Admin is not a tab.** It lives at `#admin` only.
+- ~~**Admin is not a tab.** It lives at `#admin` only.~~ **REVERSED at round
+  19, deliberately.** That rule was written for a PIN-gated console holding
+  Approve, Reject, Block and Force release, and hiding one of those from
+  twenty skippers is correct. It holds none of them now — approval and
+  blocking are deleted, and the eight-hour rule frees a crate with nobody's
+  help — so what is behind it is the harbour's record of itself. Hiding a
+  harbour's own activity from the harbour needed a better argument than
+  habit. It is the third tab, open, with no PIN and no mobile numbers.
+  `#admin` still routes there. **The PIN survives on Publish harbour and
+  Reset demo only**: deployment tools, not harbour policy.
+- **No approval and no blocking, ever.** Deleted at round 19, not moved. The
+  brief's first sentence is "without a central harbour master" and we had
+  built one on the critical path. Do not reintroduce a boat status.
 - **Booking is skipper-led.** We label the emptiest box "most room" but never
   auto-assign — the box you can reach matters more than the box with space.
 - **Booking never requires GPS.** The map is the primary path, the named box
@@ -1229,3 +1251,116 @@ rest — the 320 px Telugu banner clip under `BookSheet`, the stale-figures
 banner still scrolling away, the README sending judges to the removed
 toggle and running its judge script on the live harbour, and MEMORY §2's
 numbers wrong again — stands for round 19.
+
+---
+
+## 30. Round 19 — nobody is in charge
+
+Not a hostile-review round. The owner read the brief's first sentence back to
+the app and it lost the argument:
+
+> Without a central harbor master or reliable connectivity, fishermen arrive
+> to find cold-boxes already full…
+
+We had built a harbour master and put him on the critical path.
+`useDockStore.ts:793` refused a booking unless `me.status === 'active'`, a new
+boat seeded `pending`, and `AdminScreen` carried **Approve**, **Reject**, a
+**Block** button beside every one of the twenty boats, and **Force release**.
+Four powers, one PIN. In a village of twenty that is a monopoly, and in the
+competition it is a visible contradiction of the premise a judge reads first.
+
+An earlier design for this round — admission by a **majority vote** of the
+boats already in the harbour — was specced, committed and then deleted
+unbuilt on the owner's call. It was novel and it answered the premise, but it
+added a subsystem to an app whose own history says subsystems are where the
+defects are, and eleven neighbours tapping Yes is a worse experience than
+registering. The spec is at `eaf0869` if it is ever wanted.
+
+### What was deleted
+
+`Boat['status']` **entirely** — not narrowed. With no approval and no
+blocking there is no third state a boat can be in, so the field, and with it
+`approveBoat`, `rejectBoat`, `setBoatStatus`, `setBoatBlocked`,
+`logStatusChange`, the approvals queue, the twenty Block buttons, the pending
+banner, `seedPending` and seven dictionary strings, are gone.
+
+**The deletion is what let the database rules close their own worst hole.**
+The rules file named it as *"THE BIGGEST THING THESE RULES DO NOT STOP: any
+signed-in phone can set any boat's status — including setting its own to
+'active' to skip approval, and including setting all twenty to 'blocked',
+which stops the whole harbour from booking."* No rule could fix that while the
+feature existed: with no admin identity, whatever the client may write anyone
+may write. `status` is now optional and pinned to `'active'`.
+
+**Generalise this.** The security hole a client-only app cannot close is
+usually a feature it should not have.
+
+### Compatibility, which is the seam to watch
+
+`status` was left OPTIONAL in the rules rather than forbidden, and the client
+still *writes* `'active'`. A cached bundle on somebody's phone keeps sending
+it, and a client that stopped sending it while the published rules still
+required it would have every roster write refused — registration bricked,
+blamed on the network. That is §16, exactly, and it is the reason this is
+staged rather than clean. **The rules must be deployed before this is real.**
+
+### The eight-hour rule
+
+Force release was a button a PIN-holder pressed, so a rotting crate blocked a
+box until that one person happened to open the console. Now: **amber at 6 h,
+and at 8 h the harbour takes the space back by itself.** `reclaimable()` in
+`selectors.ts` picks the exact slot indexes — per slot, never per row, because
+the database refuses a pair containing a crate still in time — and
+`reclaimOverdue()` runs it from `tick`.
+
+Three guards, each of which is a defect if removed:
+
+- a `reclaiming` set, because `tick` fires at 1 Hz and the write is a round
+  trip: without it the same crate is submitted sixty times a minute
+- the **active harbour only**, because `applyTick` ages all three (local
+  arithmetic) but this is a WRITE to a shared harbour nobody is watching
+- **never while `syncLive` is false**, because a phone waking from sleep holds
+  an hour-old picture in which every crate looks eight hours old
+
+`LedgerEntry.reclaimed` is recorded, not derived: a skipper who collects at
+8 h 01 m writes a row identical in every timestamp, and the Harbour page's
+**Not collected** list must not accuse him of abandoning his catch.
+
+Verified in the browser, not reasoned about: a seeded crate's `depositedAt`
+was pushed to nine hours in `localStorage`, the page reloaded, and the crate
+was reclaimed within a second and appeared under **Not collected** naming
+Ganga #01.
+
+### The record
+
+The console is the third tab, no PIN, no mobile numbers anywhere, no Mobile
+column in the CSV. This **reverses §7's "admin is not a tab"** and §7 now says
+so with the reason. The PIN survives on Publish harbour and Reset demo.
+
+### And the first ninety seconds
+
+`App.tsx:255` used to render `RegisterScreen` to anyone without a boat, so a
+judge opening the link met three form fields and twenty-one hull buttons
+before any capacity gauge — failing the brief's own constraint that the thing
+be *"pre-populated with realistic dummy data for immediate testing"*. The
+landing is the gauges now; identity is asked at the first tap on Book.
+
+### Also, from auditor B's unanswered round-18 list
+
+- **L1** Telugu plurals. `dictionary.ts` claimed "Telugu uses the same word
+  for one and many", which is false — "క్రేట్లు" is plural, "క్రేట్" singular
+  — so the receipt, the hold card and the quota line all read *"1 క్రేట్లు"*,
+  one crates, in the primary language, to the readers a disagreeing noun
+  trips up most. Both forms exist now and the call sites pick.
+- **L3** `ModeSwitch` sat between the intro and the Boat-name field with no
+  fence; one tap reloads and discards the form. It is fenced and last, and it
+  says what the tap costs.
+- **C4/C5** the README's judge script pointed at a removed toggle and had no
+  step entering demo, so all seven steps ran against the live shared harbour
+  — including the one that clears every phone's crates. Rewritten, with
+  entering demo as step 0.
+- **C6** MEMORY §2 and `README:330` carried four wrong figures between them.
+  Re-measured against a real build; §2 above says on what basis.
+
+Still open from that list: **C1** (`BookSheet` clipping the demo banner at
+320 px) and **C3** (the stale-figures banner still scrolls away).

@@ -239,6 +239,7 @@ export default function App() {
         boat={boat}
         speaking={speaking}
         demo={demoMode}
+        banner={banner}
         onLang={setLang}
         onTheme={setTheme}
         onSpeak={onSpeak}
@@ -253,8 +254,6 @@ export default function App() {
         inside those twenty seconds. It fails in the dangerous direction: he
         sees crates that do not exist, rather than none at all.
       */}
-      {banner}
-
       <main className="mx-auto max-w-6xl px-3 py-4 pb-28">
         {/* The record's fallback is not `null`: on 2G that chunk takes
             seconds, so a blank page with nothing happening was the whole

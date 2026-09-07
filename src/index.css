@@ -79,6 +79,36 @@ textarea {
     border: 3px solid var(--color-rule);
   }
 
+  /*
+   * The three bottom sheets, in one place, capped so they cannot cover the
+   * chrome.
+   *
+   * A sheet is `m-0 mt-auto` — anchored to the bottom of the viewport, free
+   * to grow to the top of it. At 320 px in Telugu the catch picker did
+   * exactly that: it covered 20.3 px of the sticky header and clipped the
+   * demo caveat's second line through the middle of the glyphs, so the one
+   * sentence saying "this is not a real booking" was cut in half on the
+   * screen where a booking is made.
+   *
+   * `--chrome-h` is published by the header itself, measured rather than
+   * guessed, because its height changes with the demo strip, the swell strip
+   * and how many lines a Telugu string wraps to. The fallback is 0 so a sheet
+   * still opens if that measurement never runs.
+   *
+   * All three sheets shared this class string by copy; they share it here now,
+   * so a cap cannot be added to one and missed on the others.
+   */
+  .sheet {
+    margin: 0;
+    margin-top: auto;
+    width: 100%;
+    max-height: calc(100dvh - var(--chrome-h, 0px));
+    background: var(--color-card);
+    color: var(--color-ink);
+    border: 3px solid var(--color-rule);
+    padding: 0;
+  }
+
   .card-soft {
     background: var(--color-paper-2);
     color: var(--color-ink);

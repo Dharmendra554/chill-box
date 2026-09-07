@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { HARBOURS } from '../data/harbours'
 import type { T } from '../i18n/dictionary'
 import type { WaveBand } from '../lib/marine'
@@ -40,6 +40,7 @@ export function TopBar({
   boat,
   speaking,
   demo,
+  banner,
   onLang,
   onTheme,
   onSpeak,
@@ -52,18 +53,49 @@ export function TopBar({
   speaking: boolean
   /** Whether this session is on a local demo copy. See lib/mode.ts. */
   demo: boolean
+  /**
+   * The one line about how current the box figures are — still arriving,
+   * current, or behind. Rendered INSIDE this sticky header rather than beside
+   * it. See the JSX below for why that matters more than the demo strip does.
+   */
+  banner: ReactNode
   onLang: (lang: Lang) => void
   onTheme: (theme: Theme) => void
   onSpeak: () => void
 }>) {
   const h = HARBOURS[harbourId]
+  /**
+   * Publish the chrome's real height so a bottom sheet cannot grow under it.
+   *
+   * Measured, never assumed: this header is one line taller with the demo
+   * strip, another with the swell strip, and taller again whenever a Telugu
+   * string wraps — which at 320 px it does. A constant here would be wrong on
+   * most phones, and the failure it caused was the catch picker clipping the
+   * "not a real booking" caveat through the middle of its glyphs.
+   *
+   * `ResizeObserver` rather than a layout effect on render, because the
+   * height changes without this component re-rendering: a font arriving, an
+   * orientation change, the swell strip swapping a two-line hint for a
+   * one-line one.
+   */
+  const node = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = node.current
+    if (!el) return
+    const publish = () =>
+      document.documentElement.style.setProperty('--chrome-h', `${el.offsetHeight}px`)
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const here = {
     name: (l: Lang) => (l === 'te' ? h.nameTe : h.nameEn),
     union: (l: Lang) => (l === 'te' ? h.unionTe : h.unionEn),
   }
 
   return (
-    <header className="sticky top-0 z-[200] border-b-3 border-rule bg-paper">
+    <header ref={node} className="sticky top-0 z-[200] border-b-3 border-rule bg-paper">
       <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2">
         <AnchorIcon size={30} className="shrink-0" />
         {/* Once a boat is chosen it is the identity that matters, and Telugu
@@ -119,6 +151,20 @@ export function TopBar({
           of this is real was visible for 2% of the Harbour page, and absent
           exactly where the booking and deposit controls are. */}
       {demo ? <DemoBanner t={t} /> : null}
+
+      {/* And so is the freshness line, which round 17 left outside while
+          pinning this one — the weaker case of the two.
+          The demo caveat is a session constant: read once, true for the whole
+          visit. Whether the box figures are current CHANGES, it changes while
+          you are looking at the screen, and it is the difference between a
+          number worth acting on and one that will send a boat to a full box.
+          Pinning the constant and letting the variable scroll away was
+          exactly backwards.
+          The cost is chrome, and there is not much of it to spend: this is
+          three stacked strips at 320 px in Telugu. Measured rather than
+          assumed — see `--chrome-h` above, which the bottom sheets are capped
+          against so they cannot cover any of it. */}
+      {banner}
     </header>
   )
 }

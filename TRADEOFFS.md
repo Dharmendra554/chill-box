@@ -1,31 +1,30 @@
 # Trade-offs and anti-hoarding logic
 
-**Anti-hoarding.** Three pressures, no punishment. A **2-crate cap per boat**,
-counted across all three boxes rather than per box, stops one haul taking a
-whole chill-box. A **4-hour hold** expires by itself, so a boat that never
-lands cannot park a slot. Past **6 hours** a crate flags as an overstay and
-pulses amber harbour-wide with the boat number. No fine, no lockout: that only
-pushes the next catch into open air. The cost is visibility — at deposit you
-promise a collection hour, so others plan around real openings.
+**Anti-hoarding is an escalation, not a punishment.** A **2-crate cap per
+boat**, counted across all three boxes rather than per box, stops one haul
+taking a chill-box. An unfilled **4-hour hold** expires by itself. At **6
+hours** a stored crate flags amber harbour-wide with the boat's number; at
+**8** the harbour takes the space back, and the board says by name whose fish
+was not collected. No fine, no lockout — those only push the next catch into
+open air. The pressure is visibility, and it costs one promise: at deposit you
+name a collection hour, so others plan around real openings.
 
-**Landmarks, not numbers.** Auction Hall, Ice Plant, Diesel Bunk: "box 2" must
-be memorised, a building you can see need not. Booking starts on the chart —
-which box can you reach on this swell — but every box is bookable by name too,
-because GPS fails under a shed roof.
+**Nobody is in charge, because the brief says nobody is.** We had built a
+harbour master anyway — a PIN that approved registrations and blocked boats.
+In a village of twenty that lock is a monopoly, and it stood between a skipper
+and a crate at 4 a.m. It is deleted, not moved. A boat books the second it
+registers; a clock, not a person, frees an abandoned crate. Deleting it also
+closed the worst hole in our database rules: with no admin identity to check
+against, any phone could have blocked all twenty boats.
 
-**No login.** Boat, owner, mobile; the admin approves. Claiming a boat needs
-the last four digits of its number — those identify it, the device binding
-protects it. Only those four reach the shared copy.
+**The record is open.** Utilisation, dwell time, overstay rate, every action
+ever taken — one tab, no password, no phone numbers.
 
-**One shared harbour, and what it costs.** Every phone reads and writes one
-copy on a free Firebase tier. Each crate is claimed by a transaction on its own
-slot, so the server settles races and the rules refuse a write to someone
-else's crate: a boat belongs to the phone that claimed it. With no link we
-refuse and say so, rather than show a hold nobody kept. What no rule can do
-without a paid server: count the cap across boxes, or know who the admin is.
-Both stay client-side, and we say so.
+**Landmarks, not numbers.** Auction Hall, Ice Plant, Diesel Bunk. "Box 2" must
+be memorised; a building you can see need not.
 
-
-**Admin.** Only a salted PBKDF2 hash ships, with lockout and idle expiry. It is
-a lock and a receipt, not enforcement. The hash-chained log catches accidents,
-not a re-chainer.
+**What we cannot do.** The brief forbids authentication services, so anyone
+who knows a boat's number can claim it, and nothing stops one person
+registering two. No client rule can count a cap across three boxes. The
+defences are the cap, the open board, and twenty people who know each other.
+We would rather say so than claim otherwise.
