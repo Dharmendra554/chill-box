@@ -31,12 +31,17 @@ const ERROR_KEY = {
  * asked once, then remembered — rather than sitting in the chrome of every
  * screen offering a choice nobody makes twice.
  *
- * There is no password anywhere in the skipper's product: the boat lives in
- * this device's storage and the admin decides whether it may book. A shared
- * secret would be painted on a hull within a week, and a login screen is
- * exactly the wall that keeps this crowd off the app.
+ * There is no password anywhere in the skipper's product, and now there is no
+ * approval either: the boat lives in this device's storage and may book the
+ * second it exists. A shared secret would be painted on a hull within a week,
+ * a login screen is exactly the wall that keeps this crowd off the app, and
+ * an approval queue puts a person between a skipper at 4 a.m. and a crate.
+ *
+ * This screen is reached from the booking screen now, not shown instead of
+ * it. A visitor sees the three gauges first and is asked who they are only
+ * when they want one of the crates.
  */
-export function RegisterScreen() {
+export function RegisterScreen({ onDone }: Readonly<{ onDone: () => void }>) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
   const harbourId = useDockStore((s) => s.harbourId)
@@ -62,6 +67,13 @@ export function RegisterScreen() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* A way back that is not the browser's. A visitor who taps "which
+          boat are you", changes their mind and finds no exit has been
+          trapped by the app for the sake of one question. */}
+      <button type="button" className="btn btn-block" onClick={onDone}>
+        {t('backToBoxes')}
+      </button>
+
       <section className="card flex flex-col gap-2 p-4">
         <h2 className="flex items-center gap-2 text-2xl">
           <AnchorIcon size={28} />
@@ -98,12 +110,6 @@ export function RegisterScreen() {
         <h2 className="text-2xl">{t('regTitle')}</h2>
         <p className="font-bold text-ink-2">{t('regIntro')}</p>
 
-        {/* Before the form, not after it. On a configured build the only
-            route to the demo used to run through registering in the REAL
-            roster — and a boat can never be deleted. A judge who wants the
-            sandbox must be able to reach it without leaving a fictitious
-            fisherman on a society's permanent record. */}
-        <ModeSwitch />
 
         <form
           className="flex flex-col gap-3"
@@ -190,19 +196,24 @@ export function RegisterScreen() {
                 <BoatIcon size={20} />
                 <span className="w-full truncate">{boatName(boat, lang)}</span>
                 <span className="tabular text-xs font-bold">#{boat.id}</span>
-                {/* A boat still waiting on the admin cannot book anything.
-                    Offering it here unmarked meant a skipper picked it,
-                    passed the four-digit check, reached the dock and only
-                    then found out — shape and text, never colour alone. */}
-                {boat.status !== 'active' ? (
-                  <span className="w-full truncate border-2 border-rule bg-hold-wash text-xs font-extrabold">
-                    {t(boat.status === 'pending' ? 'legendWaiting' : 'legendBlocked')}
-                  </span>
-                ) : null}
               </button>
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* Fenced, and LAST.
+          It used to sit between the intro and the Boat-name field as a
+          full-width button with nothing marking it as a demo control — one
+          tap on which reloads the page and throws away the form being typed
+          and the harbour just chosen. It is still on this screen, because on
+          a configured build this is the only route to the sandbox that does
+          not run through registering a fictitious boat in a real society's
+          permanent roster. It is simply not in the way of the form any more,
+          and it says what it will cost. */}
+      <section className="card flex flex-col gap-2 border-dashed p-3">
+        <h3 className="text-base uppercase">{t('demoTitle')}</h3>
+        <ModeSwitch />
       </section>
     </div>
   )

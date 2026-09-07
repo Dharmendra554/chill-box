@@ -25,7 +25,7 @@ import {
   storageElapsedMs,
   suggestedBoxId,
 } from '../store/selectors'
-import { selectBoxes, selectHarbour, selectMyBoat, useDockStore } from '../store/useDockStore'
+import { selectBoxes, selectHarbour, useDockStore } from '../store/useDockStore'
 import type { BoxId, GeoFix } from '../types'
 import { BookSheet } from './BookSheet'
 import { BoxCard } from './BoxCard'
@@ -58,6 +58,7 @@ export function DockScreen({
   readingAt,
   onChangeHarbour,
   onResetDemo,
+  onIdentify,
 }: Readonly<{
   band: WaveBand | null
   /** Whether a swell reading has EVER landed for this harbour. */
@@ -68,6 +69,8 @@ export function DockScreen({
   readingAt: number | null
   onChangeHarbour: () => void
   onResetDemo: () => void | Promise<void>
+  /** Open the "which boat are you" screen. Only a visitor ever sees it. */
+  onIdentify: () => void
 }>) {
   const t = useT()
   const lang = useDockStore((s) => s.lang)
@@ -75,7 +78,6 @@ export function DockScreen({
   const boxes = useDockStore(selectBoxes)
   const now = useNow()
   const myBoatId = useDockStore((s) => s.myBoatId)
-  const boat = useDockStore(selectMyBoat)
   const reserve = useDockStore((s) => s.reserve)
   const cancelHold = useDockStore((s) => s.cancelHold)
   const deposit = useDockStore((s) => s.deposit)
@@ -103,32 +105,54 @@ export function DockScreen({
     [boxes, t],
   )
 
-  // Every hook above this line: the guard must not change hook order.
-  if (!myBoatId || !boat) return null
-
-  const state = boatState(boxes, myBoatId)
-  const myBoxId = activeBoxId(boxes, myBoatId)
-  const quota = remainingQuota(boxes, myBoatId)
-  const mySlots = slotsForBoat(boxes, myBoatId)
-  const approved = boat.status === 'active'
-  const canBook = approved && state === 'idle' && quota > 0
+  /**
+   * Everything works without a boat except booking one.
+   *
+   * This used to `return null` until a skipper had identified themselves, so
+   * the first thing anyone opening the link met was a registration form —
+   * three fields and a grid of twenty-one hull buttons — with no capacity
+   * gauge anywhere on it. That failed the one thing the app exists to do in
+   * one glance, and it failed the brief's own constraint that the thing must
+   * be testable the moment it opens.
+   *
+   * Look first, say who you are when you want a crate. A visitor gets the
+   * chart, the three gauges, who is holding what and the safety card; the
+   * only thing withheld is the booking action, and tapping a box opens the
+   * box instead of nothing.
+   */
+  const state = myBoatId ? boatState(boxes, myBoatId) : 'idle'
+  const myBoxId = myBoatId ? activeBoxId(boxes, myBoatId) : null
+  const quota = myBoatId ? remainingQuota(boxes, myBoatId) : 0
+  const mySlots = myBoatId ? slotsForBoat(boxes, myBoatId) : []
+  const canBook = Boolean(myBoatId) && state === 'idle' && quota > 0
   const suggested = suggestedBoxId(boxes, 1)
   const nav = geo.fix && myBoxId ? navigateTo(geo.fix, harbour, myBoxId) : null
 
   return (
     <div className="flex flex-col gap-4">
-      {state === 'idle' ? (
+      {!myBoatId ? (
+        <section className="card flex flex-col gap-2 border-sea p-4">
+          <h2 className="flex items-center gap-2 text-2xl">
+            <CompassIcon size={26} />
+            {t('visitorTitle')}
+          </h2>
+          <p className="font-bold text-ink-2">{t('visitorBody')}</p>
+          <button type="button" className="btn btn-lg btn-primary btn-block" onClick={onIdentify}>
+            {t('visitorGo')}
+          </button>
+        </section>
+      ) : state === 'idle' ? (
         <section className="card flex flex-col gap-1 p-4">
           <h2 className="flex items-center gap-2 text-2xl">
             <CompassIcon size={26} />
             {t('navTitle')}
           </h2>
           {/* The instruction has to match what a tap will actually do for
-              THIS boat. A boat still waiting on approval cannot book, and
-              telling it to tap a box to book one is a promise the screen
-              cannot keep. */}
+              THIS boat. A boat already holding its two crates cannot book a
+              third, and telling it to tap a box to book one is a promise the
+              screen cannot keep. */}
           <p className="font-bold text-ink-2">{t(canBook ? 'navTapMap' : 'navTapMapView')}</p>
-          <p className="tabular text-sm font-extrabold">{t('quotaLeft', quota)}</p>
+          <p className="tabular text-sm font-extrabold">{t(quota === 1 ? 'quotaLeft1' : 'quotaLeft', quota)}</p>
         </section>
       ) : (
         <MyStatusCard
@@ -139,7 +163,6 @@ export function DockScreen({
           elapsedMs={storageElapsedMs(boxes, myBoatId, now)}
           plannedOutAt={plannedOutAtForBoat(boxes, myBoatId)}
           now={now}
-          approved={approved}
           onDeposit={() => setPlanOpen(true)}
           onCancel={cancelHold}
           onRelease={release}
@@ -417,7 +440,7 @@ function BookingConfirmed({
           {t('bookedTitle')}
         </h2>
         <p className="text-lg font-extrabold">
-          {t('storedIn', t(boxId), crates)}
+          {t(crates === 1 ? 'storedIn1' : 'storedIn', t(boxId), crates)}
         </p>
         <p className="text-sm font-extrabold uppercase text-ink-2">{t('bookedCode')}</p>
         <p className="tabular border-3 border-rule bg-card px-3 py-3 text-center text-3xl font-extrabold">
@@ -438,7 +461,6 @@ function BookingConfirmed({
  */
 function MyStatusCard({
   state,
-  approved,
   boxId,
   crates,
   holdMs,
@@ -450,8 +472,6 @@ function MyStatusCard({
   onRelease,
 }: Readonly<{
   state: 'hold' | 'stored' | 'overstay'
-  /** A blocked or pending boat may look, but not move crates. */
-  approved: boolean
   boxId: BoxId | null
   crates: number
   holdMs: number
@@ -473,7 +493,7 @@ function MyStatusCard({
           <CrateIcon size={26} />
           {t('holdTitle')}
         </h2>
-        <p className="text-base font-bold">{t('holdBody', boxName, crates)}</p>
+        <p className="text-base font-bold">{t(crates === 1 ? 'holdBody1' : 'holdBody', boxName, crates)}</p>
         <p className="flex items-baseline gap-2">
           <span className="text-sm font-extrabold uppercase">{t('holdLeft')}</span>
           <span className="tabular text-3xl font-extrabold">{formatCountdown(holdMs)}</span>
@@ -481,21 +501,17 @@ function MyStatusCard({
         <button
           type="button"
           className="btn btn-lg btn-primary btn-block"
-          disabled={!approved}
           title={t('hintDeposit')}
           onClick={onDeposit}
         >
           {t('deposited')}
         </button>
-        {!approved ? <BlockedNote /> : null}
-        {approved ? (
-          <ConfirmButton
-            className="btn btn-ghost btn-block"
-            label={t('cancelHold')}
-            hint={t('hintCancelHold')}
-            onConfirm={onCancel}
-          />
-        ) : null}
+        <ConfirmButton
+          className="btn btn-ghost btn-block"
+          label={t('cancelHold')}
+          hint={t('hintCancelHold')}
+          onConfirm={onCancel}
+        />
       </section>
     )
   }
@@ -513,7 +529,7 @@ function MyStatusCard({
         {t(late ? 'lateTitle' : 'storedTitle')}
       </h2>
       <p className="text-base font-bold">
-        {late ? t('lateBody') : t('storedIn', boxName, crates)}
+        {late ? t('lateBody') : t(crates === 1 ? 'storedIn1' : 'storedIn', boxName, crates)}
       </p>
       <dl className="grid grid-cols-2 gap-2 text-sm font-bold">
         <div>
@@ -530,16 +546,12 @@ function MyStatusCard({
       {plannedOutAt !== null ? (
         <p className="tabular text-sm font-extrabold">{formatGap(plannedOutAt - now, lang)}</p>
       ) : null}
-      {approved ? (
-        <ConfirmButton
-          className={cx('btn btn-lg btn-block', late ? 'btn-warn' : 'btn-primary')}
-          label={t('release')}
-          hint={t('hintRelease')}
-          onConfirm={onRelease}
-        />
-      ) : (
-        <BlockedNote />
-      )}
+      <ConfirmButton
+        className={cx('btn btn-lg btn-block', late ? 'btn-warn' : 'btn-primary')}
+        label={t('release')}
+        hint={t('hintRelease')}
+        onConfirm={onRelease}
+      />
     </section>
   )
 }
@@ -616,15 +628,3 @@ function DemoTools({
   )
 }
 
-/**
- * Why a control is dead. A disabled button with no reason is just a broken
- * app; the skipper needs to know the admin blocked the boat, not guess.
- */
-function BlockedNote() {
-  const t = useT()
-  return (
-    <output className="block border-3 border-rule bg-full px-3 py-2 font-extrabold text-full-ink">
-      {t('blockedBody')}
-    </output>
-  )
-}

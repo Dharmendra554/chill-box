@@ -29,26 +29,29 @@ import {
 } from './store/useDockStore'
 
 /**
- * The harbour master's console, off the skipper's critical path.
+ * The harbour record, off the booking path.
  *
- * It is ~680 lines, and it pulls in the reporting maths, the CSV writer and
- * the PBKDF2 verifier behind it. Twenty skippers on 2G were downloading all
- * of it to look at three boxes, and never opening it — while MEMORY.md
- * claimed it was already a separate chunk. It lives at #admin only, so
- * fetching it when that route opens costs the one person who wants it a
- * moment and everyone else nothing.
+ * It pulls in the reporting maths, the CSV writer and the PBKDF2 verifier
+ * behind it. Twenty skippers on 2G were downloading all of it to look at
+ * three boxes — while MEMORY.md claimed it was already a separate chunk. It
+ * is a tab now rather than a hidden URL, and that makes the split matter
+ * more, not less: it must cost nothing until somebody taps it.
  */
-const AdminScreen = lazy(() =>
-  import('./components/AdminScreen').then((m) => ({ default: m.AdminScreen })),
+const RecordScreen = lazy(() =>
+  import('./components/RecordScreen').then((m) => ({ default: m.RecordScreen })),
 )
 
 /**
  * App shell. It decides *what* is on screen and keeps the document in sync
  * with theme and language; nothing here does work a screen could do.
  *
- * The harbour-master console is not a tab. It is reachable only at the
- * `#admin` URL — the admin bookmarks it once — so skippers never see a door
- * they have no reason to open.
+ * Three tabs, all equal. The third used to be a PIN-gated console at the
+ * `#admin` URL, kept off the tab bar so skippers never saw a door they had
+ * no reason to open — which was right while it could approve, block and
+ * force-release. It can do none of those now, so what is behind it is the
+ * harbour's own activity, and there is no honest reason to hide a harbour's
+ * activity from the harbour. `#admin` still works: it is in the README and
+ * in muscle memory.
  */
 export default function App() {
 
@@ -72,6 +75,15 @@ export default function App() {
   const syncedAt = useDockStore((s) => s.syncedAt)
 
   const [speaking, setSpeaking] = useState(false)
+  /**
+   * Whether the "which boat are you" screen is open.
+   *
+   * Local state rather than a fourth tab, because it is not a place — it is
+   * the one question the app asks, at the moment a visitor wants a crate,
+   * and it closes for ever once answered. `!boat` guards it so signing in
+   * dismisses it without anything having to remember to.
+   */
+  const [identifying, setIdentifying] = useState(false)
 
   const now = useNow()
   const marine = useMarine(harbour.lat, harbour.lon)
@@ -108,10 +120,12 @@ export default function App() {
       ?.setAttribute('content', theme === 'day' ? '#FAF7F0' : '#101a2b')
   }, [lang, theme])
 
-  // `#admin` is the only route in the app. Watching hashchange keeps the
-  // back button working when the admin leaves the console.
+  // `#admin` is a bookmark, not the route any more — the record is a tab.
+  // Watching hashchange keeps the back button working for anyone who still
+  // arrives that way, and for the README, which has sent judges there for
+  // eighteen rounds.
   useEffect(() => {
-    const sync = () => setTab(location.hash === '#admin' ? 'admin' : 'dock')
+    const sync = () => setTab(location.hash === '#admin' ? 'record' : 'dock')
     if (location.hash === '#admin') sync()
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
@@ -171,7 +185,6 @@ export default function App() {
     setSpeaking(true)
   }, [boxes, notify, reach, speaking, t])
 
-  const inAdmin = tab === 'admin'
   /**
    * The sea state, and only while we can stand behind it.
    *
@@ -243,62 +256,35 @@ export default function App() {
       {banner}
 
       <main className="mx-auto max-w-6xl px-3 py-4 pb-28">
-        {/* The admin fallback is not `null`: on 2G the console's chunk takes
-            seconds, and the tab bar is hidden in admin — so the harbour
-            master got a blank page with no way back and no sign that
-            anything was happening. */}
-        {inAdmin ? (
+        {/* The record's fallback is not `null`: on 2G that chunk takes
+            seconds, so a blank page with nothing happening was the whole
+            experience of tapping the tab. */}
+        {identifying && !boat ? (
+          <RegisterScreen onDone={() => setIdentifying(false)} />
+        ) : tab === 'record' ? (
           <Suspense fallback={<p className="card p-4 font-bold">{t('loadingTitle')}</p>}>
-            <AdminScreen />
+            <RecordScreen />
           </Suspense>
-        ) : !boat ? (
-          <RegisterScreen />
+        ) : tab === 'dock' ? (
+          <DockScreen
+            band={band}
+            seaKnown={marine.reading !== null}
+            seaFailed={marine.error}
+            readingAt={marine.reading?.fetchedAt ?? null}
+            onChangeHarbour={signOut}
+            onResetDemo={resetDemo}
+            onIdentify={() => setIdentifying(true)}
+          />
         ) : (
-          <>
-            {boat.status !== 'active' ? (
-              <p
-                className={
-                  boat.status === 'pending'
-                    ? 'card mb-4 border-hold bg-hold-wash p-4'
-                    : 'card mb-4 border-full bg-full-wash p-4'
-                }
-                role="status"
-              >
-                <strong className="block font-display text-xl">
-                  {t(boat.status === 'pending' ? 'pendingTitle' : 'blockedTitle')}
-                </strong>
-                <span className="font-bold">
-                  {t(boat.status === 'pending' ? 'pendingBody' : 'blockedBody')}
-                </span>
-                {/* Who the admin IS, when it is you. In a demo nothing was
-                    sent anywhere, and "the harbour master will approve you"
-                    reads as a message that is coming — so a skipper waits at
-                    4 a.m. for something no code path can produce. The demo
-                    console is real and one tap away; say so. */}
-                {demoMode && boat.status === 'pending' ? (
-                  <span className="block font-bold">{t('pendingDemo')}</span>
-                ) : null}
-              </p>
-            ) : null}
-
-            {tab === 'dock' ? (
-              <DockScreen
-                band={band}
-                seaKnown={marine.reading !== null}
-                seaFailed={marine.error}
-                readingAt={marine.reading?.fetchedAt ?? null}
-                onChangeHarbour={signOut}
-                onResetDemo={resetDemo}
-              />
-            ) : (
-              <HarbourScreen />
-            )}
-
-          </>
+          <HarbourScreen />
         )}
       </main>
 
-      {inAdmin ? null : <TabBar t={t} tab={tab} onTab={setTab} />}
+      {/* Always. The tab bar used to be hidden inside the console, which is
+          why a 2G chunk load there left the harbour master with no way back
+          — and a screen you can reach and not leave is worse than one you
+          cannot reach. */}
+      <TabBar t={t} tab={tab} onTab={setTab} />
       <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   )

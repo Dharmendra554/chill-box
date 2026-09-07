@@ -12,6 +12,9 @@ const S = {
 
   tabDock: { te: 'బుకింగ్', en: 'Book' },
   tabHarbour: { te: 'హార్బర్', en: 'Harbour' },
+  // One Telugu word, because three tabs at 320 px are 106 px each and
+  // Telugu cannot be tracked tighter — AGENTS.md §4. "పుస్తకం", the book.
+  tabRecord: { te: 'పుస్తకం', en: 'Record' },
 
   day: { te: 'పగలు', en: 'Day' },
   night: { te: 'రాత్రి', en: 'Night' },
@@ -36,6 +39,7 @@ const S = {
   modeGoLive: { te: 'నిజమైన హార్బర్‌కు మారు', en: 'Switch to the real harbour' },
   modeSwitchFailed: { te: 'ఈ ఫోన్ ఎంపికను గుర్తుంచుకోలేకపోతోంది — మారడం కుదరలేదు.', en: 'This phone cannot remember the choice, so the mode did not change.' },
   modeHint: { te: 'మారినప్పుడు యాప్ ఒకసారి రీలోడ్ అవుతుంది. బుకింగ్ నియమాలు రెండింటిలోనూ ఒకటే.', en: 'Switching reloads the app once. The booking rules are identical in both.' },
+  modeReloads: { te: 'రీలోడ్ వల్ల పైన టైప్ చేసినది పోతుంది.', en: 'That reload discards anything typed above.' },
 
   // — Registration ————————————————————————————————
   regTitle: { te: 'మీ బోటును నమోదు చేయండి', en: 'Register your boat' },
@@ -54,15 +58,18 @@ const S = {
   errMobile: { te: '10 అంకెల మొబైల్ నంబర్ రాయండి', en: 'Enter a 10-digit mobile number' },
   errMobileTaken: { te: 'ఈ నంబర్ ఇప్పటికే నమోదైంది', en: 'That number is already registered' },
 
-  pendingTitle: { te: 'అడ్మిన్ ఆమోదం కోసం వేచి ఉంది', en: 'Waiting for admin approval' },
-  // Short forms, for the claim grid where a full sentence does not fit.
-  legendWaiting: { te: 'ఆమోదం కోసం', en: 'Not approved' },
-  legendBlocked: { te: 'నిలిపివేయబడింది', en: 'Blocked' },
-  pendingBody: { te: 'హార్బర్ అడ్మిన్ ఆమోదించగానే మీరు బాక్స్ బుక్ చేయవచ్చు. ఇప్పటికీ అందరి స్థలం చూడవచ్చు.', en: 'You can book a box the moment the harbour admin approves you. Until then you can still watch every box.' },
-  // Only in demo, where the approver is the person holding the phone.
-  pendingDemo: { te: 'ఈ డెమోలో అడ్మిన్ మీరే: #admin తెరిచి (పిన్ 2468) ఈ బోటును ఆమోదించండి.', en: 'In this demo you are the harbour master: open #admin (PIN 2468) and approve this boat.' },
-  blockedTitle: { te: 'మీ బోటు ఆపబడింది', en: 'Your boat is on hold' },
-  blockedBody: { te: 'హార్బర్ అడ్మిన్‌ను సంప్రదించండి.', en: 'Please speak to the harbour admin.' },
+  // Nobody approves anybody, so a boat is either on the roster or it is new.
+  // `legendWaiting`, `legendBlocked`, `pendingTitle`, `pendingBody`,
+  // `pendingDemo`, `blockedTitle` and `blockedBody` are gone with the
+  // approval queue that needed them.
+  legendNew: { te: 'కొత్తది', en: 'New' },
+  backToBoxes: { te: '← బాక్సులకు తిరిగి', en: '← Back to the boxes' },
+
+  // Shown to anyone who has not said which boat they are. They can already
+  // see everything; this is the one thing they cannot do yet.
+  visitorTitle: { te: 'క్రేట్ కావాలా?', en: 'Want a crate?' },
+  visitorBody: { te: 'బాక్సుల ఖాళీ ఎవరైనా చూడవచ్చు. బుక్ చేయాలంటే మాత్రం మీ బోటు ఏదో చెప్పండి. ఎవరి అనుమతీ అక్కర్లేదు.', en: 'Anyone can see how full the boxes are. To book one, say which boat you are — nobody has to approve you.' },
+  visitorGo: { te: 'నా బోటు ఏదంటే…', en: 'Which boat I am…' },
 
   // — Dock ————————————————————————————————————————
   legendFree: { te: 'ఖాళీ', en: 'Free' },
@@ -71,12 +78,23 @@ const S = {
   legendLate: { te: 'ఆలస్యం', en: 'Late' },
   full: { te: 'నిండింది', en: 'FULL' },
   crates: { te: 'క్రేట్లు', en: 'crates' },
-  // Telugu uses the same word for one and many; English does not, and
-  // "1 crates" on a receipt reads like a bug to the person holding it.
+  /*
+   * Telugu DOES inflect for number, and this file used to say it did not.
+   *
+   * "క్రేట్లు" is the plural; the singular is "క్రేట్". So the receipt, the
+   * hold card and the quota line all read "1 క్రేట్లు" — one crates — in the
+   * app's primary language, to readers who are exactly the people a
+   * disagreeing noun trips up. `crate1` had the correct singular two lines
+   * below the whole time.
+   *
+   * Every count that can be 1 now has both forms and the call site picks,
+   * the way `crateOne`/`crates` always did for English.
+   */
   crateOne: { te: 'క్రేట్', en: 'crate' },
   freeCrates: { te: '{0} ఖాళీ', en: '{0} free' },
   suggested: { te: 'ఎక్కువ ఖాళీ', en: 'Most room' },
   quotaLeft: { te: 'మీకు ఇంకా {0} క్రేట్లు', en: '{0} crates left for you' },
+  quotaLeft1: { te: 'మీకు ఇంకా {0} క్రేట్', en: '{0} crate left for you' },
 
   pickTitle: { te: 'ఏ బాక్స్ కావాలి?', en: 'Which box do you want?' },
   cratesTitle: { te: 'ఎన్ని క్రేట్లు?', en: 'How many crates?' },
@@ -85,7 +103,8 @@ const S = {
   bookIn: { te: '{0} లో బుక్ చేయి', en: 'Book in {0}' },
 
   holdTitle: { te: 'హోల్డ్ యాక్టివ్', en: 'Hold active' },
-  holdBody: { te: '{0}లో {1} క్రేట్లు మీ పేరున ఉన్నాయి.', en: '{1} crate(s) held for you in {0}.' },
+  holdBody: { te: '{0}లో {1} క్రేట్లు మీ పేరున ఉన్నాయి.', en: '{1} crates held for you in {0}.' },
+  holdBody1: { te: '{0}లో {1} క్రేట్ మీ పేరున ఉంది.', en: '{1} crate held for you in {0}.' },
   holdLeft: { te: 'మిగిలిన సమయం', en: 'Time left' },
   deposited: { te: 'చేపలు పెట్టాను', en: 'Fish deposited' },
   cancelHold: { te: 'హోల్డ్ రద్దు', en: 'Cancel hold' },
@@ -95,7 +114,8 @@ const S = {
   planHours: { te: '{0} గంటల్లో', en: 'In {0} h' },
 
   storedTitle: { te: 'మీ చేపలు భద్రంగా ఉన్నాయి', en: 'Your fish are secured' },
-  storedIn: { te: '{0} · {1} క్రేట్లు', en: '{0} · {1} crate(s)' },
+  storedIn: { te: '{0} · {1} క్రేట్లు', en: '{0} · {1} crates' },
+  storedIn1: { te: '{0} · {1} క్రేట్', en: '{0} · {1} crate' },
   since: { te: 'పెట్టినది', en: 'Stored' },
   planned: { te: 'తీసుకెళ్లే సమయం', en: 'Collect by' },
   release: { te: 'అమ్మకం అయింది — ఖాళీ చేశాను', en: 'Sold — release the slot' },
@@ -241,7 +261,6 @@ const S = {
   // sends them across the harbour for nothing. The phone that claimed it is
   // the only answer this app has.
   errClaimedElsewhere: { te: 'ఈ బోటు వేరే ఫోన్‌లో ఉంది. దాని ఫోన్‌లోనే బుక్ చేయాలి.', en: 'This boat is held on another phone. Only that phone can book for it.' },
-  errNotApproved: { te: 'అడ్మిన్ ఆమోదం వచ్చాకే బుక్ చేయగలరు.', en: 'You can book once the admin approves your boat.' },
   errQuota: { te: 'ఒక్క బోటుకి {0} క్రేట్లు మాత్రమే. మీకు ఇంకా {1} మిగిలింది.', en: 'Max {0} crates per boat. You have {1} left.' },
   holdExpired: { te: '4 గంటల హోల్డ్ ముగిసింది. స్థలం తిరిగి పూల్‌లోకి వెళ్లింది.', en: 'The 4-hour hold ended. That slot is back in the pool.' },
   raceLost: { te: 'ఈలోపు ఆ స్థలం వేరే బోటు తీసుకుంది. మరో బాక్స్ చూడండి.', en: 'Another boat took that space just now. Try another box.' },
@@ -258,20 +277,21 @@ const S = {
   idle: { te: 'ఖాళీ', en: 'Idle' },
 
   // — Admin ———————————————————————————————————————
-  adminTitle: { te: 'హార్బర్ అడ్మిన్', en: 'Harbour admin' },
+  adminTitle: { te: 'హార్బర్ పుస్తకం', en: 'Harbour record' },
   adminPinLabel: { te: 'అడ్మిన్ పిన్', en: 'Admin PIN' },
   adminUnlock: { te: 'తెరవండి', en: 'Unlock' },
   adminWrongPin: { te: 'పిన్ తప్పు', en: 'Wrong PIN' },
   adminLock: { te: 'మూసివేయి', en: 'Lock' },
-  adminApprovals: { te: 'ఆమోదం కోసం', en: 'Waiting for approval' },
-  adminNoApprovals: { te: 'పెండింగ్ ఏమీ లేదు.', en: 'Nothing pending.' },
-  approve: { te: 'ఆమోదించు', en: 'Approve' },
-  reject: { te: 'తిరస్కరించు', en: 'Reject' },
-  block: { te: 'ఆపు', en: 'Block' },
-  unblock: { te: 'తిరిగి ఇవ్వు', en: 'Restore' },
+  // `adminApprovals`, `adminNoApprovals`, `approve`, `reject`, `block`,
+  // `unblock` and `adminForceRelease` went with the powers they named.
   adminLive: { te: 'ప్రస్తుత వాడకం', en: 'Live usage' },
-  adminForceRelease: { te: 'బలవంతంగా ఖాళీ', en: 'Force release' },
-  adminForceWait: { te: 'పెట్టి 6 గంటలు దాటాకే ఖాళీ చేయగలరు', en: 'Can be cleared 6 h after it was stored' },
+  recordIntro: { te: 'హార్బర్ రికార్డు. అందరికీ కనిపిస్తుంది, ఎవరూ దీన్ని మార్చలేరు.', en: 'The harbour record. Everyone can see it; nobody can edit it.' },
+  reclaimWhen: { te: 'పెట్టి {0} గంటలు దాటితే స్థలం వెనక్కి', en: 'Space returns {0} h after it was stored' },
+  reclaimNote: { te: 'ఏ క్రేట్‌నూ ఎవరూ బలవంతంగా తీయరు. {0} గంటలు దాటితే స్థలం దానంతట అదే ఖాళీ అవుతుంది.', en: 'Nobody clears anyone’s crate by hand. After {0} h the space frees itself.' },
+  lateListTitle: { te: 'తీసుకెళ్లని క్రేట్లు', en: 'Not collected' },
+  lateListBody: { te: 'ఈ స్థలాలు హార్బర్ వెనక్కి తీసుకుంది. చేపలు ఇంకా బాక్స్‌లోనే ఉండవచ్చు — తీసుకెళ్లండి.', en: 'The harbour took these spaces back. The fish may still be in the box — please collect it.' },
+  lateListRow: { te: '{0} · {1} క్రేట్లు', en: '{0} · {1} crates' },
+  lateListRow1: { te: '{0} · {1} క్రేట్', en: '{0} · {1} crate' },
   adminMonth: { te: 'నెల', en: 'Month' },
   adminTrips: { te: 'ట్రిప్‌లు', en: 'Trips' },
   adminCrates: { te: 'క్రేట్లు', en: 'Crates' },

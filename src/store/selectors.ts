@@ -1,7 +1,25 @@
-import { HOLD_MS, OVERSTAY_MS } from '../lib/time'
+import { DAY_MS, HOLD_MS, OVERSTAY_MS, RECLAIM_MS } from '../lib/time'
 import type { BoatState, BoxId, ColdBox, Slot, Species } from '../types'
 
 export const QUOTA = 2
+
+/** How long a boat is shown as newly arrived. */
+const NEW_BOAT_MS = 7 * DAY_MS
+
+/**
+ * Has this boat only just started using the boxes?
+ *
+ * The whole of what replaced admin approval. Nobody vets a new boat and
+ * nobody can stop it booking — but the harbour can see it turned up, which
+ * is what the twenty would see on the quay anyway and is the only honest
+ * form of oversight an app with no server-side authority can offer.
+ *
+ * Derived from `registeredAt`, never stored. A stored flag would need
+ * something to clear it, and that something would be another power.
+ */
+export function joinedRecently(registeredAt: number, now: number): boolean {
+  return now - registeredAt < NEW_BOAT_MS
+}
 
 /**
  * Collection windows a skipper can promise, in hours. All are strictly under
@@ -141,29 +159,48 @@ export interface Occupancy {
 }
 
 /**
- * May the harbour take this crate back over its owner's head?
- *
- * Only the crates the harbour has given up on — those past their overstay
- * hour, which `applyTick` marks from `depositedAt`. That is exactly the
- * condition the database rule derives, from the same timestamp and the same
- * constant, so the button on screen and the write it performs agree.
+ * The crates the harbour is taking back right now, one entry per box.
  *
  * PER SLOT, never per row. A row aggregates every crate a boat holds in one
- * box, and asking `row.status === 'overstay'` was true when ANY of them was
- * overdue — so a boat with a crate from 04:00 and another from 09:00 offered
- * a live button at 10:00, the rules refused the younger crate, and the whole
- * force release failed. `overdueIndexes` is the answer to the question the
- * rules will actually be asked.
+ * box, so asking whether the ROW is overdue was true when any one of them
+ * was — a boat with a crate from 04:00 and another from 09:00 offered a
+ * release at 10:00, the database rightly refused the younger crate, and the
+ * whole write failed. This answers the question the rules will actually be
+ * asked: which slot indexes, exactly.
  *
- * They did not agree before. The admin console offered Force release on
- * every stored crate, and the rule refused it for any boat a skipper had
- * claimed — a dead button whose failure only ever appeared in production,
- * because every boat in the seeded demo roster is unbound. An admin has no
- * remedy for a crate the rules will not let them touch, so the honest thing
- * is not to offer the tap until the harbour is entitled to it.
+ * Derived from `depositedAt`, never from the stored `overstay` flag. That
+ * flag is raised by `applyTick` on each phone's own copy and is never written
+ * to the shared one, so anything waiting for it would never fire — the bug
+ * that once made a rotting crate unclearable by the entire harbour, harbour
+ * master included. One rule, one source of truth: the timestamp. The
+ * database rule derives its own permission the same way, from the same
+ * field, so what this returns is exactly what the write will be allowed to
+ * do.
+ *
+ * This replaced `forceReleasable`, which existed to decide whether to show a
+ * PIN-holder a Force release button. There is no button and no PIN-holder.
  */
-export function forceReleasable(row: Occupancy): boolean {
-  return row.overdueIndexes.length > 0
+export function reclaimable(
+  boxes: ColdBox[],
+  now: number,
+): { boatId: string; boxId: BoxId; indexes: number[] }[] {
+  const out: { boatId: string; boxId: BoxId; indexes: number[] }[] = []
+  for (const box of boxes) {
+    const byBoat = new Map<string, number[]>()
+    for (const slot of box.slots) {
+      if (slot.status !== 'occupied' && slot.status !== 'overstay') continue
+      if (!slot.boatId || slot.depositedAt === null) continue
+      if (now - slot.depositedAt < RECLAIM_MS) continue
+      const list = byBoat.get(slot.boatId)
+      if (list) list.push(slot.index)
+      else byBoat.set(slot.boatId, [slot.index])
+    }
+    for (const [boatId, indexes] of byBoat) out.push({ boatId, boxId: box.id, indexes })
+  }
+  // Stable across phones: two devices reaching the eight-hour line in the
+  // same second must attempt the same crates in the same order, or their
+  // partial writes interleave into a state neither of them predicted.
+  return out.sort((a, b) => a.boxId.localeCompare(b.boxId) || a.boatId.localeCompare(b.boatId))
 }
 
 /**

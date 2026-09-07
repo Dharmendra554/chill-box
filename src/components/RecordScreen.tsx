@@ -19,9 +19,16 @@ import {
 import { verifyAudit } from '../lib/adminAuth'
 import { saveCsv } from '../lib/download'
 import { sharedActive } from '../lib/mode'
-import { formatDayClock, formatGap, monthKey, monthLabel, startOfLocalDay } from '../lib/time'
+import {
+  formatDayClock,
+  formatGap,
+  monthKey,
+  monthLabel,
+  RECLAIM_MS,
+  startOfLocalDay,
+} from '../lib/time'
 import { cx } from '../lib/ui'
-import { forceReleasable, occupancyRows } from '../store/selectors'
+import { occupancyRows } from '../store/selectors'
 import { selectBoxes, selectHarbour, useDockStore } from '../store/useDockStore'
 import { ConfirmButton } from './ConfirmButton'
 import { HelmIcon } from '../icons/marine'
@@ -39,19 +46,34 @@ const TREND_MISSING = {
 } as const
 
 /**
- * Harbour-master console: approvals, who is holding what right now, the
- * monthly record, and the numbers that change a decision.
+ * The harbour's record of itself, open to every boat in it.
  *
- * Totals say what happened; the insight strip says what to do about it —
- * how full the boxes really run, how long a crate sits, how often the 6 h
- * rule is broken, whether demand is rising, and the hour boats actually
- * land. That last one is what staffs the quay.
+ * This was the harbour-master console: a PIN-gated screen at a hidden URL
+ * holding Approve, Reject, Block and Force release. Those four were the only
+ * authority in an app whose brief opens with "without a central harbour
+ * master", and in a real village they are a monopoly — whoever holds the PIN
+ * decides who may store fish. They are gone. A boat may book from the second
+ * it registers, and the eight-hour rule frees a blocked box with no
+ * intervention from anybody.
  *
- * Access control and its honest limits live in `lib/adminAuth.ts`.
+ * What is left was never authority: who is holding what right now, the
+ * monthly record, and the numbers that change a decision — how full the
+ * boxes really run, how long a crate sits, how often the six-hour rule is
+ * broken, whether demand is rising, and the hour boats actually land. That
+ * last one is what staffs the quay. A harbour with nobody in charge needs
+ * all of it visible to everybody, so there is no PIN on any of it.
+ *
+ * The PIN survives on `HarbourTools` alone — Publish harbour and Reset demo
+ * — which are deployment and demonstration controls, not harbour policy.
+ * Its honest limits live in `lib/adminAuth.ts`.
+ *
+ * NO MOBILE NUMBERS. This screen is open to anyone with the link now, and
+ * publishing twenty families' phone numbers on it would be a breach with no
+ * upside. `HarbourScreen` has always argued this for the roster; the CSV
+ * export dropped its Mobile column for the same reason.
  */
-export function AdminScreen() {
-  const unlocked = useDockStore((s) => s.adminUnlocked)
-  return unlocked ? <Console /> : <PinGate />
+export function RecordScreen() {
+  return <Console />
 }
 
 function PinGate() {
@@ -127,13 +149,6 @@ function Console() {
   const boxes = useDockStore(selectBoxes)
   const allLedger = useDockStore((s) => s.ledger)
   const now = useNow()
-  /** The boat whose approval is in flight, so a second tap cannot fire. */
-  const [busy, setBusy] = useState<string | null>(null)
-  const approveBoat = useDockStore((s) => s.approveBoat)
-  const rejectBoat = useDockStore((s) => s.rejectBoat)
-  const setBoatBlocked = useDockStore((s) => s.setBoatBlocked)
-  const adminRelease = useDockStore((s) => s.adminRelease)
-  const lockAdmin = useDockStore((s) => s.lockAdmin)
   const touchAdmin = useDockStore((s) => s.touchAdmin)
   const record = useDockStore((s) => s.record)
 
@@ -220,7 +235,9 @@ function Console() {
       'Boat',
       'Boat name',
       'Owner',
-      'Mobile',
+      // No Mobile column. It was here while this screen was PIN-gated and
+      // the export was one person's; the screen is open to the whole harbour
+      // now, and a CSV is the easiest thing in the world to forward.
       'Box',
       'Crates',
       'Catch',
@@ -238,7 +255,6 @@ function Console() {
         e.boatId,
         boat ? boat.nameEn : '',
         boat?.owner ?? '',
-        boat?.mobile ?? '',
         t(e.boxId),
         e.crates,
         e.species ? t(e.species) : '',
@@ -252,7 +268,6 @@ function Console() {
     void record('report.export', active, `${rows.length} rows`)
   }
 
-  const pending = boats.filter((b) => b.status === 'pending')
   const live = occupancyRows(boxes)
   const nameOf = (id: string) => {
     const boat = boats.find((b) => b.id === id)
@@ -269,62 +284,8 @@ function Console() {
             {lang === 'te' ? harbour.unionTe : harbour.unionEn}
           </p>
         </div>
-        <button type="button" className="btn h-11 min-h-11 px-3 text-sm" onClick={lockAdmin}>
-          {t('adminLock')}
-        </button>
       </header>
-
-      {/* Approvals ------------------------------------------------------ */}
-      <section className="flex flex-col gap-2">
-        <h3 className="text-xl">{t('adminApprovals')}</h3>
-        {pending.length === 0 ? (
-          <p className="card p-3 font-bold">{t('adminNoApprovals')}</p>
-        ) : (
-          pending.map((boat) => (
-            <div key={boat.id} className="card flex flex-col gap-2 border-hold bg-hold-wash p-3">
-              <div>
-                <p className="font-display text-lg font-extrabold">
-                  {boatName(boat, lang)} <span className="tabular">#{boat.id}</span>
-                </p>
-                <p className="text-sm font-bold">
-                  {boat.owner} · <span className="tabular">{boat.mobile}</span>
-                </p>
-                <p className="text-xs font-bold text-ink-2">
-                  {formatDayClock(boat.registeredAt, lang)}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {/* Awaited and guarded, like every other write on this
-                    screen. It was the one bare promise-returning handler
-                    left: a rejection inside it was unhandled, and a second
-                    tap on 2G sent a second approval. */}
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={busy === boat.id}
-                  onClick={async () => {
-                    if (busy === boat.id) return
-                    setBusy(boat.id)
-                    try {
-                      await approveBoat(boat.id)
-                    } finally {
-                      setBusy(null)
-                    }
-                  }}
-                >
-                  {t('approve')}
-                </button>
-                <ConfirmButton
-                  className="btn btn-danger"
-                  label={t('reject')}
-                  disabled={busy === boat.id}
-                  onConfirm={() => rejectBoat(boat.id)}
-                />
-              </div>
-            </div>
-          ))
-        )}
-      </section>
+      <p className="card p-3 font-bold">{t('recordIntro')}</p>
 
       {/* Live usage ----------------------------------------------------- */}
       <section className="flex flex-col gap-2">
@@ -348,17 +309,16 @@ function Console() {
                     : ''}
                 </p>
               </div>
-              {row.status === 'reserved' ? null : forceReleasable(row) ? (
-                <ConfirmButton
-                  className="btn h-11 min-h-11 px-3 text-sm btn-warn"
-                  label={t('adminForceRelease')}
-                  onConfirm={() => adminRelease(row.boatId, row.boxId, row.overdueIndexes)}
-                />
-              ) : (
-                // A true sentence rather than a button that the database
-                // will refuse. See forceReleasable.
+              {/* No button. There used to be a Force release here for
+                  whoever held the PIN, which meant a crate blocking a box
+                  waited until that one person happened to open this screen —
+                  and gave them a power the brief's own premise says nobody at
+                  this harbour has. The clock does it now, at eight hours, for
+                  everybody equally. What is left is the true sentence saying
+                  when. */}
+              {row.status === 'reserved' ? null : (
                 <p className="w-24 shrink-0 text-xs font-bold text-ink-2">
-                  {t('adminForceWait')}
+                  {t('reclaimWhen', RECLAIM_MS / 3_600_000)}
                 </p>
               )}
             </div>
@@ -513,75 +473,46 @@ function Console() {
         </div>
       </section>
 
-      {/* Roster --------------------------------------------------------- */}
-      <section className="flex flex-col gap-2">
-        <h3 className="text-xl">{t('boatsTitle')}</h3>
-        <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          {boats
-            .filter((b) => b.status !== 'pending')
-            .map((boat) => (
-              <li key={boat.id} className="card flex items-center gap-2 p-2">
-                <span className="min-w-0 flex-1 truncate font-bold">
-                  {boatName(boat, lang)} <span className="tabular">#{boat.id}</span>
-                </span>
-                <button
-                  type="button"
-                  className={cx(
-                    'btn h-11 min-h-11 px-3 text-sm',
-                    boat.status === 'blocked' ? 'btn-primary' : 'btn-ghost',
-                  )}
-                  // Awaited, and logged only if it landed. The log records
-                  // what happened, not what was attempted — the same rule
-                  // already applied to approve, reject and force release,
-                  // and missed here. A refused write left the hash-chained
-                  // audit trail asserting a block the database never made,
-                  // while the blocked skipper went on booking.
-                  // And `pending` is not `failed`. When the deadline fires the
-                  // write is still queued, the optimistic roster change is
-                  // deliberately left on screen, and the block very likely
-                  // takes effect on every phone — so logging nothing there
-                  // recreated the same hole one outcome to the left.
-                  onClick={async () => {
-                    const next = boat.status === 'blocked' ? 'active' : 'blocked'
-                    // The store writes the row, exactly as it does for
-                    // approve and reject. This used to build the same detail
-                    // string by hand here — two copies of one rule, in an
-                    // app whose contract says rules live in the store, on
-                    // the action that most needs to be attributable.
-                    await setBoatBlocked(boat.id, next === 'blocked')
-                  }}
-                >
-                  {t(boat.status === 'blocked' ? 'unblock' : 'block')}
-                </button>
-              </li>
-            ))}
-        </ul>
-      </section>
 
-      <SyncPanel />
       <AuditPanel />
+      <HarbourTools />
     </div>
   )
 }
 
 /**
- * Whether this harbour is shared, and the one-time button that makes it so.
+ * The only PIN left in the app, and what it is still for.
  *
- * With no database configured the button would be a lie, so it is not shown
- * at all — the panel says plainly that this phone is on its own instead.
+ * Publish harbour seeds a real society's database, and Reset demo clears
+ * every phone's crates. Neither is harbour policy — they are the deployment
+ * and demonstration controls — but both are destructive and neither is
+ * something twenty skippers should meet by scrolling. So they keep the lock,
+ * with its lockout and its idle expiry, while every number above them is
+ * open to everybody.
+ *
+ * The lock is on the TOOLS, not on the record. That is the whole difference
+ * between a console and a noticeboard, and it is why nothing in this file
+ * can approve, block or release anything any more.
  */
-function SyncPanel() {
+function HarbourTools() {
   const t = useT()
+  const unlocked = useDockStore((s) => s.adminUnlocked)
+  const lockAdmin = useDockStore((s) => s.lockAdmin)
   const publishHarbour = useDockStore((s) => s.publishHarbour)
   const resetDemo = useDockStore((s) => s.resetDemo)
   const [busy, setBusy] = useState(false)
 
   return (
-    <section className="flex flex-col gap-2">
+    <section className="card flex flex-col gap-2 border-dashed p-3">
       <h3 className="text-xl">{t('adminSync')}</h3>
-      <p className="card p-3 font-bold">{t(sharedActive ? 'adminSyncOn' : 'adminSyncOff')}</p>
-      {sharedActive ? (
+      <p className="font-bold">{t(sharedActive ? 'adminSyncOn' : 'adminSyncOff')}</p>
+      {!unlocked ? (
+        <PinGate />
+      ) : sharedActive ? (
         <>
+          <button type="button" className="btn btn-block" onClick={lockAdmin}>
+            {t('adminLock')}
+          </button>
           <button
             type="button"
             className="btn btn-lg btn-block"
@@ -603,7 +534,14 @@ function SyncPanel() {
           />
           <p className="text-sm font-bold text-ink-2">{t('adminResetSharedBody')}</p>
         </>
-      ) : null}
+      ) : (
+        // Unlocked, but there is no shared harbour to publish to or reset.
+        // A button that cannot work is a lie; the sentence above already
+        // says this phone is on its own.
+        <button type="button" className="btn btn-block" onClick={lockAdmin}>
+          {t('adminLock')}
+        </button>
+      )}
     </section>
   )
 }

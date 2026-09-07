@@ -17,6 +17,7 @@ import {
   AnchorIcon,
   BoatIcon,
   ChartIcon,
+  HelmIcon,
   MoonIcon,
   ShoalIcon,
   SpeakerIcon,
@@ -281,13 +282,24 @@ export function DemoBanner({ t }: Readonly<{ t: T }>) {
 }
 
 /**
- * Two tabs only. Admin is deliberately absent: a harbour-master console has
- * no business being one thumb-reach from twenty skippers' booking screen.
- * It lives at the #admin URL and behind a PIN.
+ * Three tabs, and the third one is the change.
+ *
+ * It used to say "two tabs only. Admin is deliberately absent: a
+ * harbour-master console has no business being one thumb-reach from twenty
+ * skippers' booking screen." That was true of a console holding Approve,
+ * Reject, Block and Force release. It holds none of them. What is left is
+ * how full the boxes run, how long a crate sits, how often the six-hour rule
+ * is broken and every action anyone has taken — the harbour's own record of
+ * itself, and there is no honest argument for keeping that from the harbour.
+ *
+ * At 320 px these are 106 px each and every label is Telugu, which cannot be
+ * tracked tighter (AGENTS.md §4). If a word stops fitting, the word changes;
+ * the tab does not get smaller.
  */
 const TABS = [
   { id: 'dock', key: 'tabDock', Icon: ChartIcon },
   { id: 'harbour', key: 'tabHarbour', Icon: ShoalIcon },
+  { id: 'record', key: 'tabRecord', Icon: HelmIcon },
 ] as const
 
 export function TabBar({ t, tab, onTab }: Readonly<{ t: T; tab: Tab; onTab: (tab: Tab) => void }>) {
@@ -296,7 +308,7 @@ export function TabBar({ t, tab, onTab }: Readonly<{ t: T; tab: Tab; onTab: (tab
       className="fixed inset-x-0 bottom-0 z-[200] border-t-3 border-rule bg-paper pb-[env(safe-area-inset-bottom)]"
       aria-label={t('appName')}
     >
-      <ul className="mx-auto grid max-w-6xl grid-cols-2">
+      <ul className="mx-auto grid max-w-6xl grid-cols-3">
         {TABS.map(({ id, key, Icon }) => {
           const active = tab === id
           return (

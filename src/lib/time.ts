@@ -1,5 +1,24 @@
 export const HOLD_MS = 4 * 60 * 60 * 1000
 export const OVERSTAY_MS = 6 * 60 * 60 * 1000
+
+/**
+ * When the harbour takes the space back by itself.
+ *
+ * Two hours after the overstay flag goes amber, and the second half of a
+ * deliberate escalation: at six hours the whole harbour can see the crate is
+ * blocking a box, and at eight the box stops waiting. Nobody presses
+ * anything. There used to be a Force release button on a PIN-gated console,
+ * which meant a rotting crate blocked a box until whoever held the PIN
+ * happened to open it — and gave that person a power the brief's own premise
+ * says nobody at this harbour has.
+ *
+ * The gap is two hours because the flag has to be worth something first: a
+ * skipper whose crate goes amber at six has a real chance to come for it
+ * before the space is reassigned, and everyone else can see the clock
+ * running. Reclaiming at six would make the warning and the consequence the
+ * same event.
+ */
+export const RECLAIM_MS = 8 * 60 * 60 * 1000
 export const HOUR_MS = 60 * 60 * 1000
 export const MINUTE_MS = 60 * 1000
 export const DAY_MS = 24 * HOUR_MS

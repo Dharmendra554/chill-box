@@ -37,7 +37,11 @@ export function ModeSwitch() {
       >
         {t(demoMode ? 'modeGoLive' : 'modeGoDemo')}
       </button>
+      {/* What it costs, before the tap rather than after it. Switching
+          reloads the page — that is the whole design, see MEMORY.md §26 —
+          which discards anything typed into the registration form above. */}
       <p className="text-xs font-bold text-ink-2">{t('modeHint')}</p>
+      <p className="text-xs font-bold text-ink-2">{t('modeReloads')}</p>
     </div>
   )
 }

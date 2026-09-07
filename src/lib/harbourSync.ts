@@ -492,7 +492,10 @@ export function watchRoster(
           // digits — all the claim check reads, and all we are willing to
           // publish. `signInAs` compares `slice(-4)`, so both shapes work.
           mobile: b.mobileLast4,
-          status: b.status,
+          // `b.status` is read and DISCARDED. The field still exists in the
+          // shared copy, written by builds that had approval and blocking in
+          // them, and a phone running an old bundle keeps writing it. It no
+          // longer means anything: a boat on the roster may book.
           registeredAt: b.registeredAt,
         })),
       )
@@ -717,7 +720,24 @@ interface WireBoat {
   nameTe?: string
   owner: string
   mobileLast4: string
-  status: Boat['status']
+  /**
+   * Always `'active'`, and only because the published rules still ask for it.
+   *
+   * The app has no boat status any more — no approval, no blocking — so this
+   * carries no information. It is still SENT because the rules currently
+   * live in the database list `status` in `hasChildren`, and a client that
+   * stopped sending it would have every roster write refused: registration
+   * bricked, blamed on the network. That is not a hypothetical, it is
+   * MEMORY.md §16, and it happened the last time this client and those rules
+   * disagreed about one field.
+   *
+   * The new rules file makes it optional and pins it to `'active'` when
+   * present, which closes the biggest hole those rules documented about
+   * themselves — any signed-in phone could set any boat to `'blocked'` and
+   * stop the whole harbour booking. Once those rules are deployed and no old
+   * bundle is in use, this field can go.
+   */
+  status: 'active'
   registeredAt: number
   /** The device that holds this boat. Absent means nobody has claimed it. */
   uid?: string
@@ -738,7 +758,7 @@ function toWireBoat(boat: Boat): WireBoat {
     // `boat.mobile.slice(-4)` and threw on the first such record, which took
     // the entire Publish harbour down — twenty good boats lost to one bad row.
     mobileLast4: String(boat.mobile ?? '').slice(-4),
-    status: boat.status,
+    status: 'active',
     registeredAt: boat.registeredAt,
   }
 }
@@ -1108,7 +1128,11 @@ function ownSlots(
  * phone's own copy by `applyTick`. The rules use the same timestamp and the
  * same constant, so the row, the screen and the database agree.
  */
-function rowsFor(freed: Freed[], now: number): Omit<LedgerEntry, 'id' | 'harbourId'>[] {
+function rowsFor(
+  freed: Freed[],
+  now: number,
+  reclaimed: boolean,
+): Omit<LedgerEntry, 'id' | 'harbourId'>[] {
   const rows = new Map<BoxId, Omit<LedgerEntry, 'id' | 'harbourId'>>()
   for (const { boxId, slot } of freed) {
     const depositedAt = slot.depositedAt ?? now
@@ -1123,6 +1147,7 @@ function rowsFor(freed: Freed[], now: number): Omit<LedgerEntry, 'id' | 'harbour
         depositedAt,
         releasedAt: now,
         overstay: late,
+        reclaimed,
       })
       continue
     }
@@ -1302,6 +1327,7 @@ async function releaseRemoteImpl(
   boatId: string,
   onlyBoxId?: BoxId,
   onlyIndexes?: number[],
+  reclaimed = false,
 ): Promise<RemoteResult> {
   const freed = await mutateOwnSlots(
     harbourId,
@@ -1328,7 +1354,7 @@ async function releaseRemoteImpl(
     // the society bills off and no rule can ever delete a row, so that
     // charged a fisherman for a crate still sitting in the box.
     await Promise.all(
-      rowsFor(freed.freed, serverNow()).map((row) =>
+      rowsFor(freed.freed, serverNow(), reclaimed).map((row) =>
         a.set(a.push(a.ref(a.db, `harbours/${harbourId}/ledger`)), row),
       ),
     )
@@ -1501,8 +1527,12 @@ export function releaseRemote(
   boatId: string,
   onlyBoxId?: BoxId,
   onlyIndexes?: number[],
+  reclaimed = false,
 ): Promise<RemoteResult> {
-  return withDeadline(releaseRemoteImpl(harbourId, boatId, onlyBoxId, onlyIndexes), () => PENDING)
+  return withDeadline(
+    releaseRemoteImpl(harbourId, boatId, onlyBoxId, onlyIndexes, reclaimed),
+    () => PENDING,
+  )
 }
 
 export function resetRemoteBoxes(harbourId: HarbourId, boxes: ColdBox[]): Promise<RemoteResult> {

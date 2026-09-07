@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { createMockBoxes } from '../data/mock'
 import { isValidMobile, nextBoatId, normaliseMobile } from '../data/boats'
 import { boatUsage, hourHistogram, hourLabel, monthInsight, monthTotals } from '../lib/stats'
-import { HOLD_MS, HOUR_MS, OVERSTAY_MS, formatClock, formatClockShort, monthKey } from '../lib/time'
+import {
+  HOLD_MS,
+  HOUR_MS,
+  OVERSTAY_MS,
+  RECLAIM_MS,
+  formatClock,
+  formatClockShort,
+  monthKey,
+} from '../lib/time'
 import { destinationPoint } from '../lib/geo'
 import { HARBOURS } from '../data/harbours'
 import { CRUISE_KMH, navigateTo, routeLegs } from '../lib/nav'
@@ -14,7 +22,8 @@ import {
   emptySlot,
   holdRemainingMs,
   isOverdue,
-  forceReleasable,
+  joinedRecently,
+  reclaimable,
   LEDGER_LIMIT,
   occupancyRows,
   PLAN_HOURS,
@@ -159,7 +168,7 @@ describe('release', () => {
     expect(result.entries[0].overstay).toBe(true)
   })
 
-  it('touches only the named box when the admin overrides one', () => {
+  it('touches only the named box when the rule frees one', () => {
     const boxes = [
       box('box1', [{ index: 0, status: 'occupied', boatId: '04', depositedAt: NOW }]),
       box('box2', [{ index: 0, status: 'occupied', boatId: '04', depositedAt: NOW }]),
@@ -533,25 +542,45 @@ describe('claiming an existing boat', () => {
   })
 })
 
-describe('a blocked boat cannot move crates', () => {
-  it('refuses reserve, deposit, cancel and release once blocked', async () => {
+describe('nobody has to approve anybody', () => {
+  it('lets a boat registered this second book, deposit and release', async () => {
+    // The whole of round 19 in one case. A boat used to register as
+    // `pending` and be refused every crate until somebody opened #admin,
+    // typed a PIN and pressed Approve — a human on the critical path at
+    // 4 a.m., in an app whose brief opens "without a central harbour
+    // master". There is no such gate and no such state.
     useDockStore.setState(seed(Date.now()))
-    useDockStore.getState().signInAs('04', '2004')
+    const result = await useDockStore.getState().register({
+      boatName: 'Kotta',
+      owner: 'Peddi Rao',
+      mobile: '9848099123',
+    })
+    expect(result.ok).toBe(true)
 
     expect(await useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(true)
-
-    // The admin blocks the boat while its owner has the sheet open.
-    useDockStore.getState().setBoatStatus('04', 'blocked')
-
-    expect(await useDockStore.getState().deposit(4)).toBe(false)
-    expect(await useDockStore.getState().reserve('box3', 1, 'prawn')).toBe(false)
-
-    const held = () =>
-      slotsForBoat(selectBoxes(useDockStore.getState()), '04').length
-    const before = held()
-    useDockStore.getState().cancelHold()
+    expect(await useDockStore.getState().deposit(4)).toBe(true)
     useDockStore.getState().release()
-    expect(held()).toBe(before)
+    expect(slotsForBoat(selectBoxes(useDockStore.getState()), result.ok ? result.id : '')).toEqual(
+      [],
+    )
+  })
+
+  it('has no boat state left that could refuse a booking', () => {
+    // A guard against the field coming back by the side door. If anything
+    // ever re-adds a status to a boat, this fails and the reviewer has to
+    // argue for it rather than discover it.
+    useDockStore.setState(seed(Date.now()))
+    for (const boat of useDockStore.getState().boats) {
+      expect(Object.keys(boat)).not.toContain('status')
+    }
+  })
+
+  it('marks a boat as newly joined for its first week and no longer', () => {
+    expect(joinedRecently(NOW - 6 * 24 * HOUR_MS, NOW)).toBe(true)
+    expect(joinedRecently(NOW - 7 * 24 * HOUR_MS, NOW)).toBe(false)
+    // The boundary itself, from both sides — this is the only thing the
+    // harbour is told about a new arrival, so it must not flicker.
+    expect(joinedRecently(NOW - 7 * 24 * HOUR_MS + 1, NOW)).toBe(true)
   })
 })
 
@@ -601,51 +630,6 @@ describe('regressions the audit caught', () => {
   })
 })
 
-describe('an admin decision has to survive', () => {
-  it('blocks a rejected boat instead of deleting it', async () => {
-    // Deleting only this device's copy made rejection a no-op the moment the
-    // shared roster came back: the boat reappeared as pending, and the audit
-    // log still claimed it had been rejected. A blocked boat cannot book, and
-    // the rules forbid removing a boat because slots point at boats.
-    useDockStore.setState(seed(Date.now()))
-    const pending = useDockStore
-      .getState()
-      .boats.find((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
-    expect(pending).toBeDefined()
-
-    await useDockStore.getState().rejectBoat(pending!.id)
-
-    const after = useDockStore
-      .getState()
-      .boats.find((b) => b.harbourId === 'nizampatnam' && b.id === pending!.id)
-    expect(after).toBeDefined()
-    expect(after!.status).toBe('blocked')
-  })
-
-  it('drops a rejected boat out of the approvals queue', async () => {
-    useDockStore.setState(seed(Date.now()))
-    const pending = useDockStore
-      .getState()
-      .boats.filter((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
-    await useDockStore.getState().rejectBoat(pending[0].id)
-
-    const stillPending = useDockStore
-      .getState()
-      .boats.filter((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')
-    expect(stillPending.map((b) => b.id)).not.toContain(pending[0].id)
-  })
-
-  it('signs out a skipper whose own boat was just rejected', async () => {
-    useDockStore.setState(seed(Date.now()))
-    const pending = useDockStore
-      .getState()
-      .boats.find((b) => b.harbourId === 'nizampatnam' && b.status === 'pending')!
-    useDockStore.setState({ myBoatId: pending.id })
-    await useDockStore.getState().rejectBoat(pending.id)
-    expect(useDockStore.getState().myBoatId).toBeNull()
-  })
-})
-
 describe('what the harbour may take back', () => {
   /** One box holding two of this boat's crates, deposited at different times. */
   const mixedBox = (): ColdBox => ({
@@ -661,37 +645,56 @@ describe('what the harbour may take back', () => {
     })),
   })
 
-  it('offers force release for the overdue crate only, never the whole row', () => {
-    // The console aggregates every crate a boat holds in one box into a
-    // single row. Asking `row.status === 'overstay'` was true when ANY crate
-    // was overdue, so the button appeared for both — and the rules refuse a
-    // crate that is still in time, failing the whole force release. A crate
-    // of rotting prawn stayed in the box because a fresh crate shared a row.
-    const [row] = occupancyRows([mixedBox()])
-    expect(row.crates).toBe(2)
-    expect(row.slotIndexes).toEqual([0, 1])
-    expect(row.overdueIndexes).toEqual([0])
-    expect(forceReleasable(row)).toBe(true)
-  })
-
-  it('offers nothing while every crate is still in time', () => {
+  it('takes back the crate past eight hours and not the one beside it', () => {
+    // A box row aggregates every crate a boat holds there. Acting on the ROW
+    // would hand the database a crate that is still in time, which it rightly
+    // refuses — failing the whole write, so a crate of rotting prawn stays in
+    // the box because a fresh crate shares its row.
     const box = mixedBox()
-    box.slots[0] = { ...box.slots[0], status: 'occupied', depositedAt: NOW - HOUR_MS }
-    const [row] = occupancyRows([box])
-    expect(row.overdueIndexes).toEqual([])
-    expect(forceReleasable(row)).toBe(false)
+    box.slots[0] = { ...box.slots[0], depositedAt: NOW - 9 * HOUR_MS }
+    expect(reclaimable([box], NOW)).toEqual([{ boatId: '11', boxId: 'box1', indexes: [0] }])
   })
 
-  it('frees only the crates it was pointed at', () => {
-    // releaseSlots is shared by the skipper's own release and the admin
-    // override, so the index filter has to bite in both.
-    const result = releaseSlots([mixedBox()], 'nizampatnam', '11', NOW, 'box1', [0])
+  it('takes nothing back at seven hours', () => {
+    // The overstay flag is up — the harbour can see the crate is blocking a
+    // box — and the space is still the skipper's. That two-hour gap is the
+    // whole point of the escalation: a warning that arrives with the
+    // consequence is not a warning.
+    const box = mixedBox()
+    expect(box.slots[0].status).toBe('overstay')
+    expect(reclaimable([box], NOW)).toEqual([])
+  })
+
+  it('takes it back exactly at eight hours and not a second before', () => {
+    const at = (age: number) => {
+      const box = mixedBox()
+      box.slots[0] = { ...box.slots[0], depositedAt: NOW - age }
+      return reclaimable([box], NOW).length
+    }
+    expect(at(RECLAIM_MS)).toBe(1)
+    expect(at(RECLAIM_MS - 1000)).toBe(0)
+  })
+
+  it('frees only the crates it was pointed at, and records why', () => {
+    // releaseSlots is shared by the skipper's own release and by the
+    // eight-hour rule, so the index filter has to bite in both — and the two
+    // must be distinguishable afterwards. A skipper who collects at 8 h 01 m
+    // writes a row with identical timestamps to one the harbour reclaimed,
+    // and the Harbour page must not accuse him of abandoning his catch.
+    const result = releaseSlots([mixedBox()], 'nizampatnam', '11', NOW, 'box1', [0], true)
     expect(result.entries).toHaveLength(1)
     expect(result.entries[0].crates).toBe(1)
     expect(result.entries[0].overstay).toBe(true)
+    expect(result.entries[0].reclaimed).toBe(true)
     expect(result.boxes[0].slots[0].status).toBe('empty')
     // The crate that is still in time is untouched.
     expect(result.boxes[0].slots[1].status).toBe('occupied')
+  })
+
+  it('does not mark an ordinary late collection as reclaimed', () => {
+    const result = releaseSlots([mixedBox()], 'nizampatnam', '11', NOW, 'box1', [0])
+    expect(result.entries[0].overstay).toBe(true)
+    expect(result.entries[0].reclaimed).toBe(false)
   })
 })
 

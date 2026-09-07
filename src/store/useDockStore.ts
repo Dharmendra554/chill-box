@@ -5,7 +5,7 @@ import {
   nextBoatId,
   normaliseMobile,
   seedBoats,
-  seedPending,
+  seedRecent,
 } from '../data/boats'
 import { DEFAULT_HARBOUR_ID, harbour } from '../data/harbours'
 import { createMockBoxes, seedAllBoxes, seedAllLedgers } from '../data/mock'
@@ -23,7 +23,6 @@ import {
   claimBoat,
   claimForThisDevice,
   depositRemote,
-  putBoat,
   releaseRemote,
   reserveRemote,
   resetRemoteBoxes,
@@ -59,6 +58,7 @@ import {
   isOverdue,
   LEDGER_LIMIT,
   QUOTA,
+  reclaimable,
   remainingQuota,
   slotsForBoat,
 } from './selectors'
@@ -98,7 +98,7 @@ export const STORAGE_KEY = demoMode ? 'ap-chill-box.store.demo' : 'ap-chill-box'
  */
 const LEGACY_DEMO_KEY = 'ap-chill-box.demo'
 
-const STORAGE_VERSION = 4
+const STORAGE_VERSION = 5
 
 /**
  * Storage that cannot hurt us. Two hazards, both real on a dock phone.
@@ -382,24 +382,23 @@ export interface DockState {
   deposit: (plannedHours: number) => Promise<boolean>
   release: () => Promise<void>
 
+  /**
+   * The PIN survives on two controls only — Publish harbour and Reset demo —
+   * and they are deployment and demonstration tools, not harbour policy.
+   * Everything a skipper might want to look at is open to every skipper.
+   */
   unlockAdmin: (pin: string) => Promise<PinResult | 'locked'>
   touchAdmin: () => void
   lockAdmin: () => void
-  approveBoat: (id: string) => Promise<void>
-  rejectBoat: (id: string) => Promise<void>
   /**
-   * `ok` when the shared roster took it, `pending` when we stopped waiting
-   * and it may still land, `failed` when it genuinely did not.
+   * Take back the crates a boat has left past the eight-hour line.
    *
-   * Three outcomes rather than a boolean, because a caller that cannot tell
-   * `pending` from `failed` writes no audit row for a block that then takes
-   * effect on every phone in the harbour.
+   * No caller passes a decision to this: `tick` finds them with
+   * `reclaimable` and hands them over. `indexes` are the exact slots, because
+   * a box row can hold one crate the harbour has given up on and another
+   * stored an hour ago, and the database will refuse the pair.
    */
-  setBoatStatus: (id: string, status: Boat['status']) => Promise<'ok' | 'pending' | 'failed'>
-  /** Block or unblock a boat and record it. See the implementation. */
-  setBoatBlocked: (id: string, blocked: boolean) => Promise<void>
-  /** `indexes` are the crates the harbour may take back — see forceReleasable. */
-  adminRelease: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<void>
+  reclaimCrates: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<void>
   publishHarbour: () => Promise<void>
   record: (action: string, target: string, detail?: string) => Promise<void>
 
@@ -425,7 +424,7 @@ function toast(tone: ToastTone, text: string): ToastMessage {
  */
 export function seed(now: number) {
   return {
-    boats: [...seedBoats(), ...seedPending(now)],
+    boats: [...seedBoats(), ...seedRecent(now)],
     boxesByHarbour: seedAllBoxes(now),
     ledger: capLedger(seedAllLedgers(now)),
     toast: null,
@@ -436,8 +435,14 @@ export function seed(now: number) {
  * Free every stored slot a boat holds in `onlyBoxId` (or across the whole
  * harbour when omitted) and return the ledger rows the release earned.
  *
- * Shared by the skipper's own "sold and clear" and by the admin override,
- * so the two paths can never drift apart on what gets recorded.
+ * Shared by the skipper's own "sold and clear" and by the harbour taking a
+ * space back at eight hours, so the two paths can never drift apart on what
+ * gets recorded.
+ *
+ * `reclaimed` marks the second one. It cannot be derived here: a skipper who
+ * collects eight hours and one minute after depositing writes a row that is
+ * identical in every timestamp, and the Harbour page must not tell the
+ * harbour he abandoned his catch when he turned up for it.
  */
 export function releaseSlots(
   boxes: ColdBox[],
@@ -446,6 +451,7 @@ export function releaseSlots(
   now: number,
   onlyBoxId?: BoxId,
   onlyIndexes?: number[],
+  reclaimed = false,
 ): { boxes: ColdBox[]; entries: LedgerEntry[] } {
   const entries: LedgerEntry[] = []
 
@@ -485,6 +491,7 @@ export function releaseSlots(
       depositedAt: earliest,
       releasedAt: now,
       overstay: late,
+      reclaimed,
     })
     return { ...box, slots }
   })
@@ -523,29 +530,48 @@ export const useDockStore = create<DockState>()(
        * to wait for a signal. The two need different actions from them.
        */
       /**
-       * Change a boat's status and record it, including when we do not know.
+       * Crates this device has already asked the harbour to take back.
        *
-       * Approve and Block used to log only on a clean `ok`. A `pending`
-       * result — the deadline fired, the write is still queued and, since
-       * round 14, the optimistic roster change is deliberately LEFT on
-       * screen — wrote nothing. So a boat could end up blocked on every
-       * phone in the harbour, unable to book, deposit or release the crate
-       * his catch is already in, with the hash-chained log the README offers
-       * to settle disputes containing no row saying any admin touched him.
+       * `tick` fires once a second and `reclaimCrates` is a round trip, so
+       * without this the same crate is submitted sixty times a minute for as
+       * long as the write is in flight — and on a 2G tether that is the
+       * whole minute. Keyed per crate rather than per boat: a boat can have
+       * one crate reaching eight hours while another is still fresh.
        *
-       * That is the same hole `adminRelease` closed one function away, and
-       * it is closed the same way: the row goes in, marked for what it is.
+       * Never cleared on success, because success removes the crate from
+       * `reclaimable` anyway. It is cleared only on failure, so a link that
+       * comes back can try again.
        */
-      const logStatusChange = async (
-        id: string,
-        status: Boat['status'],
-        action: string,
-      ): Promise<void> => {
-        const harbourId = get().harbourId
-        const outcome = await get().setBoatStatus(id, status)
-        if (outcome === 'failed') return
-        const detail = outcome === 'pending' ? `${harbourId} · outcome not confirmed` : harbourId
-        void get().record(action, `#${id}`, detail)
+      const reclaiming = new Set<string>()
+
+      /**
+       * The eight-hour rule, run by the clock instead of by a person.
+       *
+       * THE ACTIVE HARBOUR ONLY. `applyTick` above ages all three because a
+       * hold at a harbour you switched away from must still expire in this
+       * device's own copy — but that is arithmetic on local state, and this
+       * is a WRITE to somebody else's shared harbour. A phone idling on a
+       * Nizampatnam screen has no business reclaiming crates at Kakinada on
+       * the strength of a snapshot it stopped listening to.
+       *
+       * And never while the figures are stale. A phone that has been asleep,
+       * or in a shed with no signal, wakes holding an hour-old picture; every
+       * crate in it looks eight hours old, and acting on that empties a
+       * harbour that has been quietly working the whole time. `syncLive` is
+       * proof a snapshot is arriving, not that a socket exists — see
+       * `watchHarbour`.
+       */
+      const reclaimOverdue = (now: number): void => {
+        const { boxesByHarbour, harbourId, syncLive } = get()
+        if (sharedActive && !syncLive) return
+        for (const row of reclaimable(boxesByHarbour[harbourId], now)) {
+          const key = `${harbourId}:${row.boxId}:${row.boatId}:${row.indexes.join(',')}`
+          if (reclaiming.has(key)) continue
+          reclaiming.add(key)
+          void get()
+            .reclaimCrates(row.boatId, row.boxId, row.indexes)
+            .catch(() => reclaiming.delete(key))
+        }
       }
 
       const reportFailure = (result: RemoteResult) => {
@@ -600,17 +626,20 @@ export const useDockStore = create<DockState>()(
       }
 
       /**
-       * The signed-in boat, but only if it is approved right now.
+       * The signed-in boat, if this harbour still has one by that number.
        *
-       * Every action that moves a crate goes through this. An admin can
-       * block a boat while its owner has a sheet open, and without a single
-       * gate here the blocked boat could still deposit and release — which
-       * would contradict both the admin and the banner on their own screen.
+       * Every action that moves a crate goes through this. It used to also
+       * ask whether the boat was approved and not blocked, because an admin
+       * could change either while its owner had a sheet open. Nobody can now:
+       * a boat on the roster may book, full stop. What survives is the
+       * roster check itself, which is not ceremony — switching harbours
+       * clears `myBoatId`, and a hull number means a different boat at each
+       * of the three societies.
        */
       const activeBoatId = (): string | null => {
         const { boats, harbourId, myBoatId } = get()
         const me = boats.find((b) => b.harbourId === harbourId && b.id === myBoatId)
-        return me?.status === 'active' ? me.id : null
+        return me?.id ?? null
       }
 
       return {
@@ -669,6 +698,8 @@ export const useDockStore = create<DockState>()(
           // second does not invalidate every box-derived render.
           if (changed) patch.boxesByHarbour = next as Record<HarbourId, ColdBox[]>
 
+          reclaimOverdue(now)
+
           // Idle auto-lock, the way a portal session expires.
           if (prev.adminUnlocked && now - prev.adminTouchedAt > ADMIN_IDLE_MS) {
             patch.adminUnlocked = false
@@ -722,7 +753,6 @@ export const useDockStore = create<DockState>()(
             nameTe: name,
             owner: person,
             mobile: digits,
-            status: 'pending',
             registeredAt: serverNow(),
           }
 
@@ -789,11 +819,12 @@ export const useDockStore = create<DockState>()(
           if (!myBoatId) return false
           const boxes = boxesByHarbour[harbourId]
 
+          // No approval gate. A boat registered ten seconds ago books the
+          // same crate as a boat registered ten years ago — the roster check
+          // is only that this harbour has a boat by that number, because
+          // hull numbers repeat across the three societies.
           const me = boats.find((b) => b.harbourId === harbourId && b.id === myBoatId)
-          if (!me || me.status !== 'active') {
-            set({ toast: toast('error', t(lang, 'errNotApproved')) })
-            return false
-          }
+          if (!me) return false
 
           const quota = remainingQuota(boxes, myBoatId)
           if (crates > quota) {
@@ -1033,96 +1064,13 @@ export const useDockStore = create<DockState>()(
           return auditChain
         },
 
-        approveBoat: async (id) => {
-          await logStatusChange(id, 'active', 'boat.approve')
-        },
-
-        /**
-         * Block or unblock, logged the same way as approve and reject.
-         *
-         * Here rather than in the console, because the console was building
-         * the same detail string by hand in JSX — two copies of one rule,
-         * neither tested, on the action that most needs to be attributable:
-         * blocking stops a boat releasing the crate its catch is in.
-         */
-        setBoatBlocked: async (id, blocked) => {
-          await logStatusChange(
-            id,
-            blocked ? 'blocked' : 'active',
-            blocked ? 'boat.block' : 'boat.unblock',
-          )
-        },
-
-        /**
-         * Refuse a registration.
-         *
-         * Blocked, not deleted. A hull number can never be reused — the rules
-         * forbid removing a boat, because slots point at boats — and deleting
-         * it only locally was worse than useless: the shared roster put it
-         * straight back as `pending` on the next snapshot, so rejection was a
-         * no-op that still wrote a "rejected" line into the audit log.
-         * Blocking is the state that actually survives and actually stops the
-         * boat booking.
-         */
-        rejectBoat: async (id) => {
-          const wasMe = get().myBoatId === id
-          await logStatusChange(id, 'blocked', 'boat.reject')
-          if (wasMe) set({ myBoatId: null })
-        },
-
-        /**
-         * Resolves once the change has reached the shared roster, so the
-         * caller can log what actually happened. Writing the audit row first
-         * left the chain asserting an approval the database had refused, and
-         * the next snapshot then reverted the boat to pending.
-         */
-        setBoatStatus: async (id, status) => {
-          const { boats, harbourId } = get()
-          const updated = boats.map((b) =>
-            b.harbourId === harbourId && b.id === id ? { ...b, status } : b,
-          )
-          set({ boats: updated })
-          const boat = updated.find((b) => b.harbourId === harbourId && b.id === id)
-          if (!sharedActive || !boat) return 'ok'
-          const result = await putBoat(harbourId, boat)
-          if (!result.ok) {
-            // Put the roster back. Leaving the optimistic change on screen
-            // told the harbour master a boat was blocked while the shared
-            // copy still said active — so the "blocked" skipper went on
-            // booking, and nothing on the admin's screen disagreed.
-            //
-            // EXCEPT on `pending`, which means we stopped waiting and the
-            // write may still land. Rolling back there is acting on "nothing
-            // was saved", which is exactly what `pending` exists to stop us
-            // saying: the roster would snap back to active and then flip to
-            // blocked when the queued write commits and the watcher returns
-            // it. The optimistic state is left alone and the toast says we
-            // could not confirm — the next snapshot is the authority either
-            // way.
-            const was =
-              result.error === 'pending'
-                ? undefined
-                : boats.find((b) => b.harbourId === harbourId && b.id === id)?.status
-            if (was) {
-              set({
-                boats: get().boats.map((b) =>
-                  b.harbourId === harbourId && b.id === id ? { ...b, status: was } : b,
-                ),
-              })
-            }
-            reportFailure(result)
-            return result.error === 'pending' ? 'pending' : 'failed'
-          }
-          return 'ok'
-        },
-
-        adminRelease: async (boatId, boxId, indexes) => {
+        reclaimCrates: async (boatId, boxId, indexes) => {
           const { boxesByHarbour, harbourId, ledger } = get()
           // Only the crates the harbour has actually given up on. A box row
-          // in the console aggregates every crate a boat holds there, so a
-          // boat with one overdue crate and one stored an hour ago showed a
-          // single live Force release button — and the rules rightly refused
-          // the fresh crate, failing the whole action.
+          // aggregates every crate a boat holds there, so a boat with one
+          // crate past eight hours and one stored an hour ago must not be
+          // handed over as a pair — the rules would rightly refuse the fresh
+          // crate and fail the whole write. `reclaimable` picks the indexes.
           const result = releaseSlots(
             boxesByHarbour[harbourId],
             harbourId,
@@ -1130,6 +1078,7 @@ export const useDockStore = create<DockState>()(
             serverNow(),
             boxId,
             indexes,
+            true,
           )
           if (result.entries.length === 0) return
 
@@ -1150,19 +1099,19 @@ export const useDockStore = create<DockState>()(
           // with the billing record, with the trail being the wrong one.
           const logIt = (crates: number, confirmed = true) =>
             void get().record(
-              'slot.forceRelease',
+              'slot.reclaim',
               `#${boatId}`,
               `${harbourId} ${boxId} · ${crates} crates${confirmed ? '' : ' · outcome not confirmed'}`,
             )
 
           if (sharedActive) {
             if (!requireLink()) return
-            const outcome = await releaseRemote(harbourId, boatId, boxId, indexes)
+            const outcome = await releaseRemote(harbourId, boatId, boxId, indexes, true)
             reportFailure(outcome)
             // Recorded whenever a crate actually came out, including a
             // partial release. Logging only on `ok` meant a crate was
-            // freed, billed in the ledger, and left with no record that any
-            // admin had touched it.
+            // freed, billed in the ledger, and left with no record of why
+            // it came out.
             if (outcome.freed) {
               logIt(outcome.freed)
             } else if (!outcome.ok && outcome.error === 'pending') {
@@ -1170,9 +1119,9 @@ export const useDockStore = create<DockState>()(
               // lands, freeing crates and writing the billing rows, and
               // logging nothing here would recreate the hole this branch was
               // written to close — a crate taken back over a skipper's head
-              // and billed, with no record that an admin touched it. So the
-              // row goes in, marked for what it is: an action taken, with an
-              // outcome nobody confirmed.
+              // and billed, with no record of it. So the row goes in, marked
+              // for what it is: an action taken, with an outcome nobody
+              // confirmed.
               logIt(indexes.length, false)
             }
             return
@@ -1345,9 +1294,30 @@ export const useDockStore = create<DockState>()(
         adminFailures: s.adminFailures,
         adminLockedUntil: s.adminLockedUntil,
       }),
-      // The shape changed with multi-harbour support in v4. Anything older
-      // is reseeded rather than half-migrated.
-      migrate: () => undefined,
+      /**
+       * v4 → v5 drops `status` from every boat.
+       *
+       * Not a reseed, which is what this used to do for every old version
+       * and what the one-line version of this change would have done again.
+       * A reseed here would destroy the local audit chain — the hash-chained
+       * record the README offers to settle a quay dispute with, which lives
+       * on this phone and nowhere else — along with any ledger rows not yet
+       * published. Round 18 fixed exactly this hazard on the crash screen's
+       * Reset; shipping it back through the migration path two rounds later
+       * would be the same bug through a different door.
+       *
+       * Anything older than v4 predates multi-harbour support and still
+       * reseeds: that shape cannot be half-migrated.
+       */
+      migrate: (persisted, version) => {
+        if (version !== 4) return undefined
+        const state = persisted as { boats?: Record<string, unknown>[] }
+        if (!Array.isArray(state.boats)) return undefined
+        return {
+          ...state,
+          boats: state.boats.map(({ status: _status, ...boat }) => boat),
+        }
+      },
       onRehydrateStorage: () => (state) => {
         if (!state) return
         // A corrupt or truncated write must not brick the app on a dock.

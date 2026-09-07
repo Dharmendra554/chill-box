@@ -77,14 +77,22 @@ export function seedBoats(): Boat[] {
       nameTe,
       owner,
       mobile,
-      status: 'active' as const,
       registeredAt: SEED_REGISTERED_AT,
     })),
   )
 }
 
-/** Two waiting approvals so the admin queue is never an empty state. */
-export function seedPending(now: number): Boat[] {
+/**
+ * Two boats that joined this week, so the "new" mark is never a claim the
+ * demo cannot show.
+ *
+ * They used to be `pending` registrations, seeded to keep the admin's
+ * approvals queue from being an empty state. There is no queue: nobody
+ * approves anybody. What they demonstrate now is the opposite and it is the
+ * better demonstration — a boat that turned up, registered and can book,
+ * with the whole harbour able to see it arrived and nobody able to stop it.
+ */
+export function seedRecent(now: number): Boat[] {
   return [
     {
       id: '21',
@@ -93,7 +101,6 @@ export function seedPending(now: number): Boat[] {
       nameTe: 'దీపిక',
       owner: 'Mandava Srinivas',
       mobile: '9848012021',
-      status: 'pending' as const,
       registeredAt: now - 3 * 60 * 60 * 1000,
     },
     {
@@ -103,7 +110,6 @@ export function seedPending(now: number): Boat[] {
       nameTe: 'భవాని',
       owner: 'Uppala Bhaskar',
       mobile: '9848013013',
-      status: 'pending' as const,
       registeredAt: now - 40 * 60 * 1000,
     },
   ]

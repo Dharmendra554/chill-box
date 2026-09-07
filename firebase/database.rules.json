@@ -46,11 +46,6 @@
 // the writer's identity, and who owns a crate. They are not harbour policy.
 // A signed-in client that ignores the app can still:
 //
-//   * BLOCK EVERY BOAT IN THE HARBOUR. There is no admin identity, so any
-//     signed-in phone can set any boat's status - including setting its own
-//     to 'active' to skip approval, and including setting all twenty to
-//     'blocked', which stops the whole harbour from booking. This is the
-//     biggest thing these rules do not stop
 //   * exceed the 2-crate cap, which no rule can count across three boxes
 //   * append invented ledger rows. Rows cannot be edited, but the report can
 //     be padded by addition, which for a society billing off the CSV is the
@@ -58,8 +53,18 @@
 //   * rewrite another boat's name or owner
 //   * move a crate the harbour has given up on - a hold that ran out, or a
 //     stored crate past its overstay hour. That one is deliberate: it is how
-//     force-release works with no admin account, and it is a community rule
+//     a space is reclaimed with no admin account, and it is a community rule
 //     rather than a hole. See the slot rule below
+//
+// WHAT THESE RULES USED TO ALLOW, AND NO LONGER DO: any signed-in phone
+// could write any boat's `status` - approving itself past the admin queue,
+// or setting all twenty boats to 'blocked' and stopping the harbour from
+// booking at all. That was named here as the biggest thing they did not
+// stop, and no rule could fix it while the app still had approvals: with no
+// admin identity, whatever the client may write, anyone may write. Deleting
+// the feature is what closed it. There is no approval and no blocking, so
+// `status` may only ever be the one value that has always meant "an ordinary
+// boat", and the roster is not a lever any more.
 //
 // A BOAT NOBODY HAS CLAIMED IS OPEN TO ANYONE. That is the seeded demo
 // roster, and it is what keeps Publish harbour, Reset demo and a cold-start
@@ -183,8 +188,15 @@
             // already seen it. A .write, by contrast, IS evaluated at every
             // ancestor, and its `newData` is the boat as it would be after
             // the write. One place, both directions.
-            ".write": "auth != null && newData.exists() && newData.hasChildren(['name', 'owner', 'mobileLast4', 'status', 'registeredAt']) && (!data.hasChild('uid') || newData.child('uid').val() === data.child('uid').val()) && (!data.hasChild('mobileLast4') || newData.child('mobileLast4').val() === data.child('mobileLast4').val())",
-            ".validate": "newData.hasChildren(['name', 'owner', 'mobileLast4', 'status', 'registeredAt'])",
+            // `status` is NOT in either list any more. The app has no boat
+            // status: no approval, no blocking, nobody in charge. Requiring
+            // it would refuse every write from the current client; refusing
+            // it would refuse every write from a bundle still cached on a
+            // phone. So it is optional here and pinned to 'active' below —
+            // which is what closes the biggest hole these rules used to
+            // document about themselves.
+            ".write": "auth != null && newData.exists() && newData.hasChildren(['name', 'owner', 'mobileLast4', 'registeredAt']) && (!data.hasChild('uid') || newData.child('uid').val() === data.child('uid').val()) && (!data.hasChild('mobileLast4') || newData.child('mobileLast4').val() === data.child('mobileLast4').val())",
+            ".validate": "newData.hasChildren(['name', 'owner', 'mobileLast4', 'registeredAt'])",
             "name": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 40" },
             "nameTe": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
             "owner": { ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 60" },
@@ -193,10 +205,21 @@
             // twenty fishermen's mobile numbers is a breach with no upside.
             // Immutable, because those digits are what proves you own a boat.
             "mobileLast4": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}$/) && (!data.exists() || newData.val() === data.val())" },
-            // Any of the three, including on create. Forcing new boats to
-            // 'pending' would look like enforcement and be none: with no
-            // admin identity, the same client could flip it a moment later.
-            "status": { ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'active' || newData.val() === 'blocked')" },
+            // 'active' or nothing, and this is the whole of what used to be
+            // "THE BIGGEST THING THESE RULES DO NOT STOP".
+            //
+            // The field used to accept 'pending', 'active' or 'blocked' from
+            // any signed-in phone, because there is no admin identity to
+            // check against — so anyone with the public web config could set
+            // all twenty boats to 'blocked' and stop the harbour booking, or
+            // approve themselves. The rule could not be tightened while the
+            // app still had approvals: whatever value the client is allowed
+            // to write, it is allowed to write.
+            //
+            // Deleting the FEATURE is what let the rule close. There is
+            // nothing to block a boat with, so nothing may be written but the
+            // one value that has always meant "an ordinary boat".
+            "status": { ".validate": "newData.val() === 'active'" },
             // Not immutable, deliberately: the seeded roster gets its dates
             // from whichever phone seeded it, so pinning them here would make
             // a second phone's publish fail on every boat.
@@ -236,6 +259,13 @@
             "depositedAt": { ".validate": "newData.isNumber()" },
             "releasedAt": { ".validate": "newData.isNumber()" },
             "overstay": { ".validate": "newData.isBoolean()" },
+            // Whether the harbour took this space back at the eight-hour
+            // line rather than the boat collecting. It cannot be derived
+            // from the two timestamps — a skipper who collects at 8 h 01 m
+            // writes an identical row — and the Harbour page must not say
+            // "not collected" over a boat that turned up. Optional: rows
+            // written before the rule existed have no such field.
+            "reclaimed": { ".validate": "newData.isBoolean()" },
             "$other": { ".validate": false }
           }
         }
