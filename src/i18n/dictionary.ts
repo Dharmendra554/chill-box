@@ -264,6 +264,13 @@ const S = {
   adminDwell: { te: 'సగటు నిల్వ', en: 'Avg. dwell' },
   adminOverstayRate: { te: 'ఆలస్య శాతం', en: 'Overstay rate' },
   adminTrend: { te: 'గత నెలతో పోలిక', en: 'vs last month' },
+  // Four reasons a comparison is not shown, said plainly. Absent with no
+  // reason reads as "no change", which is a number we did not measure.
+  adminAuditMore: { te: 'మిగిలిన {0} రికార్డులు చూపించు', en: 'Show the other {0} entries' },
+  adminTrendFirst: { te: 'పోల్చడానికి గత నెల రికార్డు లేదు.', en: 'no earlier month to compare with.' },
+  adminTrendRunning: { te: 'ఈ నెల ఇంకా నడుస్తోంది — పూర్తయ్యాక పోల్చవచ్చు.', en: 'this month is still running — comparable once it ends.' },
+  adminTrendClipped: { te: 'గత నెల రికార్డులో కొంత భాగమే మిగిలింది.', en: 'only part of last month survives in the record.' },
+  adminTrendEmpty: { te: 'గత నెలలో ఏ క్రేట్ నమోదు కాలేదు.', en: 'no crates were recorded last month.' },
   // Shown when the ledger cap has cut into the selected month, so the
   // percentages would be a part of a month divided by all of it. The counts
   // above are still the truth about the rows that survived.

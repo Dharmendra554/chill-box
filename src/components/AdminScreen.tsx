@@ -19,13 +19,24 @@ import {
 import { verifyAudit } from '../lib/adminAuth'
 import { saveCsv } from '../lib/download'
 import { syncEnabled } from '../lib/harbourSync'
-import { formatDayClock, formatGap, monthKey, monthLabel } from '../lib/time'
+import { formatDayClock, formatGap, monthKey, monthLabel, startOfLocalDay } from '../lib/time'
 import { cx } from '../lib/ui'
 import { forceReleasable, occupancyRows } from '../store/selectors'
 import { selectBoxes, selectHarbour, useDockStore } from '../store/useDockStore'
 import { ConfirmButton } from './ConfirmButton'
 import { HelmIcon } from '../icons/marine'
 import { SPECIES_ICON } from '../icons/species'
+
+/** Audit rows rendered before the "show the rest" button. */
+const AUDIT_PAGE = 50
+
+/** Why the month-on-month comparison is not on screen. See `monthInsight`. */
+const TREND_MISSING = {
+  noPrevious: 'adminTrendFirst',
+  monthRunning: 'adminTrendRunning',
+  clipped: 'adminTrendClipped',
+  emptyPrevious: 'adminTrendEmpty',
+} as const
 
 /**
  * Harbour-master console: approvals, who is holding what right now, the
@@ -172,9 +183,27 @@ function Console() {
   const perSpecies = useMemo(() => speciesSplit(ledger, active), [ledger, active])
   const perBoat = useMemo(() => boatUsage(ledger, active), [ledger, active])
   const previous = months[months.indexOf(active) + 1]
-  const today = new Date(now).toDateString()
+  /**
+   * Midnight in the HARBOUR, not on this device.
+   *
+   * This was `Date.parse(new Date(now).toDateString())`, which renders a
+   * harbour-time instant in the DEVICE's timezone and parses it back as
+   * device-local midnight. At 03:00 IST on the 1st of a month, a laptop set
+   * to New York turns that into the 30th of the previous one — so
+   * `monthInsight` believed the current month was over and compared one day
+   * of it against all of the month before, which is the −83% collapse
+   * `stats.ts` documents at length as the thing it exists to prevent, and
+   * divided a busy first day by a full month's capacity besides.
+   *
+   * The device CLOCK was taken out of circulation three rounds ago; this was
+   * the device CALENDAR, still deciding what month it is. `startOfLocalDay`
+   * already existed, exported, doing exactly this in harbour time.
+   *
+   * Rounded to the day so the memo below does not re-run every second.
+   */
+  const today = startOfLocalDay(now)
   const insight = useMemo(
-    () => monthInsight(ledger, active, previous, Date.parse(today)),
+    () => monthInsight(ledger, active, previous, today),
     [ledger, active, previous, today],
   )
   const perHour = useMemo(() => hourHistogram(ledger, active), [ledger, active])
@@ -395,7 +424,16 @@ function Console() {
               {insight.cratesDelta}%
             </span>
           </p>
-        ) : null}
+        ) : (
+          // A comparison that is simply absent reads as "no change". It has
+          // four separate reasons for being absent and the harbour master
+          // needs to know which — especially on a complete month, where the
+          // utilisation beside it looks authoritative and the trend just is
+          // not on the page.
+          <p className="text-sm font-bold text-ink-2">
+            {t('adminTrend')}: {t(TREND_MISSING[insight.trendMissing ?? 'noPrevious'])}
+          </p>
+        )}
 
         {/* Say why the figures are missing. A `—` and a trend line that
             simply is not there read as an empty month, not as a month we
@@ -667,6 +705,24 @@ function AuditPanel() {
   const lang = useDockStore((s) => s.lang)
   const audit = useDockStore((s) => s.audit)
   const [broken, setBroken] = useState<number | null>(null)
+  const [all, setAll] = useState(false)
+
+  /**
+   * Newest first, and only a page of them until asked.
+   *
+   * The console re-renders every second (it shows live countdowns), and this
+   * list was rebuilt, re-formatted and reconciled every time: at the 2 000
+   * rows the cap allows that is 2 000 `Intl.format` calls and 2 000 list
+   * items a second, on the screen where Approve and Force-release live.
+   * Round 14 removed the formatter CONSTRUCTIONS here and left the calls.
+   *
+   * Memoised on `audit` alone, so a tick costs nothing, and sliced because
+   * nobody reads two thousand rows on a 320 px phone — the rest is one tap
+   * away, and the integrity check above still runs over every row either
+   * way, which is the part that has to be complete.
+   */
+  const rows = useMemo(() => [...audit].reverse(), [audit])
+  const shown = all ? rows : rows.slice(0, AUDIT_PAGE)
 
   useEffect(() => {
     let live = true
@@ -713,7 +769,7 @@ function AuditPanel() {
         <p className="card p-3 font-bold">{t('adminAuditEmpty')}</p>
       ) : (
         <ol className="flex flex-col gap-1">
-          {[...audit].reverse().map((entry) => (
+          {shown.map((entry) => (
             <li key={entry.id} className="card flex items-baseline gap-2 p-2 text-sm">
               <span className="tabular shrink-0 text-xs font-bold text-ink-2">
                 {formatDayClock(entry.at, lang)}
@@ -729,6 +785,12 @@ function AuditPanel() {
           ))}
         </ol>
       )}
+
+      {audit.length > shown.length ? (
+        <button type="button" className="btn btn-block" onClick={() => setAll(true)}>
+          {t('adminAuditMore', audit.length - shown.length)}
+        </button>
+      ) : null}
     </section>
   )
 }

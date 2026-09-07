@@ -167,8 +167,36 @@ export interface MonthInsight {
   overstayRate: number
   /** Crate change against the previous month, in per cent, or null. */
   cratesDelta: number | null
+  /**
+   * Why there is no trend, when there is none.
+   *
+   * The utilisation `—` got a sentence explaining it and the trend did not,
+   * so a harbour master looking at a complete month saw an authoritative
+   * percentage with the comparison silently absent beside it — which reads
+   * as "no change", not as "we will not say". A figure that is missing has
+   * to say why, exactly like a figure that is shown.
+   */
+  trendMissing: 'noPrevious' | 'monthRunning' | 'clipped' | 'emptyPrevious' | null
   /** Busiest deposit hour, 0–23, or null when the month is empty. */
   peakHour: number | null
+}
+
+/** Which of the four reasons the comparison is not being shown. */
+function trendMissing(
+  previousKey: string | undefined,
+  complete: boolean,
+  covered: boolean,
+  previous: MonthTotals | null,
+): MonthInsight['trendMissing'] {
+  if (!previousKey) return 'noPrevious'
+  // The selected month is the one still running, so it has fewer days in it
+  // than the one before and any comparison reads as a collapse.
+  if (!complete) return 'monthRunning'
+  // The ledger cap ate into the previous month, so it is a fraction of a
+  // month being compared with all of one.
+  if (!covered) return 'clipped'
+  if (!previous || previous.crates === 0) return 'emptyPrevious'
+  return null
 }
 
 /**
@@ -227,6 +255,7 @@ export function monthInsight(
     dwellHours: rows.length ? Number((totals.crateHours / totals.crates).toFixed(1)) : 0,
     overstayRate: rows.length ? Math.round((totals.overstays / rows.length) * 100) : 0,
     cratesDelta,
+    trendMissing: trendMissing(previousKey, complete, covered, previous),
     peakHour: rows.length ? busiest : null,
   }
 }

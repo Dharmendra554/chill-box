@@ -294,12 +294,19 @@ The skipper is never asked whether they have signal — the app works it out:
 
 - `navigator.onLine` is not trusted. It only reports that an interface exists,
   and a phone on one bar of 2G reports "online" while nothing completes. We
-  judge by **evidence**: when a real request last succeeded (the swell poll,
-  which we already make). The `offline` event is used only as an instant
-  negative, and the first few seconds are "checking", not "offline".
+  judge by **evidence**, and the evidence is the thing the figures actually
+  come from: on a shared harbour, the database socket — while it is live the
+  box counts are current by definition, and once it drops they are only as
+  fresh as the last snapshot it delivered. (It used to be the swell poll,
+  until that timestamp became the instant the *sea* was measured rather than
+  the instant we reached the network.) The `offline` event is used only as an
+  instant negative, and the first few seconds are "checking", not "offline".
 - When the figures stop being trustworthy the sea-state strip is replaced by a
   dated notice: *these figures are from 6:12 pm, check again at the box*. A
   confidently wrong "2 free" is worse than an honest "possibly stale".
+  In a local-only build there is no shared copy to be behind — the figures
+  *are* this phone's own — so the same banner says so instead of inventing a
+  time: *these figures are from this phone only*.
 - Nothing blocks on the network. Bearing, distance, ETA and every harbour rule
   are local maths.
 - The map, the database client and the admin console are separate chunks —

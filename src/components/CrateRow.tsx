@@ -56,7 +56,13 @@ export function CrateRow({
           role="img"
           aria-label={`#${row.boatId} · ${t(STATUS_LABEL[row.status])}`}
         >
-          <span aria-hidden className="flex items-center gap-0.5">
+          {/* Stacked, not side by side. The chip's content box is 38 px
+              inside its 3 px border, and the mark plus `#04` on one line
+              measured 41 px — so the icon and the first digit bled onto the
+              border on every stored row, in both languages. Two short lines
+              fit with room to spare and keep the hull number at a readable
+              size, which is the half a skipper actually reads. */}
+          <span aria-hidden className="flex flex-col items-center leading-none">
             {/* The same marks the crate grid uses, for all three statuses a
                 row can hold — not just the overdue one. A hold and a stored
                 crate differed by hue alone, and that is the distinction that

@@ -79,19 +79,37 @@ Commits on `main`, most recent first:
 
 | Commit | What |
 | --- | --- |
-| `4ad1fa8` | Round 8: the ship-blocker, the ledger over-billing, the lost refusal |
-| `240bcd9` | GPS out of the interface, swipeable toast, hover hints, firebase.json |
+| `8a3681b` | Round 15a: the reporting layer, where the last bugs live |
+| `865a183` | Round 14b: the likely findings, before they become certain ones |
+| `fb11bbb` | Round 14: the sea called calm at two metres, and an unbeatable clock |
+| `c211541` | Sonar: the marks a crate can carry, in one place |
+| `21f554e` | Round 13b: a write that never settles, and history reported honestly |
+| `92679f5` | Round 13: the rules went live, and a clock wrong in a third direction |
+| `05e35f1` | Round 12: a guard that silently never fired |
+| `ca716e9` | Round 11: the card that waited for something that was not coming |
+| `d08e2d1` | Round 10: the refusal that still read as "already done", and a sea 200 k |
+| `5af268b` | A script that asks the database what the rules do |
+| `1b34f32` | Round 9: one subsystem at a time, and the score moved |
+| `4ad1fa8` | Round 8: two of the worst findings were written by round 7 |
+| `7e53b0e` | MEMORY: round 7 recorded, and the three numbers it got wrong corrected |
+| `240bcd9` | The skipper never has to know what GPS is |
 | `af506e3` | Round 7: the seams between the per-slot rewrite and everything else |
-| `0fbf511` | Per-slot writes: the database enforces whose crate it is |
-| `0826f71` | Docs: audit recipe, scale numbers, what is live |
-| `25162e6` | Multi-user harbour; audit rounds 3–6 fixed; tests 49 → 67 |
-| `92f259b` | Second audit round fixed; optional Firebase sync added |
-| `9ccacb3` | Supabase schema (superseded — see §4) |
-| `bb6d8d5` | CSS cascade fix (`@layer components`) |
-| `0958018` | Docs corrected to match behaviour |
-| `f0707d0` | First audit round fixed |
-| `508c051` | Readout to top bar, demo tools fenced, roster cleanup |
-| `5af99f0` | Initial commit |
+| `6ea8096` | CI: move the Pages workflow off actions pinned to Node 20 |
+| `cf8772b` | MEMORY: refresh the current-state block after the per-slot push |
+| `0fbf511` | Per-slot writes: the database now knows whose crate it is |
+| `0826f71` | Docs: record the audit practice, the scale numbers, and what is now live |
+| `25162e6` | Multi-user harbour: shared state, honest failures, four audit rounds fix |
+| `806697b` | Correct two doc lines mangled by shell escaping |
+| `fef65d2` | Point the docs at the live GitHub Pages URL |
+| `1a571f5` | Deploy to GitHub Pages instead of Vercel |
+| `176be1f` | Add AGENTS.md and MEMORY.md for session handover |
+| `92f259b` | Fix the second audit round, and add optional multi-user sync |
+| `9ccacb3` | Add the Supabase schema for real multi-user sync |
+| `bb6d8d5` | Fix a CSS cascade trap that squeezed the header on small phones |
+| `0958018` | Docs: claims now match behaviour |
+| `f0707d0` | Fix the defects a hostile production audit found |
+| `508c051` | UI: readout in the top bar, demo tools fenced off, roster shows approved |
+| `5af99f0` | Chill-Box: cold-storage slot booking for AP fishing harbours |
 
 ### What works end to end (verified in the browser)
 
@@ -105,13 +123,15 @@ download and location sharing · admin console at `#admin` (PIN **2468**) with
 approvals, live usage, analytics and CSV export · day/night themes · Telugu
 and English · offline staleness detection.
 
-### Twelve hostile audit rounds were run and acted on
+### Fifteen hostile audit rounds were run and acted on
 
-Scores in order: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, round 7's pair — **3.5**
-(rules/sync/store) and **4.5** (UI/honesty) — round 8's **3.5 / 3.5**, and
-round 9's **4.0 / 5.0**, round 10's **5.0 / 5.0**, round 11's **5.5 / 6.0** and round 12's **5.5 / 6.0**. Every round found real defects with all four gates
-green, and in eleven of the twelve the *previous round's fixes* caused the next
-round's defects. Details in §9–§13 and §16–§22; the recipe is `AGENTS.md` §5.
+Scores in order, rules-sync-store side then UI-honesty side once the review
+split in two at round 7: **4.0, 4.5, 3.0, 3.5, 4.5, 4.5**, then **3.5/4.5**,
+**3.5/3.5**, **4.0/5.0**, **5.0/5.0**, **5.5/6.0**, **5.5/6.0**, **5.5/5.5**,
+**6.0/6.0**, **6.5/6.5**. Every round found real defects with all four gates
+green, and in FIFTEEN of the fifteen the *previous round's fixes* caused the
+next round's defects. Details in §9–§13 and §16–§25; the recipe is
+`AGENTS.md` §5.
 
 Splitting the review in two by concern is worth it: the auditors find
 disjoint sets and then converge on the same root cause.
@@ -125,7 +145,9 @@ sync layer and the score rose a point and a half.
 **So: one subsystem per round.** Not because it is tidier — because nine
 rounds of evidence say a big round buys its own next round's defects.
 
-**Assume the thirteenth will find something too.** That has been true twelve times.
+**Assume the next one will find something too.** That has been true fifteen
+times out of fifteen, and the last two rounds found their headline defect on a
+seam the round before had just cut.
 
 ---
 
@@ -1040,3 +1062,34 @@ now, and the test says so.
 of webfonts, the demo/live toggle. The seeded harbour ageing into
 all-overstay belongs to the demo toggle and is recorded there, not patched
 here.
+
+---
+
+## 25. Fifteenth review — 6.5 and 6.5 → fixed
+
+Both sides up half a point again, and both said the same thing: **every
+certain finding was in what the app SAYS, not in what it does.** The
+crate-moving core — the part where fish spoil — held under deliberate attack
+for the first time in fifteen rounds. Nine of ten UI claims and five of ten
+sync claims survived falsification, measured live rather than read.
+
+Both still said DO NOT SHIP, and every finding sat on a seam round 14 cut.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **Block and Approve lost their audit row on a timed-out write.** Force-release got that fixed one function away in round 14 — and the same round taught `setBoatStatus` to KEEP the optimistic change on `pending`, which made logging *more* important here, not less | A boat blocked on every phone in the harbour, unable to book, deposit or release the crate his catch is already in, and the hash-chained log the README offers to settle disputes with contains no row saying an admin touched him. `setBoatStatus` returns three outcomes now, not a boolean |
+| **The publish deadline invented its own result** — `{failed: 0, boxesOk: false, historyLost: 0}` — so the admin was told the BOXES were refused when they were still in flight, and two unmeasured numbers went into the audit log as fact | And 12 s for a roster, a thirty-path update and up to 1 500 ledger writes on 2G is not a deadline, it is a certainty. Publishing has its own 60 s deadline now and reports `timedOut` rather than zeroes |
+| **`countMissing`'s bound discarded exactly the loss it existed to catch.** Above 25 refusals it reported 0 — and a flaky first publish loses rows in the hundreds | The society's billing history, gone, under a green "Published". It now combines the bound with whether the harbour had any history at all, and an unverified count is reported as unverified |
+| **A timed-out registration could create a permanently undeletable duplicate boat.** The Register button stayed live, and the duplicate-mobile check compared ten digits against the four the shared roster carries — so it was inert for every boat registered on another phone | A second boat is a second two-crate allowance, and no rule can ever delete one. The button latches; the check compares what the roster actually holds |
+| **The safety card dated only its WARNING, never its reassurance** — and the age lived on the strip, which is replaced by the offline banner the moment the phone loses signal | So "the sea is calm, come in" stood alone and undated for up to forty minutes, on the screen that exists for a boat in trouble. Round 14 widened that window from 25 minutes and moved the age off the card in the same breath. Every band carries its own age now |
+| **The admin console derived "today" from the DEVICE timezone** — `Date.parse(new Date(now).toDateString())` | A laptop on New York time at 03:00 IST on the 1st believes the month is over, compares one day against a whole month, and divides a busy day by 31. Exactly the −83% collapse `stats.ts` documents at length as prevented. `startOfLocalDay` already existed, exported, doing it right. The device *clock* was removed three rounds ago; this was the device *calendar* |
+| **Round 14 explained the missing utilisation and left the missing trend silently absent** — and in the seeded demo the trend never appears at all | An absent comparison reads as "no change". It has four separate reasons and now says which |
+| `verifyAudit` anchored to the surviving head unconditionally, so deleting the oldest row of a THREE-row log became undetectable — the check was surrendered for logs that cannot have been trimmed | Genesis is demanded again below the cap. What is genuinely lost after trimming is still stated, rather than the comment's "nothing could" |
+| The audit panel re-formatted and reconciled 2 000 rows every second. Round 14 removed the formatter *constructions* here and left the *calls* | Memoised and paged to 50, with the rest one tap away. The integrity check still runs over every row |
+| The crate chip's content measured 41 px inside a 39 px box, bleeding onto its own border on every stored row in both languages | Reproduced at 2 px, fixed by stacking, re-measured at 12 px of headroom |
+| Escape died under StrictMode — the dev build could not exercise the fallback dialog at all, so the project's one manual test for it reported broken in dev and fixed in prod | |
+| README described the connectivity mechanism round 14 deleted, and quoted an offline notice the default build cannot produce. MEMORY §2 was ten commits and three rounds stale | |
+
+**Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
+of webfonts, the demo/live toggle and the seeded harbour ageing into
+all-overstay, which belongs to it.

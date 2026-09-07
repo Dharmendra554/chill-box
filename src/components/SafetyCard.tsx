@@ -100,24 +100,27 @@ export function SafetyCard({
       </p>
 
       {rough ? (
-        <>
-          <ol className="flex list-decimal flex-col gap-1.5 pl-5 font-bold">
-            <li>{t('safetyStepWait')}</li>
-            <li>{t('safetyStepLife')}</li>
-            <li>{t('safetyStepCall')}</li>
-          </ol>
-          {/* A rough band deliberately outlives its own staleness gate,
-              because warning about breakers that may have passed is the safe
-              direction. That is a reason to date it, not a reason not to: a
-              six-hour-old "delay your landing" over a sea that is now flat
-              is still a confident number, and this card is the one a skipper
-              acts on. §2 makes no exception for warnings. */}
-          {readingAt !== null ? (
-            <p className="text-sm font-bold text-ink-2">
-              {t('waveTaken', formatClock(readingAt))}
-            </p>
-          ) : null}
-        </>
+        <ol className="flex list-decimal flex-col gap-1.5 pl-5 font-bold">
+          <li>{t('safetyStepWait')}</li>
+          <li>{t('safetyStepLife')}</li>
+          <li>{t('safetyStepCall')}</li>
+        </ol>
+      ) : null}
+
+      {/* EVERY band carries its age, not only `rough`.
+          A rough band deliberately outlives its own staleness gate, because
+          warning about breakers that may have passed is the safe direction,
+          and that is a reason to date it rather than a reason not to. But
+          dating only the warning left the reassurance undated, and the
+          reassurance is the direction that drowns people: "the sea is calm,
+          come in" with no time on it.
+          The age used to live on the strip above — until the phone loses
+          signal, when that strip is replaced by the offline banner and the
+          verdict here keeps standing, alone and undated, for up to
+          MARINE_STALE_MS. Which is now forty minutes. This card does not
+          borrow its honesty from a component that can disappear. */}
+      {readingAt !== null ? (
+        <p className="text-sm font-bold text-ink-2">{t('waveTaken', formatClock(readingAt))}</p>
       ) : null}
 
       <h3 className="text-sm font-extrabold uppercase">{t('emergency')}</h3>
