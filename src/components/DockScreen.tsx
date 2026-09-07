@@ -147,11 +147,13 @@ export function DockScreen({
             <CompassIcon size={26} />
             {t('navTitle')}
           </h2>
-          {/* The instruction has to match what a tap will actually do for
-              THIS boat. A boat already holding its two crates cannot book a
-              third, and telling it to tap a box to book one is a promise the
-              screen cannot keep. */}
-          <p className="font-bold text-ink-2">{t(canBook ? 'navTapMap' : 'navTapMapView')}</p>
+          {/* Not a ternary on `canBook`. `state === 'idle'` means this boat
+              holds nothing, which means its quota is full, which means it can
+              book — so the "you can only look" branch was unreachable here
+              and its comment described a state that renders MyStatusCard
+              instead. `canBook` still decides what a TAP does, below, where
+              the boat may be holding something. */}
+          <p className="font-bold text-ink-2">{t('navTapMap')}</p>
           <p className="tabular text-sm font-extrabold">{t(quota === 1 ? 'quotaLeft1' : 'quotaLeft', quota)}</p>
         </section>
       ) : (

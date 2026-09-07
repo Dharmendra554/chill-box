@@ -5,10 +5,12 @@ Andhra Pradesh fishing harbours. Patchy signal, twenty boats to a society,
 Telugu by default, no password.
 
 **And no harbour master — in the code, not only in the description.** Nobody
-approves a registration, nobody can block a boat, and no person frees a crate:
-a boat books the second it registers, and at eight hours the harbour takes an
-abandoned space back by itself. The record of all of it is a tab anyone can
-open. The rules decide; everyone can watch them decide.
+approves a registration, nobody can block a boat, and no person takes a crate
+back: a boat books the second it registers, and a space eight hours old is
+returned by the clock, through whichever phone in the harbour is online at the
+time. The record of all of it is a tab anyone can open, and nothing on it can
+stop a boat or move a crate. One PIN survives, on **Publish harbour** — the
+deployment step, which seeds an empty database and cannot alter a live one.
 
 **Source:** https://github.com/Dharmendra554/chill-box
 **Live demo:** https://dharmendra554.github.io/chill-box/
@@ -463,11 +465,11 @@ The skipper is never asked whether they have signal — the app works it out:
 ## Judge demo
 
 **Step 0, and it matters.** The link opens on the real shared harbour, where
-other people's crates are real. Tap **Which boat I am…**, scroll to **Demo
-tools** at the bottom, and choose **Switch to a demo copy**. The app reloads
-into an identical harbour that lives on your phone alone — same rules, same
-screens, same refusals — and a blue **Demo** strip stays in the header on
-every screen. Everything below is then yours to break.
+other people's crates are real. Scroll to **Demo tools** at the bottom of the
+first screen — no sign-in, nothing typed — and choose **Switch to a demo
+copy**. The app reloads into an identical harbour that lives on your phone
+alone — same rules, same screens, same refusals — and a blue **Demo** strip
+stays in the header everywhere. Everything below is then yours to break.
 
 1. The link opens on the **three capacity gauges**, with no sign-in of any
    kind. That is the whole answer to "is there room, and where?"
@@ -480,9 +482,12 @@ every screen. Everything below is then yours to break.
 5. **Fish deposited** → promise a collection time. It appears instantly in the
    box grid and in the Harbour list, so others plan around a real opening.
 6. The **Ice Plant box** is full and cannot be picked; the **Auction Hall box**
-   carries #11's overstay, pulsing amber. At six hours it goes amber; at
-   eight the harbour takes the space back by itself and the Harbour tab lists
-   it under **Not collected**, by name.
+   carries #11's overstay, pulsing amber. That is the six-hour flag. The
+   second stage is already on the Harbour tab under **Not collected**: a
+   space the harbour took back this morning at the eight-hour line, named,
+   with the note that the fish may still be in the box. Open the **Diesel
+   Bunk box** and the same warning is on the box itself, because the slot now
+   reads free and the fish may not have moved.
 7. Open the **Record** tab — no password. Live usage, utilisation, average
    dwell, overstay rate, the hour boats actually land, three months of
    reporting, **Download for Excel**, and the hash-chained action log. Note

@@ -648,15 +648,13 @@ describe('every shared call a person waits on', () => {
       // there. `release` gets its own case below, after a real deposit.
       const calls = {
         reserve: sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn'),
-        putBoat: sync.putBoat('nizampatnam', boats[0]),
-        resetBoxes: sync.resetRemoteBoxes('nizampatnam', boxes),
         seed: sync.seedHarbour('nizampatnam', boxes, boats, []),
         claimBoat: sync.claimBoat('nizampatnam', boats[0]),
         claimDevice: sync.claimForThisDevice('nizampatnam', '04'),
       }
       await vi.advanceTimersByTimeAsync(12_500)
 
-      for (const key of ['reserve', 'putBoat', 'resetBoxes'] as const) {
+      for (const key of ['reserve'] as const) {
         await expect(calls[key], key).resolves.toMatchObject({ ok: false, error: 'pending' })
       }
       // Publishing has its own, much longer deadline: it is a boat

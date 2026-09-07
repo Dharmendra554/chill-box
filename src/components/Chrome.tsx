@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { HARBOURS } from '../data/harbours'
 import type { T } from '../i18n/dictionary'
 import type { WaveBand } from '../lib/marine'
@@ -79,15 +79,45 @@ export function TopBar({
    * one-line one.
    */
   const node = useRef<HTMLElement>(null)
+  const publish = () => {
+    const el = node.current
+    if (el) document.documentElement.style.setProperty('--chrome-h', `${el.offsetHeight}px`)
+  }
+  /*
+   * After EVERY render, before the browser paints.
+   *
+   * The ResizeObserver below is not enough on its own, and the way it is not
+   * enough is the dangerous direction: it delivers on the rendering
+   * lifecycle, so a throttled or occluded document keeps whatever value was
+   * published first — and measured, that was 133 px against a header that had
+   * become 136. Three pixels of the sticky header back under a sheet, which
+   * is the whole bug this variable exists to prevent.
+   *
+   * Every real cause of a height change here — the demo strip, the swell
+   * strip swapping for the staleness banner, a boat name arriving, a language
+   * toggle — is a re-render of this component, so a layout effect catches all
+   * of them and does not depend on an observer being scheduled. The observer
+   * stays for the ones that are not: a webfont landing, a rotation.
+   */
+  useLayoutEffect(publish)
   useEffect(() => {
     const el = node.current
     if (!el) return
-    const publish = () =>
-      document.documentElement.style.setProperty('--chrome-h', `${el.offsetHeight}px`)
-    publish()
     const observer = new ResizeObserver(publish)
     observer.observe(el)
-    return () => observer.disconnect()
+    // And on the two events that change this element's height without
+    // resizing it in a way an occluded or throttled observer will report: a
+    // rotation, and the browser's own chrome sliding away on scroll. Belt and
+    // braces, because the direction that matters is a value left too SMALL —
+    // that is the sheet growing back under the header, which is the bug this
+    // variable exists to stop.
+    window.addEventListener('resize', publish)
+    window.addEventListener('orientationchange', publish)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', publish)
+      window.removeEventListener('orientationchange', publish)
+    }
   }, [])
   const here = {
     name: (l: Lang) => (l === 'te' ? h.nameTe : h.nameEn),

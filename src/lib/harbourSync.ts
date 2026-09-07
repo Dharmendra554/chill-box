@@ -1,5 +1,5 @@
 import { isOverdue, LEDGER_LIMIT, QUOTA } from '../store/selectors'
-import { HOLD_MS } from './time'
+import { HOLD_MS, RECLAIM_MS } from './time'
 import type { Boat, BoxId, ColdBox, HarbourId, LedgerEntry, Slot, Species } from '../types'
 
 /**
@@ -558,30 +558,6 @@ export function watchConnection(onChange: (live: boolean) => void): () => void {
 }
 
 /**
- * Publish one boat, so the database can vouch for it.
- *
- * The rules refuse a slot whose `boatId` names no boat at that harbour. That
- * check is only worth having if every boat that books is really there, so
- * registration and approval both write through here.
- */
-async function putBoatImpl(harbourId: HarbourId, boat: Boat): Promise<RemoteResult> {
-  const a = await api()
-  if (!a) return { ok: false, error: 'offline' }
-  try {
-    // `update`, not `set`: the boat also carries the `uid` of the device that
-    // claimed it, this phone does not know it, and replacing the object would
-    // drop it — unclaiming the boat and handing its crates to anyone.
-    await a.update(a.ref(a.db, `harbours/${harbourId}/boats/${boat.id}`), toWireBoat(boat))
-    return { ok: true }
-  } catch (error) {
-    // Approving or blocking a boat that never reaches the database leaves
-    // this phone believing something the harbour does not. Reported, not
-    // dropped as an unhandled rejection.
-    return { ok: false, error: reasonFor(error) }
-  }
-}
-
-/**
  * Bind a boat to this device, first claim wins.
  *
  * This is what makes the slot rules mean anything: until a boat carries a
@@ -957,35 +933,6 @@ async function historyExists(a: Api, harbourId: HarbourId): Promise<boolean> {
   }
 }
 
-/**
- * Overwrite a harbour's shared boxes with a fresh demo state.
- *
- * The only call here that deliberately discards what the database holds, and
- * it exists because Reset demo has to actually reset. With sync on, a reset
- * that only touched this phone would be overwritten by the watcher a second
- * later and the button would look broken. Reset demo is fenced and labelled
- * as a demonstration control; nothing else may call this.
- */
-async function resetRemoteBoxesImpl(
-  harbourId: HarbourId,
-  boxes: ColdBox[],
-): Promise<RemoteResult> {
-  const a = await api()
-  if (!a) return { ok: false, error: 'offline' }
-  try {
-    // A multi-path update, not a write of the whole node: permission is
-    // granted per slot now, so each path is checked on its own. Firebase
-    // applies them together, so the harbour never renders half-reset.
-    await a.update(a.ref(a.db, `harbours/${harbourId}/boxes`), slotPaths(boxes))
-    return { ok: true }
-  } catch (error) {
-    // Refused when the roster has not been published yet — the seeded crates
-    // name boats the database does not have. Reported, never left to surface
-    // as an unhandled rejection.
-    return { ok: false, error: reasonFor(error) }
-  }
-}
-
 /** `{ 'box1/0': slot, 'box1/1': slot, … }` — one entry per slot. */
 export function slotPaths(boxes: ColdBox[]): Record<string, WireSlot> {
   const paths: Record<string, WireSlot> = {}
@@ -1034,8 +981,9 @@ async function readBoxes(a: Api, harbourId: HarbourId): Promise<WireBoxes | null
  * clause 3 in the deployed rules exactly (see `expiredHold`) and deliberately
  * implements neither of the other two: the rules also let anyone clear an
  * `overstay` slot, or an `occupied` one past six hours, and this client will
- * not book either. Those belong to the admin's force-release path
- * (`forceReleasable`, `overdueIndexes`), where a human decides.
+ * not book either. Those belong to the eight-hour reclaim path
+ * (`reclaimable`, `overdueIndexes`), where a clock decides — there is no
+ * human with that power any more, and there is no button.
  *
  * So it is narrower than the rule, never wider — a client that refuses what
  * the server would allow costs nothing, while one that offers what the
@@ -1076,7 +1024,8 @@ async function claimSlot(
  * Change one slot this boat already holds.
  *
  * Guarded inside the transaction as well as outside it: another phone may
- * have released or force-released the crate since we read it.
+ * have released the crate, or the eight-hour rule have taken it back, since
+ * we read it.
  */
 async function changeOwnSlot(
   a: Api,
@@ -1086,12 +1035,20 @@ async function changeOwnSlot(
   boatId: string,
   statuses: Slot['status'][],
   change: (slot: WireSlot) => WireSlot,
+  guard?: (slot: WireSlot) => boolean,
 ): Promise<boolean> {
   const result = await a.runTransaction(
     a.ref(a.db, `harbours/${harbourId}/boxes/${boxId}/${index}`),
     (current: WireSlot | null) => {
       if (current?.boatId !== boatId) return undefined
       if (!statuses.includes(current.status)) return undefined
+      // The caller's own condition, re-checked against the server's copy
+      // INSIDE the transaction. The eight-hour reclaim needs this: it decides
+      // from a snapshot, and a phone that was asleep decides from an old one.
+      // Without it, a boat that released and re-deposited into the same slot
+      // during that window had its FRESH crate emptied and was named on the
+      // public board as not having collected.
+      if (guard && !guard(current)) return undefined
       return pruneWire(change(current))
     },
   )
@@ -1147,7 +1104,22 @@ function rowsFor(
         depositedAt,
         releasedAt: now,
         overstay: late,
-        reclaimed,
+        // OMITTED when false, not written as `false`.
+        //
+        // This node ends in `"$other": { ".validate": false }`, so a field
+        // the published rules have not heard of refuses the whole row — and
+        // the rules deploy is gated on a repository secret that does not
+        // exist yet, so the client reaches phones first as a matter of
+        // routine. Sending it on every release would mean that between the
+        // two deployments EVERY release in the live harbour loses its ledger
+        // row: the crate frees, the skipper gets a warn toast, and the
+        // society's billing record goes quietly blank. That is MEMORY §16
+        // told again with a different field.
+        //
+        // Sent only on the rows that need it, the exposure is the handful of
+        // reclaims in that window rather than every trip, and a missing value
+        // already means the same thing as `false` — see `LedgerEntry`.
+        ...(reclaimed ? { reclaimed: true } : {}),
       })
       continue
     }
@@ -1336,6 +1308,17 @@ async function releaseRemoteImpl(
     () => ({ status: 'empty' }),
     onlyBoxId,
     onlyIndexes,
+    // The eight-hour rule decides from a snapshot; a phone that has been
+    // asleep decides from an old one. This re-asks the server's own copy,
+    // inside the transaction, whether the crate is still eight hours old —
+    // so a boat that collected and re-deposited into the same slot during
+    // that window keeps its fresh crate instead of losing it and being named
+    // on the public board as not having collected. A skipper's own release
+    // passes no guard: he may clear his crate whenever he likes.
+    reclaimed
+      ? (slot) =>
+          typeof slot.depositedAt === 'number' && Date.now() - slot.depositedAt >= RECLAIM_MS
+      : undefined,
   )
   if (!freed.ok) return freed
   if (freed.freed.length === 0) return { ok: false, error: 'stale' }
@@ -1407,6 +1390,7 @@ async function mutateOwnSlots(
   change: (slot: WireSlot) => WireSlot,
   onlyBoxId?: BoxId,
   onlyIndexes?: number[],
+  guard?: (slot: WireSlot) => boolean,
 ): Promise<SlotChange> {
   const a = await api()
   if (!a) return { ok: false, error: 'offline' }
@@ -1432,7 +1416,7 @@ async function mutateOwnSlots(
     // resurrected.
     const done = await Promise.allSettled(
       mine.map(({ boxId, index }) =>
-        changeOwnSlot(a, harbourId, boxId, index, boatId, statuses, change),
+        changeOwnSlot(a, harbourId, boxId, index, boatId, statuses, change, guard),
       ),
     )
     const freed = mine.filter((_, i) => done[i].status === 'fulfilled' && done[i].value)
@@ -1491,10 +1475,6 @@ function settle(result: SlotChange): RemoteResult {
  * that happens here is that none of them may hang forever with a sheet open
  * over them. See `withDeadline` for why `pending` is not `offline`.
  */
-export function putBoat(harbourId: HarbourId, boat: Boat): Promise<RemoteResult> {
-  return withDeadline(putBoatImpl(harbourId, boat), () => PENDING)
-}
-
 export function reserveRemote(
   harbourId: HarbourId,
   boxId: BoxId,
@@ -1533,10 +1513,6 @@ export function releaseRemote(
     releaseRemoteImpl(harbourId, boatId, onlyBoxId, onlyIndexes, reclaimed),
     () => PENDING,
   )
-}
-
-export function resetRemoteBoxes(harbourId: HarbourId, boxes: ColdBox[]): Promise<RemoteResult> {
-  return withDeadline(resetRemoteBoxesImpl(harbourId, boxes), () => PENDING)
 }
 
 /**

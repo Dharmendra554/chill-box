@@ -75,6 +75,7 @@ const TE = {
   box2: 'ఐస్ ప్లాంట్ బాక్స్',
   box3: 'డీజిల్ బంక్ బాక్స్',
   crates: 'క్రేట్లు',
+  crateOne: 'క్రేట్',
   full: 'నిండింది',
   stale: 'జాగ్రత్త. ఈ లెక్క పాతది. బాక్స్ దగ్గర చూసుకోండి.',
   demo: 'ఇది డెమో. నిజమైన బుకింగ్ కాదు.',
@@ -87,6 +88,7 @@ const ROMAN = {
   box2: 'ice plant box',
   box3: 'diesel bunk box',
   crates: 'cretlu',
+  crateOne: 'cret',
   full: 'nindindi',
   stale: 'jaagratta. ee lekka paatadi. box daggara chusukondi.',
   demo: 'idi demo. nijamaina booking kaadu.',
@@ -101,7 +103,12 @@ function line(boxes: ColdBox[], words: Phrases): string {
       const free = emptyCount(box)
       const name = words[box.id as BoxId]
       if (free === 0) return `${name}, ${words.full}`
-      return `${name}, ${words.counts[free] ?? free} ${words.crates}`
+      // Singular at one, in the channel built for the people who cannot read
+      // the screen. The written UI was corrected a round ago and this was
+      // missed, so the app went on saying "ఒక క్రేట్లు" — one crates — out
+      // loud, to exactly the listeners a disagreeing noun costs the most.
+      const noun = free === 1 ? words.crateOne : words.crates
+      return `${name}, ${words.counts[free] ?? free} ${noun}`
     })
     .join('. ')
 }

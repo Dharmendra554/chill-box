@@ -25,7 +25,6 @@ import {
   depositRemote,
   releaseRemote,
   reserveRemote,
-  resetRemoteBoxes,
   seedHarbour,
   serverNow,
   watchConnection,
@@ -33,6 +32,7 @@ import {
   watchRoster,
   type RemoteResult,
 } from '../lib/harbourSync'
+import { SYNC_STALE_MS } from '../hooks/useConnectivity'
 import { demoMode, sharedActive } from '../lib/mode'
 import { HOUR_MS } from '../lib/time'
 import type {
@@ -398,7 +398,7 @@ export interface DockState {
    * a box row can hold one crate the harbour has given up on and another
    * stored an hour ago, and the database will refuse the pair.
    */
-  reclaimCrates: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<void>
+  reclaimCrates: (boatId: string, boxId: BoxId, indexes: number[]) => Promise<boolean>
   publishHarbour: () => Promise<void>
   record: (action: string, target: string, detail?: string) => Promise<void>
 
@@ -499,6 +499,27 @@ export function releaseSlots(
   return { boxes: next, entries }
 }
 
+/**
+ * v4 → v5: drop `status` from every boat.
+ *
+ * Exported for the suite. A migration is exactly the kind of code that is
+ * only ever run once per phone, in the field, months after it was written —
+ * so the alternative to testing the real function is a test that copies it
+ * and proves nothing.
+ *
+ * Anything older than v4 predates multi-harbour support and cannot be
+ * half-migrated: `undefined` tells persist to fall back to the fresh seed.
+ */
+export function migrateStore(persisted: unknown, version: number): unknown {
+  if (version !== 4) return undefined
+  const state = persisted as { boats?: Record<string, unknown>[] }
+  if (!Array.isArray(state.boats)) return undefined
+  return {
+    ...state,
+    boats: state.boats.map(({ status: _status, ...boat }) => boat),
+  }
+}
+
 export const useDockStore = create<DockState>()(
   persist(
     (set, get) => {
@@ -539,8 +560,17 @@ export const useDockStore = create<DockState>()(
        * one crate reaching eight hours while another is still fresh.
        *
        * Never cleared on success, because success removes the crate from
-       * `reclaimable` anyway. It is cleared only on failure, so a link that
-       * comes back can try again.
+       * `reclaimable` anyway. It is cleared when the attempt did NOT take the
+       * crate, so a link that comes back can try again.
+       *
+       * That used to be a `.catch()` on the promise, and the comment claimed
+       * it was a recovery path. `reclaimCrates` has no throwing path: a dead
+       * link, a refusal, a lost race, a deadline and a partial write all
+       * RESOLVE, carrying their outcome in a `RemoteResult`. So the catch
+       * could never fire, and the first failure took that crate out of the
+       * eight-hour rule for the rest of the session — on a 2G tether, where
+       * `pending` is the ordinary outcome, that is every crate, once. It
+       * reads the outcome now.
        */
       const reclaiming = new Set<string>()
 
@@ -557,19 +587,29 @@ export const useDockStore = create<DockState>()(
        * And never while the figures are stale. A phone that has been asleep,
        * or in a shed with no signal, wakes holding an hour-old picture; every
        * crate in it looks eight hours old, and acting on that empties a
-       * harbour that has been quietly working the whole time. `syncLive` is
-       * proof a snapshot is arriving, not that a socket exists — see
-       * `watchHarbour`.
+       * harbour that has been quietly working the whole time.
+       *
+       * `syncLive` alone is NOT enough for that, and the README claimed it
+       * was. It says a listener has not reported an error; it carries no age,
+       * and it is still `true` over a pre-sleep snapshot for as long as the
+       * transport takes to notice the socket died — which is exactly the
+       * window a waking phone runs in. So the SNAPSHOT'S AGE decides, using
+       * the same threshold the staleness banner shows the skipper. The
+       * transaction re-checks `depositedAt` server-side as well, because a
+       * clock is not a substitute for asking.
        */
       const reclaimOverdue = (now: number): void => {
-        const { boxesByHarbour, harbourId, syncLive } = get()
-        if (sharedActive && !syncLive) return
+        const { boxesByHarbour, harbourId, syncLive, syncedAt } = get()
+        if (sharedActive && (!syncLive || now - (syncedAt ?? 0) > SYNC_STALE_MS)) return
         for (const row of reclaimable(boxesByHarbour[harbourId], now)) {
-          const key = `${harbourId}:${row.boxId}:${row.boatId}:${row.indexes.join(',')}`
+          const key = `${harbourId}:${row.boxId}:${row.boatId}:${row.since}`
           if (reclaiming.has(key)) continue
           reclaiming.add(key)
           void get()
             .reclaimCrates(row.boatId, row.boxId, row.indexes)
+            .then((took) => {
+              if (!took) reclaiming.delete(key)
+            })
             .catch(() => reclaiming.delete(key))
         }
       }
@@ -698,13 +738,28 @@ export const useDockStore = create<DockState>()(
           // second does not invalidate every box-derived render.
           if (changed) patch.boxesByHarbour = next as Record<HarbourId, ColdBox[]>
 
-          reclaimOverdue(now)
-
           // Idle auto-lock, the way a portal session expires.
           if (prev.adminUnlocked && now - prev.adminTouchedAt > ADMIN_IDLE_MS) {
             patch.adminUnlocked = false
           }
           if (Object.keys(patch).length > 0) set(patch)
+
+          /*
+           * AFTER the `set`, and this line's position is the whole feature.
+           *
+           * It ran before it, and on the local path `reclaimCrates` reaches
+           * its own `set` synchronously — so the reclaim emptied the slot and
+           * then `set(patch)` put the crate straight back from `next`, which
+           * was computed from PRE-tick boxes. The ledger row is not in
+           * `patch`, so it survived: the harbour published "not collected",
+           * named the boat, billed the cycle, and the crate never moved.
+           *
+           * It only bit when `applyTick` had also moved something, because
+           * `patch.boxesByHarbour` is set only when `changed` — so a quiet
+           * second reclaimed correctly and the browser check that verified
+           * this feature happened to land on one. A cold start moves plenty.
+           */
+          reclaimOverdue(now)
         },
 
         register: async ({ boatName, owner, mobile }) => {
@@ -856,9 +911,9 @@ export const useDockStore = create<DockState>()(
           if (sharedActive) {
             const result = await reserveRemote(harbourId, boxId, myBoatId, crates, species)
             if (result.ok) return true
-            // Every refusal gets its own reason. 'notActive' cannot reach
-            // here — the guard above already refused an unapproved boat
-            // before we touched the network.
+            // Every refusal gets its own reason. None of them is about who
+            // the skipper is: there is no state a boat can be in that refuses
+            // a booking, and no approval to be waiting on.
             if (result.error === 'quota') {
               set({ toast: toast('error', t(get().lang, 'errQuota', QUOTA, quota)) })
             } else if (result.error === 'boxFull') {
@@ -1080,7 +1135,11 @@ export const useDockStore = create<DockState>()(
             indexes,
             true,
           )
-          if (result.entries.length === 0) return
+          // `false` everywhere means "the crate is still there, try again".
+          // The caller latches a crate out of the eight-hour rule on `true`,
+          // so anything short of the crate actually leaving the box has to
+          // report it — silence here is a crate nobody comes back for.
+          if (result.entries.length === 0) return false
 
           // The shared copy first, or nothing happened. Freeing this only
           // locally left the crate occupied for every other phone and the
@@ -1105,15 +1164,23 @@ export const useDockStore = create<DockState>()(
             )
 
           if (sharedActive) {
-            if (!requireLink()) return
+            if (!requireLink()) return false
             const outcome = await releaseRemote(harbourId, boatId, boxId, indexes, true)
-            reportFailure(outcome)
+            // NOT `reportFailure`. Nobody tapped anything: this is a clock
+            // firing in the background, and two phones reaching eight hours
+            // in the same second is the DESIGNED case — the loser gets
+            // `stale`, which would pop "that is already done" on the screen of
+            // a skipper looking at a capacity gauge, about a crate that is not
+            // his. A refusal or a dead link is equally not his business. The
+            // outcome decides whether we retry; it does not decide what to
+            // say to a bystander.
             // Recorded whenever a crate actually came out, including a
             // partial release. Logging only on `ok` meant a crate was
             // freed, billed in the ledger, and left with no record of why
             // it came out.
             if (outcome.freed) {
               logIt(outcome.freed)
+              return true
             } else if (!outcome.ok && outcome.error === 'pending') {
               // The deadline fired; the write did not stop. It very likely
               // lands, freeing crates and writing the billing rows, and
@@ -1123,12 +1190,16 @@ export const useDockStore = create<DockState>()(
               // for what it is: an action taken, with an outcome nobody
               // confirmed.
               logIt(indexes.length, false)
+              // Latched: the write may still land, and retrying it would take
+              // a crate the harbour has already taken and bill it twice.
+              return true
             }
-            return
+            return false
           }
 
           putBoxes(result.boxes, { ledger: capLedger([...ledger, ...result.entries]) })
           logIt(result.entries[0].crates)
+          return true
         },
 
         /**
@@ -1220,42 +1291,27 @@ export const useDockStore = create<DockState>()(
           // another society's boxes, with fish in them, and was told they had
           // cleared the one on screen.
           const { harbourId, boxesByHarbour } = get()
-          // `requireLink()`, like every other shared write. Without it this
-          // was the one control that could be tapped with the socket down:
-          // `api()` resolves, the transaction queues, the promise never
-          // settles, and the button did nothing at all — no toast, no
-          // spinner, no reason — for the rest of the session. A dead control
-          // with no reason given is the thing AGENTS.md §2 forbids by name.
-          if (sharedActive && !requireLink()) return
+          /*
+           * DEMO ONLY. This is the last power that was left, and it was a
+           * bigger one than the four this round deleted.
+           *
+           * It used to reset the SHARED harbour: behind PIN 2468, it wiped
+           * every stored crate and every hold belonging to every phone in the
+           * society — strictly more than the Force release it outlived, which
+           * could only take a crate the harbour had already given up on. So
+           * "nobody clears anyone's crate by hand" was on the Harbour tab,
+           * "nobody can edit this" was on the record, and the trade-offs note
+           * said a clock rather than a person frees a crate, while one PIN
+           * could still empty three boxes. Four honest-sounding sentences and
+           * one control that made all four false.
+           *
+           * The demonstration it exists for is served by demo mode, which is
+           * a copy of the harbour on this phone alone. There is no longer any
+           * reason for a live society's crates to be resettable by anybody,
+           * and now there is no way.
+           */
+          if (sharedActive) return
           const fresh = seed(serverNow())
-
-          // A local-only reset would be undone by the watcher a second later,
-          // so the shared copy has to be reset too or the button lies.
-          //
-          // The roster goes first, because the seeded crates name boats and
-          // the rules refuse a slot naming a boat the database has not heard
-          // of. On an unpublished harbour that made this button fail with a
-          // refusal the admin could do nothing about — so it now seeds what
-          // it needs. Both writes yield to anything already there.
-          // The shared copy first, and only mirror it locally if it landed.
-          // A multi-path update is atomic: one refused slot — which is what
-          // happens the moment a real skipper has claimed a boat — refuses
-          // all thirty. Setting the local copy first showed the admin an
-          // empty harbour, then a refusal toast, then the watcher putting
-          // every crate back. Say no, or do it; never both.
-          if (sharedActive) {
-            await seedHarbour(
-              harbourId,
-              fresh.boxesByHarbour[harbourId],
-              fresh.boats.filter((b) => b.harbourId === harbourId),
-              fresh.ledger.filter((e) => e.harbourId === harbourId),
-            )
-            const outcome = await resetRemoteBoxes(harbourId, fresh.boxesByHarbour[harbourId])
-            if (!outcome.ok) {
-              reportFailure(outcome)
-              return
-            }
-          }
 
           set({
             // ONLY this harbour's crates. `...fresh` replaced the roster and
@@ -1309,15 +1365,7 @@ export const useDockStore = create<DockState>()(
        * Anything older than v4 predates multi-harbour support and still
        * reseeds: that shape cannot be half-migrated.
        */
-      migrate: (persisted, version) => {
-        if (version !== 4) return undefined
-        const state = persisted as { boats?: Record<string, unknown>[] }
-        if (!Array.isArray(state.boats)) return undefined
-        return {
-          ...state,
-          boats: state.boats.map(({ status: _status, ...boat }) => boat),
-        }
-      },
+      migrate: (persisted, version) => migrateStore(persisted, version),
       onRehydrateStorage: () => (state) => {
         if (!state) return
         // A corrupt or truncated write must not brick the app on a dock.

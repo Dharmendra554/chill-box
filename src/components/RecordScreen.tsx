@@ -30,7 +30,6 @@ import {
 import { cx } from '../lib/ui'
 import { occupancyRows } from '../store/selectors'
 import { selectBoxes, selectHarbour, useDockStore } from '../store/useDockStore'
-import { ConfirmButton } from './ConfirmButton'
 import { HelmIcon } from '../icons/marine'
 import { SPECIES_ICON } from '../icons/species'
 
@@ -63,8 +62,8 @@ const TREND_MISSING = {
  * last one is what staffs the quay. A harbour with nobody in charge needs
  * all of it visible to everybody, so there is no PIN on any of it.
  *
- * The PIN survives on `HarbourTools` alone — Publish harbour and Reset demo
- * — which are deployment and demonstration controls, not harbour policy.
+ * The PIN survives on `HarbourTools` alone, and on one control inside it:
+ * Publish harbour, which seeds an empty database and cannot alter a live one.
  * Its honest limits live in `lib/adminAuth.ts`.
  *
  * NO MOBILE NUMBERS. This screen is open to anyone with the link now, and
@@ -244,6 +243,13 @@ function Console() {
       'Released',
       'Hours',
       'Overstay',
+      // The one column the ledger carries that nothing else can reconstruct.
+      // `reclaimed` is RECORDED rather than derived precisely because a
+      // skipper who collects at 8 h 01 m writes a row identical in every
+      // timestamp — and then the artefact the society bills from dropped it,
+      // so the dispute the field exists to settle could only be settled from
+      // the audit log, which is local to whichever phone did the reclaim.
+      'Space reclaimed',
     ]
     const rows = entriesForMonth(ledger, active).map((e) => {
       const boat = boats.find((b) => b.id === e.boatId)
@@ -261,6 +267,7 @@ function Console() {
         formatDayClock(e.releasedAt, 'en'),
         hours.toFixed(2),
         e.overstay ? 'yes' : 'no',
+        e.reclaimed ? 'yes' : 'no',
       ]
     })
     saveCsv(`${harbour.id}-${active}.csv`, [header, ...rows])
@@ -480,25 +487,32 @@ function Console() {
 }
 
 /**
- * The only PIN left in the app, and what it is still for.
+ * The only PIN left in the app, and the only thing behind it.
  *
- * Publish harbour seeds a real society's database, and Reset demo clears
- * every phone's crates. Neither is harbour policy — they are the deployment
- * and demonstration controls — but both are destructive and neither is
- * something twenty skippers should meet by scrolling. So they keep the lock,
- * with its lockout and its idle expiry, while every number above them is
- * open to everybody.
+ * **Publish harbour**, and nothing else. It seeds an empty database — every
+ * write yields to whatever is already there — so it creates a harbour and
+ * cannot alter one. That is not policy and not a power over anybody's crate;
+ * it is the deployment step, and it keeps the lock because it writes to a
+ * real society's database and is not something twenty skippers should meet
+ * by scrolling.
+ *
+ * **Reset demo used to be here too, and it was the biggest power in the app.**
+ * In a shared harbour it wiped every stored crate and every hold belonging to
+ * every phone in the society — strictly more than the Force release this
+ * round deleted, which could only take a crate already given up on. Meanwhile
+ * the Harbour tab said "nobody clears anyone's crate by hand" and the record
+ * said "nobody can edit this". It is demo-only now, where it touches a copy
+ * of the harbour that lives on one phone, so those sentences are true.
  *
  * The lock is on the TOOLS, not on the record. That is the whole difference
- * between a console and a noticeboard, and it is why nothing in this file
- * can approve, block or release anything any more.
+ * between a console and a noticeboard, and it is why nothing in this file can
+ * approve, block or release anything, or touch a crate at all.
  */
 function HarbourTools() {
   const t = useT()
   const unlocked = useDockStore((s) => s.adminUnlocked)
   const lockAdmin = useDockStore((s) => s.lockAdmin)
   const publishHarbour = useDockStore((s) => s.publishHarbour)
-  const resetDemo = useDockStore((s) => s.resetDemo)
   const [busy, setBusy] = useState(false)
 
   return (
@@ -525,13 +539,6 @@ function HarbourTools() {
             {t('adminPublish')}
           </button>
           <p className="text-sm font-bold text-ink-2">{t('adminPublishBody')}</p>
-
-          <ConfirmButton
-            className="btn btn-lg btn-block"
-            label={t('adminResetShared')}
-            onConfirm={resetDemo}
-          />
-          <p className="text-sm font-bold text-ink-2">{t('adminResetSharedBody')}</p>
         </>
       ) : (
         // Unlocked, but there is no shared harbour to publish to or reset.

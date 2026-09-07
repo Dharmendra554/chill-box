@@ -153,7 +153,6 @@ const S = {
   // — Navigation ——————————————————————————————————
   navTitle: { te: 'దగ్గరలోని కోల్డ్ బాక్సులు', en: 'Cold boxes near you' },
   navTapMap: { te: 'మ్యాప్‌లో బాక్స్ మీద నొక్కి బుక్ చేయండి.', en: 'Tap a box on the map to book it.' },
-  navTapMapView: { te: 'బాక్స్ మీద నొక్కితే లోపల ఎవరున్నారో కనిపిస్తుంది.', en: 'Tap a box to see who is inside it.' },
   navMapLabel: { te: 'హార్బర్ మ్యాప్ — మూడు బాక్సుల స్థానాలు', en: 'Harbour map — where the three boxes are' },
   // — One-line hints, shown on hover. A phone has no hover, so these never
   // carry anything a touch user needs; they explain a control to someone
@@ -285,9 +284,10 @@ const S = {
   // `adminApprovals`, `adminNoApprovals`, `approve`, `reject`, `block`,
   // `unblock` and `adminForceRelease` went with the powers they named.
   adminLive: { te: 'ప్రస్తుత వాడకం', en: 'Live usage' },
-  recordIntro: { te: 'హార్బర్ రికార్డు. అందరికీ కనిపిస్తుంది, ఎవరూ దీన్ని మార్చలేరు.', en: 'The harbour record. Everyone can see it; nobody can edit it.' },
+  recordIntro: { te: 'హార్బర్ రికార్డు. అందరికీ కనిపిస్తుంది. ఇక్కడి నుంచి ఎవరూ ఏ బోటునూ ఆపలేరు, ఏ క్రేట్‌నూ తీయలేరు.', en: 'The harbour record. Everyone can see it. Nothing on this screen can stop a boat or take a crate.' },
   reclaimWhen: { te: 'పెట్టి {0} గంటలు దాటితే స్థలం వెనక్కి', en: 'Space returns {0} h after it was stored' },
-  reclaimNote: { te: 'ఏ క్రేట్‌నూ ఎవరూ బలవంతంగా తీయరు. {0} గంటలు దాటితే స్థలం దానంతట అదే ఖాళీ అవుతుంది.', en: 'Nobody clears anyone’s crate by hand. After {0} h the space frees itself.' },
+  reclaimNote: { te: 'ఇక్కడ ఎవరికీ ప్రత్యేక అధికారం లేదు. {0} గంటలు దాటిన స్థలాన్ని, హార్బర్‌లో ఎవరి ఫోన్ ఆన్‌లో ఉంటే ఆ ఫోన్ ద్వారా, యాప్ దానంతట అదే వెనక్కి తీసుకుంటుంది.', en: 'Nobody here has a special power. Once a space is {0} h old the app takes it back by itself — through whichever phone in the harbour is online at the time.' },
+  reclaimedHere: { te: 'ఈ బాక్స్‌లో {0} స్థలం హార్బర్ వెనక్కి తీసుకుంది. వాళ్ల చేపలు ఇంకా లోపలే ఉండవచ్చు.', en: 'The harbour took back {0}’s space in this box. Their fish may still be inside.' },
   lateListTitle: { te: 'తీసుకెళ్లని క్రేట్లు', en: 'Not collected' },
   lateListBody: { te: 'ఈ స్థలాలు హార్బర్ వెనక్కి తీసుకుంది. చేపలు ఇంకా బాక్స్‌లోనే ఉండవచ్చు — తీసుకెళ్లండి.', en: 'The harbour took these spaces back. The fish may still be in the box — please collect it.' },
   lateListRow: { te: '{0} · {1} క్రేట్లు', en: '{0} · {1} crates' },
@@ -332,11 +332,11 @@ const S = {
   adminAuditEmpty: { te: 'ఇంకా చర్యలు లేవు.', en: 'No admin actions yet.' },
 
   demoResetMoved: { te: 'డెమో రీసెట్ ఇప్పుడు అడ్మిన్‌లో ఉంది (#admin).', en: 'Reset demo now lives in the admin console (#admin).' },
-  adminResetShared: { te: 'డెమోను రీసెట్ చేయి (అందరికీ)', en: 'Reset demo for the whole harbour' },
+
   // Precise on purpose: it resets THIS harbour's crates for everyone. The
   // roster and the record of past storage are not touched, and the other two
   // harbours are reset on this phone only.
-  adminResetSharedBody: { te: 'ఈ హార్బర్‌లోని ప్రస్తుత బుకింగ్‌లన్నీ అందరి ఫోన్లలో తొలగిపోతాయి. బోట్ల జాబితా, పాత రికార్డు అలాగే ఉంటాయి. డెమో కోసం మాత్రమే.', en: 'Clears this harbour’s live holds and stored crates on every phone. The boat roster and past records are kept. Demonstration only.' },
+
 
   booking: { te: 'బుక్ అవుతోంది…', en: 'Booking…' },
   saving: { te: 'సేవ్ అవుతోంది…', en: 'Saving…' },

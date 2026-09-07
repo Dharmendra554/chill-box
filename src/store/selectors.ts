@@ -7,6 +7,15 @@ export const QUOTA = 2
 const NEW_BOAT_MS = 7 * DAY_MS
 
 /**
+ * How long a reclaimed crate stays named on the harbour board.
+ *
+ * Here, not in `HarbourScreen`, because how long the harbour holds somebody
+ * to account is a harbour rule and AGENTS §2 puts those in the store. A
+ * policy constant in a component is one a component can quietly change.
+ */
+export const NOT_COLLECTED_MS = DAY_MS
+
+/**
  * Has this boat only just started using the boxes?
  *
  * The whole of what replaced admin approval. Nobody vets a new boat and
@@ -154,8 +163,25 @@ export interface Occupancy {
   plannedOutAt: number | null
   species: Species | null
   slotIndexes: number[]
-  /** The crates in this row the harbour may take back — see forceReleasable. */
+  /** The crates in this row past their overstay hour — see `reclaimable`. */
   overdueIndexes: number[]
+}
+
+/**
+ * One boat's overdue crates in one box.
+ *
+ * `since` is the oldest deposit among them, and it is not decoration: it is
+ * what identifies THE CRATE rather than the slot it is sitting in. The
+ * caller remembers what it has already submitted, and a key of harbour, box,
+ * boat and slot index would have latched shut on the slot — so the next
+ * crate that same boat put in that same slot could never be reclaimed for
+ * the rest of the session.
+ */
+export interface Reclaim {
+  boatId: string
+  boxId: BoxId
+  indexes: number[]
+  since: number
 }
 
 /**
@@ -183,19 +209,25 @@ export interface Occupancy {
 export function reclaimable(
   boxes: ColdBox[],
   now: number,
-): { boatId: string; boxId: BoxId; indexes: number[] }[] {
-  const out: { boatId: string; boxId: BoxId; indexes: number[] }[] = []
+): Reclaim[] {
+  const out: Reclaim[] = []
   for (const box of boxes) {
-    const byBoat = new Map<string, number[]>()
+    const byBoat = new Map<string, { indexes: number[]; since: number }>()
     for (const slot of box.slots) {
       if (slot.status !== 'occupied' && slot.status !== 'overstay') continue
       if (!slot.boatId || slot.depositedAt === null) continue
       if (now - slot.depositedAt < RECLAIM_MS) continue
-      const list = byBoat.get(slot.boatId)
-      if (list) list.push(slot.index)
-      else byBoat.set(slot.boatId, [slot.index])
+      const found = byBoat.get(slot.boatId)
+      if (found) {
+        found.indexes.push(slot.index)
+        found.since = Math.min(found.since, slot.depositedAt)
+      } else {
+        byBoat.set(slot.boatId, { indexes: [slot.index], since: slot.depositedAt })
+      }
     }
-    for (const [boatId, indexes] of byBoat) out.push({ boatId, boxId: box.id, indexes })
+    for (const [boatId, { indexes, since }] of byBoat) {
+      out.push({ boatId, boxId: box.id, indexes, since })
+    }
   }
   // Stable across phones: two devices reaching the eight-hour line in the
   // same second must attempt the same crates in the same order, or their

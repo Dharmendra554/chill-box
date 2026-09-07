@@ -6,11 +6,16 @@ import { useDockStore } from '../store/useDockStore'
 /**
  * Which harbour this session is on, and the switch between them.
  *
- * On the registration screen as well as in the demo tools, because the tools
- * live at the bottom of the Book screen and the Book screen only exists once
- * you have a boat. So on a configured build the only route to the demo ran
- * through registering in the REAL society's roster first — where a boat can
- * never be deleted. The sandbox was behind the thing it exists to protect.
+ * One copy, in the demo tools at the bottom of the Book screen.
+ *
+ * There was a second copy on the registration screen, and the argument for it
+ * was that the Book screen only existed once you had a boat — so the only
+ * route to the sandbox ran through registering a fictitious boat in a real
+ * society's permanent roster, where no rule can ever delete it. That argument
+ * died when the Book screen became the landing screen: the demo tools are now
+ * three cards below the capacity gauges, before anyone has typed anything.
+ * Two copies of one control, one of them justified by a comment that had
+ * stopped being true, is the defect AGENTS §2 names.
  *
  * Rendered only where there is a choice: with no database configured the app
  * is local and always was, and a toggle that cannot move is worse than none.

@@ -1,5 +1,5 @@
 import { HARBOUR_IDS } from './harbours'
-import { DAY_MS, HOLD_MS, HOUR_MS, MINUTE_MS, startOfLocalDay } from '../lib/time'
+import { DAY_MS, HOLD_MS, HOUR_MS, MINUTE_MS, RECLAIM_MS, startOfLocalDay } from '../lib/time'
 import { emptySlot, QUOTA } from '../store/selectors'
 import { SPECIES } from '../types'
 import type { BoxId, ColdBox, HarbourId, LedgerEntry, Slot, Species } from '../types'
@@ -196,5 +196,41 @@ export function seedAllBoxes(now: number): Record<HarbourId, ColdBox[]> {
 }
 
 export function seedAllLedgers(now: number): LedgerEntry[] {
-  return HARBOUR_IDS.flatMap((id) => createMockLedger(id, now))
+  return [...HARBOUR_IDS.flatMap((id) => createMockLedger(id, now)), reclaimedRow(now)]
+}
+
+/**
+ * One space the harbour took back this morning, so the eight-hour rule is
+ * visible the moment the app opens.
+ *
+ * Without it the feature that replaced Force release cannot be seen at all:
+ * the oldest seeded crate is seven hours old, the rule fires at eight, and
+ * the Harbour tab renders its **Not collected** section only when there is
+ * something in it. So a judge following the README — which promises exactly
+ * this — waited an hour for the strongest answer the app has to the brief's
+ * "logical handling of no-shows", and the brief also requires the thing be
+ * testable the moment it opens.
+ *
+ * A LEDGER ROW, not a nine-hour crate. A crate that old would be reclaimed
+ * by the first tick, which is correct behaviour and a confusing first frame:
+ * the harbour would visibly empty a box a second after opening. This is the
+ * row that reclaim leaves behind, seeded as if it happened at first light.
+ *
+ * Kotta #04's crate: deposited before midnight, released by the rule at
+ * 08:00, within the 24 h the board keeps it.
+ */
+function reclaimedRow(now: number): LedgerEntry {
+  const releasedAt = now - 90 * MINUTE_MS
+  return {
+    id: 'nizampatnam-reclaimed-seed',
+    harbourId: 'nizampatnam',
+    boatId: '17',
+    boxId: 'box3',
+    crates: 1,
+    species: 'sardine',
+    depositedAt: releasedAt - RECLAIM_MS,
+    releasedAt,
+    overstay: true,
+    reclaimed: true,
+  }
 }

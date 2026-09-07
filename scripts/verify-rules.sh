@@ -105,7 +105,7 @@ echo "== the public web config alone grants nothing =="
 noauth DENY "a signed-out client cannot create a boat"  PUT "boats/99" "$BOAT"
 noauth DENY "…cannot take a crate"                      PUT "boxes/box1/9" '{"status":"reserved","boatId":"01","reservedAt":'"$NOW"'}'
 noauth DENY "…cannot empty one"                         PUT "boxes/box1/9" '{"status":"empty"}'
-noauth DENY "…cannot append a ledger row"               PUT "ledger/anon" '{"boatId":"01","boxId":"box1","crates":1,"depositedAt":1,"releasedAt":2,"overstay":false}'
+noauth DENY "…cannot append a ledger row"               PUT "ledger/anon" '{"boatId":"01","boxId":"box1","crates":1,"depositedAt":1,"releasedAt":2,"overstay":false,"reclaimed":false}'
 
 echo "== what the app itself must be allowed to do =="
 check PASS "register a boat bound to this phone"   PUT   "$BOAT1" "$TA" "${BOAT%\}},\"uid\":\"$UA\"}"
@@ -114,10 +114,26 @@ check PASS "claim an unbound boat"                 PUT   "boats/02/uid" "$TB" "\
 check PASS "hold a crate"                          PUT   "$SLOT1" "$TA" "$SLOT_R"
 check PASS "deposit into it"                       PUT   "$SLOT1" "$TA" '{"status":"occupied","boatId":"01","species":"prawn","depositedAt":'"$NOW"',"plannedOutAt":'"$NOW"'}'
 check PASS "release it"                            PUT   "$SLOT1" "$TA" "$EMPTIED"
-# The shape `putBoat` actually sends — every field, including the
-# `mobileLast4` the immutability clause now compares. A minimal
-# `{"status":"active"}` passed while the write the admin makes would not have.
-check PASS "approve a boat, as putBoat sends it"   PATCH "$BOAT1" "$TA" "${BOAT%\}},\"nameTe\":\"ప్రోబ్\"}"
+# The shape `toWireBoat` actually sends — every field, including the
+# `mobileLast4` the immutability clause compares. A minimal
+# `{"status":"active"}` passed while the write the client makes would not.
+check PASS "rewrite a boat, as toWireBoat sends it" PATCH "$BOAT1" "$TA" "${BOAT%\}},\"nameTe\":\"ప్రోబ్\"}"
+
+# ROUND 19. Approval and blocking were deleted from the app, which is what
+# finally let these rules close the hole they used to name as the biggest
+# thing they did not stop: with no admin identity, any signed-in phone could
+# set any boat's status — approving itself past the queue, or setting all
+# twenty to 'blocked' and stopping the harbour from booking at all.
+#
+# Both directions matter and neither was asserted here, so this script would
+# have printed "all checks passed" against the old rules and the new ones
+# identically — while the Definition of Done says nothing is real until it
+# does. The forward path matters too: `WireBoat` plans to stop sending
+# `status` once no old bundle is in use, and a rule that still REQUIRED it
+# would brick registration and blame the network, which is MEMORY §16.
+check DENY "no phone may block a boat"             PATCH "$BOAT1" "$TA" '{"status":"blocked"}'
+check DENY "…nor put one back in a queue"          PATCH "$BOAT1" "$TA" '{"status":"pending"}'
+check PASS "a boat with no status at all is fine"  PUT   "boats/03" "$TB" '{"name":"Probe","owner":"Probe Owner","mobileLast4":"9999","registeredAt":'"$NOW"'}'
 # And the shape `slotPaths` sends: thirty paths at once, mixed statuses,
 # including the seeded overstay. Publish harbour and Reset demo are both this
 # write, and `resetDemo`'s correctness argument rests on it being atomic.
@@ -192,7 +208,14 @@ check DENY "…nor erase the owner's name"           DELETE "$BOAT1/owner" "$TB"
 check DENY "a boat can never be deleted"           DELETE "$BOAT1" "$TA"
 
 echo "== the ledger is append-only =="
-ROW='{"boatId":"01","boxId":"box1","crates":1,"depositedAt":'"$OLD"',"releasedAt":'"$NOW"',"overstay":false}'
+# `reclaimed` is in this row because the client now sends it on EVERY
+# release, and this node ends in `"$other": {".validate": false}`. If the
+# client ships before the rules, every release in the live harbour has its
+# ledger row refused — the crate frees, the skipper sees a warn toast, and the
+# society's billing record goes blank from that moment, silently, for
+# everyone. That is MEMORY §16's shape exactly, and a field this script did
+# not know about is how it would have happened again.
+ROW='{"boatId":"01","boxId":"box1","crates":1,"depositedAt":'"$OLD"',"releasedAt":'"$NOW"',"overstay":false,"reclaimed":true}'
 check PASS "anyone may append a row"               PUT    "ledger/probe-$NOW" "$TA" "$ROW"
 check DENY "nobody may edit it"                    PUT    "ledger/probe-$NOW" "$TB" "$ROW"
 check DENY "nobody may edit one field of it"       PATCH  "ledger/probe-$NOW" "$TA" '{"crates":2}'

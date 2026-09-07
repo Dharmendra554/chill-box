@@ -2,14 +2,16 @@ import { boatName, boatsAt } from '../data/boats'
 import { useNow } from '../hooks/useClock'
 import { useT } from '../i18n/useT'
 import { formatElapsed, RECLAIM_MS } from '../lib/time'
-import { crateCountForBoat, joinedRecently, occupancyRows } from '../store/selectors'
+import {
+  crateCountForBoat,
+  joinedRecently,
+  NOT_COLLECTED_MS,
+  occupancyRows,
+} from '../store/selectors'
 import { selectBoxes, useDockStore } from '../store/useDockStore'
 import type { Boat } from '../types'
 import { BoatIcon, CrateIcon, ShoalIcon, TideClockIcon } from '../icons/marine'
 import { CrateRow } from './CrateRow'
-
-/** How long a reclaimed crate stays on the board after the space is freed. */
-const NOT_COLLECTED_MS = 24 * 60 * 60 * 1000
 
 /**
  * The community view, and the reason the app is worth opening when you are

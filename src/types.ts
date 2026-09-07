@@ -61,7 +61,14 @@ export interface Boat {
    * Deleting the field also closed the largest hole the database rules
    * document about themselves: with no admin identity, any signed-in phone
    * could write any boat's status — approving itself, or blocking all twenty
-   * and stopping the harbour. There is now no such field to write.
+   * and stopping the harbour. The rules now accept only `'active'` there,
+   * which is the one value that has always meant "an ordinary boat".
+   *
+   * The shared wire shape still CARRIES that field, and `toWireBoat` still
+   * sends it. That is compatibility, not policy: a bundle cached on somebody's
+   * phone keeps writing it, and the published rules still ask for it. See
+   * `harbourSync.ts`'s `WireBoat`, which explains what has to be true before
+   * it can go.
    */
   registeredAt: number
 }

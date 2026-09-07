@@ -80,10 +80,17 @@ export default function App() {
    *
    * Local state rather than a fourth tab, because it is not a place — it is
    * the one question the app asks, at the moment a visitor wants a crate,
-   * and it closes for ever once answered. `!boat` guards it so signing in
-   * dismisses it without anything having to remember to.
+   * and it closes for ever once answered.
+   *
+   * It is scoped to the BOOK tab, and that is not tidiness. It used to win
+   * over `tab` outright, so while it was open the tab bar — the only
+   * navigation in the app — lit up, moved `aria-current`, and changed
+   * nothing: a dead control, which AGENTS §2 forbids by name. And "back to
+   * the boxes" only cleared this flag, so a visitor who had tapped Harbour
+   * behind it landed on Harbour, under a button that says boxes.
    */
   const [identifying, setIdentifying] = useState(false)
+  const asking = identifying && !boat && tab === 'dock'
 
   const now = useNow()
   const marine = useMarine(harbour.lat, harbour.lon)
@@ -258,7 +265,7 @@ export default function App() {
         {/* The record's fallback is not `null`: on 2G that chunk takes
             seconds, so a blank page with nothing happening was the whole
             experience of tapping the tab. */}
-        {identifying && !boat ? (
+        {asking ? (
           <RegisterScreen onDone={() => setIdentifying(false)} />
         ) : tab === 'record' ? (
           <Suspense fallback={<p className="card p-4 font-bold">{t('loadingTitle')}</p>}>
@@ -270,7 +277,14 @@ export default function App() {
             seaKnown={marine.reading !== null}
             seaFailed={marine.error}
             readingAt={marine.reading?.fetchedAt ?? null}
-            onChangeHarbour={signOut}
+            // Signing out is "I am not this boat any more", which is the
+            // same question this screen asks — so it opens it rather than
+            // leaving a visitor on a Book tab whose only action is a button
+            // they just came from.
+            onChangeHarbour={() => {
+              signOut()
+              setIdentifying(true)
+            }}
             onResetDemo={resetDemo}
             onIdentify={() => setIdentifying(true)}
           />

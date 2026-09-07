@@ -125,14 +125,15 @@ Commits on `main`, most recent first:
 
 ### What works end to end (verified in the browser)
 
-Registration and admin approval · claiming an existing boat with the last 4
-digits of its number · map-first booking (tap a pin → catch → crates) ·
+Registration, with nobody approving it · claiming an existing boat with the
+last 4 digits of its number · map-first booking (tap a pin → catch → crates) ·
 booking receipt with a code · 4-hour hold countdown · deposit with a promised
-collection time · release with ledger row · overstay flag · harbour list of
-who holds what and when it frees · three harbours with separate rosters ·
+collection time · release with ledger row · overstay flag at 6 h and an automatic reclaim at 8 h ·
+harbour list of who holds what, when it frees, and what the harbour took back · three harbours with separate rosters ·
 route, bearing, ETA, compass · safety card with direct-dial numbers, vCard
-download and location sharing · admin console at `#admin` (PIN **2468**) with
-approvals, live usage, analytics and CSV export · day/night themes · Telugu
+download and location sharing · the harbour record as a third tab, open to
+everyone with no PIN — live usage, analytics, CSV export and the action log —
+with the PIN left on **Publish harbour** alone · day/night themes · Telugu
 and English · offline staleness detection.
 
 ### Seventeen hostile audit rounds were run and acted on
@@ -325,8 +326,13 @@ the list and it is deliberately its own round.
 Each of these was deliberate. Change them only with a reason.
 
 - **No login, ever.** A shared secret on a dock phone is painted on a hull
-  within a week. Registration plus admin approval is the gate; claiming an
-  existing boat needs the last 4 digits of its registered number.
+  within a week, and the brief forbids authentication services outright.
+  There is no gate at all now: registration is instant, and claiming an
+  existing boat needs the last 4 digits of its registered number — which
+  identify a boat, they do not authenticate one. **The last-4 collision has
+  no remedy any more**: the admin's approval queue was where a legitimate
+  clash got waved through, and a skipper who collides now cannot register at
+  all. The society has to issue him a different number.
 - ~~**Admin is not a tab.** It lives at `#admin` only.~~ **REVERSED at round
   19, deliberately.** That rule was written for a PIN-gated console holding
   Approve, Reject, Block and Force release, and hiding one of those from
@@ -367,10 +373,11 @@ Each of these was deliberate. Change them only with a reason.
    grid and in the Harbour list.
 5. **Ice Plant box** is full and cannot be picked; **Auction Hall** carries
    #11's overstay, pulsing amber.
-6. Open **`/#admin`**, PIN **2468**: approvals, live usage with force-release,
-   three months of reporting, Download for Excel, verified action log.
-7. **Reset demo** — in `#admin` once sync is on. Clears this harbour’s
-   crates for everyone and signs you out; roster and ledger are kept.
+6. Open the **Record** tab — no PIN. Live usage, three months of reporting,
+   Download for Excel, the verified action log. Nothing on it can approve,
+   block or release anybody.
+7. **Reset demo** is in the Book screen's Demo tools and touches this phone's
+   copy only. There is no longer any control that resets a shared harbour.
 
 With sync on, add: open the same link on a second phone, tap the **full**
 Ice Plant box to see who is inside and when each crate frees, then book the

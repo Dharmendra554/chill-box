@@ -38,7 +38,7 @@ export function ChoiceSheet<V extends string | number>({
   return (
     <dialog
       ref={ref}
-      className="sheet sheet-in max-w-6xl text-ink backdrop:bg-[var(--c-scrim)] sm:mx-auto sm:mb-6"
+      className="sheet sheet-in max-w-6xl text-ink backdrop:bg-[var(--c-scrim)] sm:mx-auto"
       onClose={onClose}
       onCancel={onClose}
       // Named, like the other three sheets. This one announced as a bare

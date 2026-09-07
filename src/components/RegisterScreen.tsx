@@ -6,7 +6,6 @@ import { cx } from '../lib/ui'
 import type { RegistrationError } from '../store/useDockStore'
 import { useDockStore } from '../store/useDockStore'
 import { AnchorIcon, BoatIcon } from '../icons/marine'
-import { ModeSwitch } from './ModeSwitch'
 
 const ERROR_KEY = {
   boatName: 'errBoatName',
@@ -202,19 +201,6 @@ export function RegisterScreen({ onDone }: Readonly<{ onDone: () => void }>) {
         </ul>
       </section>
 
-      {/* Fenced, and LAST.
-          It used to sit between the intro and the Boat-name field as a
-          full-width button with nothing marking it as a demo control — one
-          tap on which reloads the page and throws away the form being typed
-          and the harbour just chosen. It is still on this screen, because on
-          a configured build this is the only route to the sandbox that does
-          not run through registering a fictitious boat in a real society's
-          permanent roster. It is simply not in the way of the form any more,
-          and it says what it will cost. */}
-      <section className="card flex flex-col gap-2 border-dashed p-3">
-        <h3 className="text-base uppercase">{t('demoTitle')}</h3>
-        <ModeSwitch />
-      </section>
     </div>
   )
 }

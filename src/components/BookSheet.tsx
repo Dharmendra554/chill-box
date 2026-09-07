@@ -58,7 +58,7 @@ export function BookSheet({
   return (
     <dialog
       ref={ref}
-      className="sheet sheet-in max-w-6xl text-ink backdrop:bg-[var(--c-scrim)] sm:mx-auto sm:mb-6"
+      className="sheet sheet-in max-w-6xl text-ink backdrop:bg-[var(--c-scrim)] sm:mx-auto"
       onClose={onClose}
       onCancel={onClose}
       aria-label={boxLabel}

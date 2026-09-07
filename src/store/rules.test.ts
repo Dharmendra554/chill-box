@@ -652,7 +652,9 @@ describe('what the harbour may take back', () => {
     // the box because a fresh crate shares its row.
     const box = mixedBox()
     box.slots[0] = { ...box.slots[0], depositedAt: NOW - 9 * HOUR_MS }
-    expect(reclaimable([box], NOW)).toEqual([{ boatId: '11', boxId: 'box1', indexes: [0] }])
+    expect(reclaimable([box], NOW)).toEqual([
+      { boatId: '11', boxId: 'box1', indexes: [0], since: NOW - 9 * HOUR_MS },
+    ])
   })
 
   it('takes nothing back at seven hours', () => {
