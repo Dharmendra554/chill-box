@@ -1,3 +1,5 @@
+import { useEffect, useRef, type RefObject } from 'react'
+
 /**
  * Open a `<dialog>` modally, and make the fallback behave like one.
  *
@@ -26,9 +28,10 @@
  * the honest trade is to say so rather than to imply a trap that is not
  * there.
  *
- * Returns a cleanup function; call it from the effect's teardown.
+ * Use `useModal` below rather than calling this from an effect directly:
+ * the effect's dependencies are the whole defect this helper had.
  */
-export function openModal(el: HTMLDialogElement | null, onClose: () => void): () => void {
+function openModal(el: HTMLDialogElement | null, onClose: () => void): () => void {
   if (!el || el.open) return () => {}
 
   if (typeof el.showModal === 'function') {
@@ -50,4 +53,33 @@ export function openModal(el: HTMLDialogElement | null, onClose: () => void): ()
   }
   el.addEventListener('keydown', onKeyDown)
   return () => el.removeEventListener('keydown', onKeyDown)
+}
+
+/**
+ * Open a dialog once, for the life of the component.
+ *
+ * The four sheets called `openModal` straight from an effect keyed on
+ * `onClose`, and every caller passes an inline arrow. `App` re-renders at
+ * 1 Hz (the clock), so `onClose` had a new identity every second and the
+ * effect tore down and re-ran every second. On the `showModal` path that is
+ * harmless — the re-run early-returns because the dialog is already open.
+ * On the FALLBACK path the teardown removed the Escape listener and the
+ * re-run returned before re-adding it, so Escape worked for exactly one
+ * second and then stopped, on the old WebViews that branch exists for.
+ *
+ * The mount effect takes no reactive dependencies at all, and the current
+ * `onClose` is read through a ref when the key is actually pressed.
+ */
+export function useModal(
+  ref: RefObject<HTMLDialogElement | null>,
+  onClose: () => void,
+): void {
+  const latest = useRef(onClose)
+  // Updated in an effect, not during render: a ref written while rendering
+  // is a lint error here and a real hazard under concurrent rendering, where
+  // a render can be thrown away after it has already mutated the ref.
+  useEffect(() => {
+    latest.current = onClose
+  }, [onClose])
+  useEffect(() => openModal(ref.current, () => latest.current()), [ref])
 }

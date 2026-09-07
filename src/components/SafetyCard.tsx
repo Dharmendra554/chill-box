@@ -56,9 +56,15 @@ export function SafetyCard({
   const notify = useDockStore((s) => s.notify)
   const rough = band === 'rough'
 
-  // On screen the label is short enough not to truncate; the saved contact
-  // carries the harbour name, because "Harbour office" alone is useless in a
-  // phone book that may end up holding three of them.
+  // The saved contact carries the harbour name, because "Harbour office"
+  // alone is useless in a phone book that may end up holding three of them.
+  //
+  // On screen the labels WRAP. This comment used to claim they were short
+  // enough not to truncate; in Telugu at 320 px they were not — "కోస్ట్
+  // గార్డ్ (సముద్ర ప్రమాదం)" lost 21 px and the harbour office lost 25 of
+  // its 90, so the distress line read "హార్బర్ …" beside an eleven-digit
+  // number. Two lines are free here; a half-read label on the one screen
+  // that exists for a boat in trouble is not.
   const contacts: Contact[] = [
     ...NATIONAL.map(({ key, number }) => ({ name: t(key), number })),
     { name: t('emOffice'), number: harbour.office },
@@ -122,9 +128,7 @@ export function SafetyCard({
               href={`tel:${contact.number.replace(/\s/g, '')}`}
               className="btn btn-block justify-between gap-3 no-underline"
             >
-              <span className="min-w-0 flex-1 truncate text-left text-base">
-                {contact.name}
-              </span>
+              <span className="min-w-0 flex-1 text-left text-base">{contact.name}</span>
               <span className="tabular shrink-0 text-lg">{contact.number}</span>
               <span className="sr-only">{t('callNow')}</span>
             </a>

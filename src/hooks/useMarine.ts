@@ -11,10 +11,28 @@ const EVERY_MS = 10 * 60 * 1000
  * Freshness used to rest entirely on the interval above, and Android freezes
  * timers in a backgrounded tab. Pocket the phone in calm water at 02:00 and
  * reopen it on the approach at 04:00, and the strip still painted a green
- * "Safe landing" off a two-hour-old figure with no date on it. Two missed
- * cycles is generous and still bounded.
+ * "Safe landing" off a two-hour-old figure with no date on it.
+ *
+ * Forty minutes, and the number is derived rather than chosen. It is now
+ * measured from when the SEA was measured, not from when we asked, and two
+ * lags sit under that instant before the app has done anything:
+ *
+ *   • Open-Meteo buckets `current.time` to its own 15-minute step
+ *     (`interval: 900` on the wire), so a brand-new reading is 0–15 minutes
+ *     old on arrival;
+ *   • the poll runs every 10 minutes.
+ *
+ * 15 + 10 leaves 15 minutes of slack for a missed cycle. At 25 minutes the
+ * budget was entirely consumed by the two lags, so once per cycle a phone on
+ * full bars, having missed nothing, watched the strip fall back to "Nothing
+ * current" and the landing-safety card — the one screen that exists for a
+ * boat in trouble — say it could not tell you about the sea.
+ *
+ * A `rough` band is exempt from this gate anyway (see App): warning about
+ * breakers that may have passed is the safe direction. What this bounds is
+ * how old a CALM reading may be before we stop calling it calm.
  */
-export const MARINE_STALE_MS = 25 * 60 * 1000
+export const MARINE_STALE_MS = 40 * 60 * 1000
 
 interface Cached {
   lat: number

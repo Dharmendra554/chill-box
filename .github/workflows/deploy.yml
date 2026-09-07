@@ -36,8 +36,10 @@ jobs:
       # does, with the job's token and network. Three packages in the lock
       # file declare one — @firebase/util, protobufjs and fsevents (macOS) —
       # and none is needed to build this app. Verified, not assumed: a clean
-      # `npm ci --ignore-scripts` in an empty tree still passes tsc, all 85
-      # tests and the build.
+      # `npm ci --ignore-scripts` in an empty tree still passes tsc, every
+      # test in the suite and the build. (Count them with `npm test`; three
+      # rounds have now shipped a stale number in a sentence whose whole
+      # point is that the claim was verified rather than assumed.)
       - run: npm ci --ignore-scripts
       # The same four gates that must pass locally, in the same order. The
       # deploy job below has `needs: build`, so a red gate never publishes.

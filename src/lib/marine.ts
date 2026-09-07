@@ -94,8 +94,13 @@ export function seaAdvice(
   band: WaveBand | null,
   seaKnown: boolean,
   seaFailed: boolean,
-): 'safetyRough' | 'safetyCalm' | 'safetyUnknown' | 'safetyLoading' {
+): 'safetyRough' | 'safetyModerate' | 'safetyCalm' | 'safetyUnknown' | 'safetyLoading' {
   if (rough) return 'safetyRough'
+  // Three bands, three sentences. Collapsing `moderate` into `calm` made
+  // this card say "Conditions are calm" at 2.0 m while the strip above it
+  // was amber and said "come in careful" — and 1–2 m is the ordinary state
+  // of this coast, so it was the common case, not the edge one.
+  if (band === 'moderate') return 'safetyModerate'
   if (band !== null) return 'safetyCalm'
   // A reading landed and aged out, or the last attempt failed: either way
   // there is nothing current to stand behind, and saying so is the honest

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { openModal } from '../lib/dialog'
+import { useRef, useState } from 'react'
+import { useModal } from '../lib/dialog'
 
 export interface Choice<V> {
   value: V
@@ -33,7 +33,7 @@ export function ChoiceSheet<V extends string | number>({
   // double-tap hazard applies here as on the booking sheet.
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => openModal(ref.current, onClose), [onClose])
+  useModal(ref, onClose)
 
   return (
     <dialog
@@ -41,6 +41,10 @@ export function ChoiceSheet<V extends string | number>({
       className="sheet-in m-0 mt-auto w-full max-w-6xl border-3 border-rule bg-card p-0 text-ink backdrop:bg-[var(--c-scrim)] sm:mx-auto sm:mb-6"
       onClose={onClose}
       onCancel={onClose}
+      // Named, like the other three sheets. This one announced as a bare
+      // "dialog" — on the screen where a skipper promises the collection
+      // hour the whole harbour plans around.
+      aria-label={title}
     >
       <div className="flex flex-col gap-3 p-4">
         <h2 className="text-2xl">{title}</h2>

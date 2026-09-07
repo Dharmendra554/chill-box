@@ -138,16 +138,40 @@ export async function appendAudit(
   // record of who did what and when, rendered beside a console running on
   // harbour time — stamping it from a phone with a wrong clock made the one
   // artefact that exists to be trusted disagree with everything around it.
-  const base = { id: `A${log.length + 1}`, at: serverNow(), actor, action, target, detail, prevHash }
+  // Numbered from the tip, not from the length. The log is capped now, and
+  // `log.length + 1` restarted the numbering every time the oldest row was
+  // dropped — so a console with a season of history would have shown two
+  // different actions both labelled A1, in the one artefact that exists to
+  // be trusted.
+  const base = { id: nextAuditId(log), at: serverNow(), actor, action, target, detail, prevHash }
   const hash = await sha256(canonical(base))
   // Without Web Crypto there is no chain to extend, so the action is
   // recorded unhashed and marked as such rather than faked.
   return [...log, { ...base, hash: hash ?? 'unhashed' }]
 }
 
-/** Index of the first broken link, or -1 when the chain is intact. */
+/** The next id, continuing from the tip rather than from the row count. */
+function nextAuditId(log: AuditEntry[]): string {
+  const last = Number.parseInt(log.at(-1)?.id?.slice(1) ?? '', 10)
+  return `A${Number.isFinite(last) ? last + 1 : log.length + 1}`
+}
+
+/**
+ * Index of the first broken link, or -1 when the chain is intact.
+ *
+ * Starts from the first row's OWN `prevHash`, not from `genesis`, because
+ * the log is capped: once the oldest rows have been dropped the surviving
+ * head legitimately points at a hash that is no longer here. Anchoring to
+ * `genesis` would have reported every capped log as broken at row 0 — a
+ * false alarm on the one panel whose whole job is to be believed.
+ *
+ * What this costs is stated rather than hidden: the chain proves that the
+ * rows STILL HERE have not been altered or reordered. It cannot prove that
+ * nothing was dropped from the front, and after the cap has bitten, nothing
+ * could. The panel says "over the rows kept" for that reason.
+ */
 export async function verifyAudit(log: AuditEntry[]): Promise<number> {
-  let prevHash = 'genesis'
+  let prevHash = log[0]?.prevHash ?? 'genesis'
   for (let i = 0; i < log.length; i += 1) {
     const entry = log[i]
     if (entry.prevHash !== prevHash) return i

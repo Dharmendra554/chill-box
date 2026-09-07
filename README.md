@@ -346,7 +346,11 @@ The skipper is never asked whether they have signal — the app works it out:
 - No status is ever colour alone. Each of the four carries a **mark** as well
   as a fill — an empty slot is a dot in a dashed border, a hold carries a
   clock, a stored crate carries its catch, an overdue one carries `!` — and
-  the legend above the boxes teaches exactly those four marks. In the crate
+  the legend above the boxes is drawn by the same function as the cells, so
+  it cannot drift from them. Three of its four marks are exact; the stored
+  chip shows the *mixed* catch icon as an example, because a stored crate
+  carries whichever of the six species it was booked with and one chip
+  cannot show six. In the crate
   grid the status *word* is on the cell's accessible label rather than on the
   cell itself, because a 48 px square already carries a hull number and a
   collection hour; the word is on every row of the Harbour tab, where there

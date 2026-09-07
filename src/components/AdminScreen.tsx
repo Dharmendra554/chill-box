@@ -397,6 +397,15 @@ function Console() {
           </p>
         ) : null}
 
+        {/* Say why the figures are missing. A `—` and a trend line that
+            simply is not there read as an empty month, not as a month we
+            decline to summarise — while Trips and Crates from the same
+            truncated window sit above them looking authoritative. AGENTS §2:
+            if a thing cannot work, say why. */}
+        {insight.utilisation === null ? (
+          <p className="text-sm font-bold text-ink-2">{t('adminMonthClipped')}</p>
+        ) : null}
+
         <Bars
           title={t('adminPerHour')}
           rows={perHour.map((n, hour) => ({

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { openModal } from '../lib/dialog'
+import { useRef } from 'react'
+import { useModal } from '../lib/dialog'
 import { boatsAt } from '../data/boats'
 import { useNow } from '../hooks/useClock'
 import { useT } from '../i18n/useT'
@@ -32,7 +32,7 @@ export function BoxDetails({ box, onClose }: Readonly<{ box: ColdBox; onClose: (
   const byId = new Map(boatsAt(allBoats, harbourId).map((b) => [b.id, b]))
   const free = emptyCount(live)
 
-  useEffect(() => openModal(ref.current, onClose), [onClose])
+  useModal(ref, onClose)
 
   return (
     <dialog

@@ -16,6 +16,11 @@ const ERROR_KEY = {
   // registration to show — better to say so than to hand out a number the
   // society has never seen.
   offline: 'syncOffline',
+  // And `pending` is not that: we stopped waiting, but a hull number may
+  // still be claimed for this boat. Registering again on the strength of
+  // "nothing was saved" would put a second boat on a roster where a boat can
+  // never be deleted.
+  pending: 'syncPending',
 } as const
 
 /**

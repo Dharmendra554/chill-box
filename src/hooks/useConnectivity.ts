@@ -34,8 +34,14 @@ export type Reach = 'checking' | 'connected' | 'stale'
  * So we judge by evidence instead:
  *
  *  - the `offline` event is an instant, reliable negative;
- *  - `reachedAt` is when a real request last succeeded. The app already
- *    polls the swell, so this proves reachability at no extra cost;
+ *  - `reachedAt` is when the figures on screen were last known to be current.
+ *    On a shared harbour that is the database socket: while it is live they
+ *    are current by definition, and once it drops they are only as fresh as
+ *    the last snapshot. It used to be the swell poll, which stopped being
+ *    able to answer the question when that timestamp became the instant the
+ *    SEA was measured rather than the instant we reached the network — see
+ *    App. In local-only mode the figures are this phone's own and there is
+ *    nothing to be behind, so it is always now;
  *  - for the first few seconds there is no evidence either way, which is
  *    `checking` — warning then would cry wolf on every cold start.
  *

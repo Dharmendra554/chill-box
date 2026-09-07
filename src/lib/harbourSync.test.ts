@@ -131,15 +131,35 @@ describe('expireHolds', () => {
 })
 
 describe('a hold with no clock', () => {
-  it('is treated as expired, not as one that can never run out', () => {
-    // The rules refuse to write a `reserved` slot with no `reservedAt` and
-    // the app never makes one — but if legacy data or a lagging rules
-    // deployment ever produced one, `?? now` made it permanently unexpired:
-    // no phone could claim it, no admin could force-release it, and the card
-    // counted down from a frozen 4:00:00 for the life of the deployment.
+  it('is left alone, because the deployed rules will not let anyone clear it', () => {
+    // A malformed slot the rules refuse to create. Round 13 made the client
+    // treat it as already expired, on the reasoning that freeing a crate
+    // beats stranding one — but the client does not get a second opinion
+    // about a rule the database enforces. Clause 3 requires
+    // `data.hasChild('reservedAt')` before anyone but the owner may touch a
+    // `reserved` slot, so "expired" here means: render it as a free crate,
+    // let a skipper tap it, have the server refuse, and let the rejection
+    // escape the claim loop as `refused` — one malformed slot making the
+    // WHOLE box unbookable and sending everyone to find the harbour master.
+    //
+    // Stranding one crate is the smaller failure and it is the one the
+    // server has already chosen. Clearing it is a rules change, for a round
+    // where the rules can be deployed and probed in the same breath.
     const now = Date.parse('2026-09-07T06:00:00+05:30')
     const wire = {
       box1: { 0: { status: 'reserved' as const, boatId: '04', reservedAt: null } },
+    } as unknown as Parameters<typeof expireHolds>[0]
+
+    expireHolds(wire, now)
+
+    expect(wire.box1[0].status).toBe('reserved')
+  })
+
+  it('still expires a hold that does have one, four hours on', () => {
+    // The guard above must not have turned the ordinary case off.
+    const now = Date.parse('2026-09-07T06:00:00+05:30')
+    const wire = {
+      box1: { 0: { status: 'reserved' as const, boatId: '04', reservedAt: now - HOLD_MS } },
     } as unknown as Parameters<typeof expireHolds>[0]
 
     expireHolds(wire, now)

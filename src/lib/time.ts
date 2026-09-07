@@ -34,14 +34,61 @@ export function formatGap(ms: number, lang: 'te' | 'en'): string {
   return late ? `${body} late` : `in ${body}`
 }
 
-/** 12-hour wall clock. A dock reads "10:30 pm", never "22:30". */
-export function formatClock(ts: number): string {
-  return new Intl.DateTimeFormat('en-IN', {
+/**
+ * Every formatter in this file, built once.
+ *
+ * `Intl.DateTimeFormat` is expensive to construct and free to reuse, and
+ * these are called inside 1 Hz renders — once per crate cell, once per audit
+ * row. Measured on a desktop: 0.105 ms per construction, and an admin
+ * console with a season of audit rows was building **206 of them a second**
+ * before anyone touched it, on top of 17 a second on the skipper's own dock
+ * screen. On the target phone that is several times worse.
+ *
+ * Round 13 hoisted the one used by `monthKey` and treated the class as
+ * closed; five more call sites were still constructing per call. They are
+ * all here now, so there is one place to look.
+ */
+const CLOCK = new Intl.DateTimeFormat('en-IN', {
+  timeZone: TZ,
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+})
+
+const DAY_CLOCK = {
+  te: new Intl.DateTimeFormat('te-IN', {
     timeZone: TZ,
+    day: 'numeric',
+    month: 'short',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  }).format(new Date(ts))
+  }),
+  en: new Intl.DateTimeFormat('en-IN', {
+    timeZone: TZ,
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }),
+} as const
+
+const DAY_KEY = new Intl.DateTimeFormat('en-CA', {
+  timeZone: TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+const MONTH_NAME = {
+  te: new Intl.DateTimeFormat('te-IN', { timeZone: TZ, month: 'long', year: 'numeric' }),
+  en: new Intl.DateTimeFormat('en-IN', { timeZone: TZ, month: 'long', year: 'numeric' }),
+} as const
+
+/** 12-hour wall clock. A dock reads "10:30 pm", never "22:30". */
+export function formatClock(ts: number): string {
+  return CLOCK.format(new Date(ts))
 }
 
 /**
@@ -60,36 +107,17 @@ export function formatClockShort(ts: number): string {
 }
 
 export function formatDayClock(ts: number, lang: 'te' | 'en'): string {
-  return new Intl.DateTimeFormat(lang === 'te' ? 'te-IN' : 'en-IN', {
-    timeZone: TZ,
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(new Date(ts))
+  return DAY_CLOCK[lang].format(new Date(ts))
 }
 
 /** Midnight IST on the day containing `ts`. */
 export function startOfLocalDay(ts: number): number {
-  const day = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(ts))
+  const day = DAY_KEY.format(new Date(ts))
   // IST is a fixed +05:30 offset with no daylight saving, so this is exact.
   return Date.parse(`${day}T00:00:00+05:30`)
 }
 
-/**
- * Built once, not per call.
- *
- * `monthKey` runs once per ledger row — 1 500 of them on the admin console —
- * and constructing an `Intl.DateTimeFormat` is the expensive half of it. A
- * fresh one per row cost 224 ms per pass on a desktop, several times that on
- * the target phone. The formatter is stateless, so one is enough.
- */
+/** Runs once per ledger row — 1 500 of them on the admin console. */
 const MONTH_KEY_FORMAT = new Intl.DateTimeFormat('en-CA', {
   timeZone: TZ,
   year: 'numeric',
@@ -107,9 +135,5 @@ export function monthKey(ts: number): string {
 export function monthLabel(key: string, lang: 'te' | 'en'): string {
   const [y, m] = key.split('-').map(Number)
   if (!y || !m) return key
-  return new Intl.DateTimeFormat(lang === 'te' ? 'te-IN' : 'en-IN', {
-    timeZone: TZ,
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(Date.UTC(y, m - 1, 15)))
+  return MONTH_NAME[lang].format(new Date(Date.UTC(y, m - 1, 15)))
 }

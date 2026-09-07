@@ -47,6 +47,7 @@ import type {
 import {
   activeBoxId,
   applyTick,
+  AUDIT_LIMIT,
   emptyCount,
   emptySlot,
   isOverdue,
@@ -262,7 +263,7 @@ export interface RegistrationInput {
   mobile: string
 }
 
-export type RegistrationError = 'boatName' | 'owner' | 'mobile' | 'mobileTaken' | 'offline'
+export type RegistrationError = 'boatName' | 'owner' | 'mobile' | 'mobileTaken' | 'offline' | 'pending'
 
 export type RegistrationResult =
   | { ok: true; id: string }
@@ -614,6 +615,12 @@ export const useDockStore = create<DockState>()(
           if (syncEnabled) {
             if (!requireLink()) return { ok: false, error: 'offline' }
             const id = await claimBoat(harbourId, boat)
+            // Distinct from `null`. `null` is the harbour refusing us and
+            // nothing was written; `pending` is us giving up on the wait
+            // while a hull number may still be claimed for this boat. Saying
+            // "nothing was saved" there invites a second registration, and a
+            // boat can never be deleted once it exists.
+            if (id === 'pending') return { ok: false, error: 'pending' }
             if (!id) return { ok: false, error: 'offline' }
             boat.id = id
           }
@@ -897,7 +904,11 @@ export const useDockStore = create<DockState>()(
         record: (action, target, detail = '') => {
           auditChain = auditChain
             .then(async () => {
-              set({ audit: await appendAudit(get().audit, action, target, detail) })
+              const next = await appendAudit(get().audit, action, target, detail)
+              // Capped, like the ledger. `verifyAudit` anchors to the first
+              // surviving row's own `prevHash` rather than to `genesis`, so
+              // trimming the head does not read as tampering.
+              set({ audit: next.length > AUDIT_LIMIT ? next.slice(-AUDIT_LIMIT) : next })
             })
             .catch(() => {
               set({ toast: toast('warn', t(get().lang, 'auditFailed')) })
@@ -950,7 +961,19 @@ export const useDockStore = create<DockState>()(
             // told the harbour master a boat was blocked while the shared
             // copy still said active — so the "blocked" skipper went on
             // booking, and nothing on the admin's screen disagreed.
-            const was = boats.find((b) => b.harbourId === harbourId && b.id === id)?.status
+            //
+            // EXCEPT on `pending`, which means we stopped waiting and the
+            // write may still land. Rolling back there is acting on "nothing
+            // was saved", which is exactly what `pending` exists to stop us
+            // saying: the roster would snap back to active and then flip to
+            // blocked when the queued write commits and the watcher returns
+            // it. The optimistic state is left alone and the toast says we
+            // could not confirm — the next snapshot is the authority either
+            // way.
+            const was =
+              result.error === 'pending'
+                ? undefined
+                : boats.find((b) => b.harbourId === harbourId && b.id === id)?.status
             if (was) {
               set({
                 boats: get().boats.map((b) =>
@@ -995,11 +1018,11 @@ export const useDockStore = create<DockState>()(
           // earlier, and the audit log then claimed two crates while the
           // ledger correctly recorded one — the integrity trail disagreeing
           // with the billing record, with the trail being the wrong one.
-          const logIt = (crates: number) =>
+          const logIt = (crates: number, confirmed = true) =>
             void get().record(
               'slot.forceRelease',
               `#${boatId}`,
-              `${harbourId} ${boxId} · ${crates} crates`,
+              `${harbourId} ${boxId} · ${crates} crates${confirmed ? '' : ' · outcome not confirmed'}`,
             )
 
           if (syncEnabled) {
@@ -1010,7 +1033,18 @@ export const useDockStore = create<DockState>()(
             // partial release. Logging only on `ok` meant a crate was
             // freed, billed in the ledger, and left with no record that any
             // admin had touched it.
-            if (outcome.freed) logIt(outcome.freed)
+            if (outcome.freed) {
+              logIt(outcome.freed)
+            } else if (!outcome.ok && outcome.error === 'pending') {
+              // The deadline fired; the write did not stop. It very likely
+              // lands, freeing crates and writing the billing rows, and
+              // logging nothing here would recreate the hole this branch was
+              // written to close — a crate taken back over a skipper's head
+              // and billed, with no record that an admin touched it. So the
+              // row goes in, marked for what it is: an action taken, with an
+              // outcome nobody confirmed.
+              logIt(indexes.length, false)
+            }
             return
           }
 
@@ -1072,6 +1106,13 @@ export const useDockStore = create<DockState>()(
           // another society's boxes, with fish in them, and was told they had
           // cleared the one on screen.
           const { harbourId, boxesByHarbour } = get()
+          // `requireLink()`, like every other shared write. Without it this
+          // was the one control that could be tapped with the socket down:
+          // `api()` resolves, the transaction queues, the promise never
+          // settles, and the button did nothing at all — no toast, no
+          // spinner, no reason — for the rest of the session. A dead control
+          // with no reason given is the thing AGENTS.md §2 forbids by name.
+          if (syncEnabled && !requireLink()) return
           const fresh = seed(serverNow())
 
           // A local-only reset would be undone by the watcher a second later,

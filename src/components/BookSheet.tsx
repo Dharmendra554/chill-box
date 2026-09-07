@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { T } from '../i18n/dictionary'
 import { cx } from '../lib/ui'
-import { openModal } from '../lib/dialog'
+import { useModal } from '../lib/dialog'
 import { SPECIES, type Species } from '../types'
 import { SPECIES_ICON } from '../icons/species'
+
+/** Which way an arrow key moves the choice in the catch picker. */
+const ARROW_STEP: Record<string, number | undefined> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+}
 
 /** The button's face: what it is about to do, or that it is doing it. */
 function crateLabel(claiming: boolean, count: 1 | 2) {
@@ -45,7 +53,7 @@ export function BookSheet({
    */
   const [claiming, setClaiming] = useState(false)
 
-  useEffect(() => openModal(ref.current, onClose), [onClose])
+  useModal(ref, onClose)
 
   return (
     <dialog
@@ -61,29 +69,52 @@ export function BookSheet({
           <p className="font-bold text-ink-2">{t('catchBody')}</p>
         </header>
 
-        <ul className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t('catchTitle')}>
-          {SPECIES.map((option) => {
+        {/*
+          A radiogroup owns radios directly. The buttons used to sit inside
+          `<li>`s, which breaks the owned-element relationship a conforming
+          screen reader needs — the group announced no members — and every
+          one of the six was a tab stop with arrow keys doing nothing, which
+          is the opposite of how a radio group behaves everywhere else.
+          Roving tabindex: the checked option is the single tab stop, and the
+          arrows move the choice, as the pattern requires.
+        */}
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t('catchTitle')}>
+          {SPECIES.map((option, index) => {
             const Icon = SPECIES_ICON[option]
             const picked = option === species
             return (
-              <li key={option}>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={picked}
-                  className={cx(
-                    'flex h-24 w-full flex-col items-center justify-center gap-1 border-3 border-rule font-display text-sm font-extrabold',
-                    picked ? 'bg-free text-free-ink' : 'bg-paper-2 text-ink',
-                  )}
-                  onClick={() => setSpecies(option)}
-                >
-                  <Icon size={38} />
-                  {t(option)}
-                </button>
-              </li>
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={picked}
+                tabIndex={picked ? 0 : -1}
+                className={cx(
+                  'flex h-24 w-full flex-col items-center justify-center gap-1 border-3 border-rule font-display text-sm font-extrabold',
+                  picked ? 'bg-free text-free-ink' : 'bg-paper-2 text-ink',
+                )}
+                onClick={() => setSpecies(option)}
+                onKeyDown={(event) => {
+                  const step = ARROW_STEP[event.key]
+                  if (!step) return
+                  event.preventDefault()
+                  // Wraps, because a grid of six with no wrap strands the
+                  // thumb at either end with no feedback.
+                  const next = SPECIES[(index + step + SPECIES.length) % SPECIES.length]
+                  setSpecies(next)
+                  // Focus follows the choice: that is what makes the next
+                  // arrow press continue from where the user is looking.
+                  event.currentTarget.parentElement
+                    ?.querySelectorAll('button')
+                    [SPECIES.indexOf(next)]?.focus()
+                }}
+              >
+                <Icon size={38} />
+                {t(option)}
+              </button>
             )
           })}
-        </ul>
+        </div>
 
         <h3 className="text-xl">{t('cratesTitle')}</h3>
         <p className="text-sm font-bold text-ink-2">{t('bookIn', boxLabel)}</p>

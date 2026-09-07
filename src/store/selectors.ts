@@ -27,6 +27,19 @@ export const PLAN_HOURS = [2, 4, 5]
  */
 export const LEDGER_LIMIT = 1_500
 
+/**
+ * Newest audit rows kept. The ledger has had a cap since AGENTS.md §6 was
+ * written; the action log was left out of it and grew forever.
+ *
+ * It shares the ~5 MB localStorage quota with everything else, and it is
+ * hashed row by row on every verify. At roughly fifty admin actions a day
+ * this reaches the quota inside a year, and when it does `commitWrite`
+ * starts failing and NOTHING persists any more — boxes, roster and ledger
+ * included — behind one "storage full" toast. Two thousand rows is over a
+ * month of heavy use and a few hundred kB.
+ */
+export const AUDIT_LIMIT = 2_000
+
 /** The canonical cleared slot. Every reset path goes through this so a
  *  new `Slot` field can never be forgotten in one branch. */
 export function emptySlot(index: number): Slot {

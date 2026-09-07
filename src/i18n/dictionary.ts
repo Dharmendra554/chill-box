@@ -144,6 +144,12 @@ const S = {
   safetyStepLife: { te: 'లైఫ్ జాకెట్లు వేసుకోండి. డెక్ మీద ఉన్నవన్నీ కట్టేయండి.', en: 'Life jackets on. Lash everything loose on deck.' },
   safetyStepCall: { te: 'ఇబ్బంది ఉంటే వెంటనే ఫోన్ చేయండి — ఆలస్యం చేయకండి.', en: 'In trouble, call straight away — do not wait it out.' },
   safetyCalm: { te: 'అలలు ప్రశాంతంగా ఉన్నాయి. అయినా నంబర్లు ఇక్కడే ఉన్నాయి.', en: 'Conditions are calm. The numbers stay here anyway.' },
+  // A moderate swell is not calm, and this card used to call it calm — while
+  // the strip four lines above it was amber and said "come in careful". Two
+  // answers about the same sea in one viewport, with the reassuring one on
+  // the screen that exists for landing decisions. 1–2 m is the common state
+  // on this coast, not an edge case.
+  safetyModerate: { te: 'అలలు ఓ మోస్తరుగా ఉన్నాయి. జాగ్రత్తగా లోపలికి రండి.', en: 'Swell is moderate. Come in careful.' },
   emergency: { te: 'అత్యవసర నంబర్లు', en: 'Emergency numbers' },
   emCoastGuard: { te: 'కోస్ట్ గార్డ్ (సముద్ర ప్రమాదం)', en: 'Coast Guard (marine distress)' },
   emAll: { te: 'అన్ని అత్యవసరాలు', en: 'All emergencies' },
@@ -175,9 +181,12 @@ const S = {
   // map is free and needs no account, which is a fact about our hosting bill
   // and not something a skipper on a quay has any use for. ODbL requires the
   // credit itself, so it stays — quietly.
-  navMapNote: { te: '© OpenStreetMap, OpenSeaMap', en: '© OpenStreetMap, OpenSeaMap' },
+  navMapNote: {
+    te: '© OpenStreetMap contributors, OpenSeaMap',
+    en: '© OpenStreetMap contributors, OpenSeaMap',
+  },
   // A pin on the chart says what the thing IS, not only where it is. "Auction
-  // hall" is a building a skipper can see from the water; "Auction hall box"
+  // hall" is a building a skipper can see from the water; "Auction box"
   // is the cold box beside it, which is what the pin actually marks.
   boxNamed: { te: '{0} బాక్స్', en: '{0} box' },
   navOffline: { te: 'మ్యాప్ లోడ్ కాలేదు — దిక్సూచి పని చేస్తోంది.', en: 'Map tiles unavailable — the compass still works.' },
@@ -252,6 +261,10 @@ const S = {
   adminDwell: { te: 'సగటు నిల్వ', en: 'Avg. dwell' },
   adminOverstayRate: { te: 'ఆలస్య శాతం', en: 'Overstay rate' },
   adminTrend: { te: 'గత నెలతో పోలిక', en: 'vs last month' },
+  // Shown when the ledger cap has cut into the selected month, so the
+  // percentages would be a part of a month divided by all of it. The counts
+  // above are still the truth about the rows that survived.
+  adminMonthClipped: { te: 'ఈ నెల రికార్డులో కొంత భాగం మాత్రమే మిగిలింది, అందుకే శాతాలు చూపడం లేదు. పైన ఉన్న లెక్కలు మిగిలిన రికార్డు ప్రకారం సరైనవి.', en: 'Only part of this month survives in the record, so the percentages are not shown. The counts above are correct for the rows that remain.' },
   adminPeakHour: { te: 'రద్దీ సమయం', en: 'Busiest hour' },
   adminPerHour: { te: 'ఏ గంటకు ఎన్ని బోట్లు వస్తాయి', en: 'Arrivals by hour of day' },
   adminInsights: { te: 'విశ్లేషణ', en: 'Insights' },

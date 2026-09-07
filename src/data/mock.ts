@@ -151,7 +151,8 @@ export function createMockBoxes(harbourId: HarbourId, now: number): ColdBox[] {
 
 /**
  * ~90 days generated per harbour — but `capLedger` keeps only LEDGER_LIMIT
- * rows, so the console sees roughly the newest 45. Without history the admin's
+ * rows, so the console sees roughly the newest 45 DAYS of them — about
+ * 1 500 rows out of the ~2 950 generated. Without history the admin's
  * monthly view is a shell, and usage is the thing an admin actually opens.
  */
 export function createMockLedger(harbourId: HarbourId, now: number): LedgerEntry[] {

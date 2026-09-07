@@ -88,7 +88,11 @@ describe('what the safety card may say about the sea', () => {
     // may have passed is the safe direction — so it wins even with no band.
     expect(seaAdvice(true, null, true, false)).toBe('safetyRough')
     expect(seaAdvice(false, 'calm', true, false)).toBe('safetyCalm')
-    expect(seaAdvice(false, 'moderate', true, false)).toBe('safetyCalm')
+    // NOT `safetyCalm`. This assertion used to say it was, which is how a
+    // test written to stop this card drifting became the thing pinning the
+    // drift in place: the card said "Conditions are calm" at 2.0 m under an
+    // amber strip saying "come in careful".
+    expect(seaAdvice(false, 'moderate', true, false)).toBe('safetyModerate')
     // A reading landed and aged out: nothing current to stand behind.
     expect(seaAdvice(false, null, true, false)).toBe('safetyUnknown')
     // The fetch failed and none ever landed — still not "on its way".

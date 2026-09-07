@@ -101,6 +101,10 @@ vi.mock('firebase/database', () => ({
   },
   set: async (r: { path: string }, value: unknown) => {
     writes.push(`set ${r.path}`)
+    // `set` and `update` hang too, not just transactions: the four calls
+    // that had no deadline reached the network through these two, so a
+    // model that only hung transactions could not have caught them.
+    if (hangAll) return new Promise(() => {})
     for (const prefix of refuseSet) {
       if (r.path.startsWith(prefix)) {
         throw Object.assign(new Error('permission_denied'), { code: 'PERMISSION_DENIED' })
@@ -109,6 +113,7 @@ vi.mock('firebase/database', () => ({
     db[r.path] = value
   },
   update: async (r: { path: string }, values: Record<string, unknown>) => {
+    if (hangAll) return new Promise(() => {})
     for (const [key, value] of Object.entries(values)) {
       writes.push(`update ${r.path}/${key}`)
       db[`${r.path}/${key}`] = value
@@ -613,6 +618,54 @@ describe('a link that dies mid-booking', () => {
 
       await vi.advanceTimersByTimeAsync(1_500)
       await expect(inFlight).resolves.toMatchObject({ ok: false, error: 'pending' })
+    } finally {
+      vi.useRealTimers()
+      hangAll = false
+    }
+  })
+})
+
+describe('every shared call a person waits on', () => {
+  /**
+   * One test per remote entry point, because the omission is the defect.
+   *
+   * A comment claiming "one list, in one place, so a new remote operation is
+   * an obvious omission" was wrong the day it was written: four calls had no
+   * deadline, two of them behind buttons a person stares at — Register and
+   * Reset demo — where a dropped socket meant nothing happened, for the rest
+   * of the session, with no toast and no spinner.
+   */
+  it('gives up and reports something true instead of hanging forever', async () => {
+    await publishedHarbour()
+    const boxes = useDockStore.getState().boxesByHarbour.nizampatnam
+    const boats = useDockStore.getState().boats.filter((b) => b.harbourId === 'nizampatnam')
+    hangAll = true
+    vi.useFakeTimers()
+    try {
+      // Only calls that actually reach the network. `release` with nothing
+      // stored, or `cancel` with no hold, short-circuits to `stale` before
+      // any write — correctly, and a deadline is not what is being tested
+      // there. `release` gets its own case below, after a real deposit.
+      const calls = {
+        reserve: sync.reserveRemote('nizampatnam', 'box3', '04', 1, 'prawn'),
+        putBoat: sync.putBoat('nizampatnam', boats[0]),
+        resetBoxes: sync.resetRemoteBoxes('nizampatnam', boxes),
+        seed: sync.seedHarbour('nizampatnam', boxes, boats, []),
+        claimBoat: sync.claimBoat('nizampatnam', boats[0]),
+        claimDevice: sync.claimForThisDevice('nizampatnam', '04'),
+      }
+      await vi.advanceTimersByTimeAsync(12_500)
+
+      for (const key of ['reserve', 'putBoat', 'resetBoxes'] as const) {
+        await expect(calls[key], key).resolves.toMatchObject({ ok: false, error: 'pending' })
+      }
+      // Publishing has no `pending` to report, so it says the thing that is
+      // both true and actionable: the boxes did not land, press it again.
+      await expect(calls.seed).resolves.toMatchObject({ boxesOk: false })
+      // Distinct from `null`, which would mean the harbour refused us and a
+      // second registration is safe. It is not.
+      await expect(calls.claimBoat).resolves.toBe('pending')
+      await expect(calls.claimDevice).resolves.toBe('unbound')
     } finally {
       vi.useRealTimers()
       hangAll = false

@@ -64,6 +64,7 @@ export interface GeoFix {
 
 export interface MarineReading {
   waveHeight: number
+  /** When the SEA was measured, in harbour time — Open-Meteo's own instant. */
   fetchedAt: number
 }
 

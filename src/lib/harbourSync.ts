@@ -102,14 +102,23 @@ const SETTLE_DEADLINE_MS = 12_000
  * to call it back — so telling the skipper "nothing was saved" would send
  * him to book a second crate over a first he already holds. What is true is
  * that we do not know yet, and that the box is the place to find out.
+ *
+ * Generic in the outcome, because not every awaited shared call returns a
+ * `RemoteResult` — and the four that do not were exactly the four this
+ * wrapper missed on its first attempt, behind a Register button and a Reset
+ * demo button that could hang for the rest of the session with nothing on
+ * screen to say so.
  */
-function withDeadline(work: Promise<RemoteResult>): Promise<RemoteResult> {
+function withDeadline<T>(work: Promise<T>, onTimeout: () => T): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
-  const deadline = new Promise<RemoteResult>((resolve) => {
-    timer = setTimeout(() => resolve({ ok: false, error: 'pending' }), SETTLE_DEADLINE_MS)
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout()), SETTLE_DEADLINE_MS)
   })
   return Promise.race([work, deadline]).finally(() => clearTimeout(timer))
 }
+
+/** The unknown-outcome result, for the calls that return one. */
+const PENDING: RemoteResult = { ok: false, error: 'pending' }
 
 /**
  * Tell a dead link apart from a database that said no. They need different
@@ -310,6 +319,33 @@ export function boxesFromWire(wire: WireBoxes): ColdBox[] {
 }
 
 /**
+ * A hold this client may treat as run out — the exact shape of clause 3 in
+ * `firebase/database.rules.json`, and it has to stay that shape.
+ *
+ * A `reserved` slot with no `reservedAt` is malformed. The deployed rules
+ * refuse to create one and, in clause 3, refuse to let anyone else clear one
+ * (`data.hasChild('reservedAt')` before the arithmetic). So it is NOT
+ * claimable, however tempting it is to free it.
+ *
+ * Round 13 read it the other way — `?? 0`, "a clock nobody set has already
+ * run out" — which frees the crate in the client's head and nowhere else.
+ * The server still refuses, the refusal REJECTS the transaction, and the
+ * rejection escapes the claim loop as `refused`: one malformed slot would
+ * have made the whole box unbookable and sent every skipper to find the
+ * harbour master. Stranding one crate is the smaller failure, and it is the
+ * one the server has already chosen. The client does not get a second
+ * opinion about a rule the database enforces.
+ *
+ * Making a malformed hold clearable is a RULES change, and it belongs in a
+ * round where the rules can be deployed and probed in the same breath.
+ */
+function expiredHold(slot: WireSlot | undefined, now: number): boolean {
+  if (slot?.status !== 'reserved') return false
+  if (typeof slot.reservedAt !== 'number') return false
+  return slot.reservedAt + HOLD_MS <= now
+}
+
+/**
  * Expire holds older than four hours, in place, inside whatever transaction
  * is running. Nothing writes to the shared copy on a timer, so the clock
  * advances at the moment it matters: when someone tries to book.
@@ -317,7 +353,7 @@ export function boxesFromWire(wire: WireBoxes): ColdBox[] {
 export function expireHolds(wire: WireBoxes, now: number): void {
   for (const boxId of BOX_IDS) {
     for (const [index, slot] of Object.entries(wire[boxId] ?? {})) {
-      if (slot.status === 'reserved' && (slot.reservedAt ?? 0) + HOLD_MS <= now) {
+      if (expiredHold(slot, now)) {
         wire[boxId][index] = { status: 'empty' }
       }
     }
@@ -517,7 +553,7 @@ async function putBoatImpl(harbourId: HarbourId, boat: Boat): Promise<RemoteResu
  * digits are readable by anyone, so they identify a boat rather than
  * authenticate one; this is the check that actually bites.
  */
-export async function claimForThisDevice(
+async function claimForThisDeviceImpl(
   harbourId: HarbourId,
   boatId: string,
 ): Promise<'mine' | 'taken' | 'unbound'> {
@@ -554,7 +590,7 @@ export async function claimForThisDevice(
  * or null if the database could not be reached — the caller must not pretend
  * the registration landed.
  */
-export async function claimBoat(harbourId: HarbourId, boat: Boat): Promise<string | null> {
+async function claimBoatImpl(harbourId: HarbourId, boat: Boat): Promise<string | 'pending' | null> {
   const a = await api()
   if (!a) return null
 
@@ -700,7 +736,7 @@ function writableBoat(boat: Boat): boolean {
  * Returns how many boats it could not write, so the caller can say something
  * true instead of reporting a partial success as total failure.
  */
-export async function seedHarbour(
+async function seedHarbourImpl(
   harbourId: HarbourId,
   boxes: ColdBox[],
   boats: Boat[],
@@ -799,7 +835,7 @@ async function historyExists(a: Api, harbourId: HarbourId): Promise<boolean> {
  * later and the button would look broken. Reset demo is fenced and labelled
  * as a demonstration control; nothing else may call this.
  */
-export async function resetRemoteBoxes(
+async function resetRemoteBoxesImpl(
   harbourId: HarbourId,
   boxes: ColdBox[],
 ): Promise<RemoteResult> {
@@ -863,19 +899,12 @@ async function readBoxes(a: Api, harbourId: HarbourId): Promise<WireBoxes | null
 /**
  * Is this slot free right now — empty, or a hold that has run out?
  *
- * `?? 0`, not `?? now`. A hold with no clock is malformed: the deployed
- * rules refuse to write one, and the app never does. But if one ever reached
- * the database — legacy data, or a rules deployment that lagged the client —
- * `?? now` made the comparison permanently false, so the slot could never
- * expire, never be claimed by anyone, and never be force-released, while the
- * card counted down from a frozen 4:00:00. One of thirty crates gone for the
- * life of the deployment, with no remedy. `?? 0` treats a clock nobody set
- * as a clock that has already run out, which is the direction that frees the
- * box rather than the one that strands it.
+ * One definition, shared with `expireHolds`, and it is a mirror of the
+ * deployed rule rather than an opinion of its own. See `expiredHold`.
  */
 function claimable(slot: WireSlot | undefined, now: number): boolean {
   if (!slot || slot.status === 'empty') return true
-  return slot.status === 'reserved' && (slot.reservedAt ?? 0) + HOLD_MS <= now
+  return expiredHold(slot, now)
 }
 
 /**
@@ -1318,7 +1347,7 @@ function settle(result: SlotChange): RemoteResult {
  * over them. See `withDeadline` for why `pending` is not `offline`.
  */
 export function putBoat(harbourId: HarbourId, boat: Boat): Promise<RemoteResult> {
-  return withDeadline(putBoatImpl(harbourId, boat))
+  return withDeadline(putBoatImpl(harbourId, boat), () => PENDING)
 }
 
 export function reserveRemote(
@@ -1328,7 +1357,7 @@ export function reserveRemote(
   crates: number,
   species: Species,
 ): Promise<RemoteResult> {
-  return withDeadline(reserveRemoteImpl(harbourId, boxId, boatId, crates, species))
+  return withDeadline(reserveRemoteImpl(harbourId, boxId, boatId, crates, species), () => PENDING)
 }
 
 export function depositRemote(
@@ -1337,7 +1366,7 @@ export function depositRemote(
   plannedOutAt: number,
   onlyBoxId?: BoxId,
 ): Promise<RemoteResult> {
-  return withDeadline(depositRemoteImpl(harbourId, boatId, plannedOutAt, onlyBoxId))
+  return withDeadline(depositRemoteImpl(harbourId, boatId, plannedOutAt, onlyBoxId), () => PENDING)
 }
 
 export function cancelRemote(
@@ -1345,7 +1374,7 @@ export function cancelRemote(
   boatId: string,
   onlyBoxId?: BoxId,
 ): Promise<RemoteResult> {
-  return withDeadline(cancelRemoteImpl(harbourId, boatId, onlyBoxId))
+  return withDeadline(cancelRemoteImpl(harbourId, boatId, onlyBoxId), () => PENDING)
 }
 
 export function releaseRemote(
@@ -1354,5 +1383,49 @@ export function releaseRemote(
   onlyBoxId?: BoxId,
   onlyIndexes?: number[],
 ): Promise<RemoteResult> {
-  return withDeadline(releaseRemoteImpl(harbourId, boatId, onlyBoxId, onlyIndexes))
+  return withDeadline(releaseRemoteImpl(harbourId, boatId, onlyBoxId, onlyIndexes), () => PENDING)
+}
+
+export function resetRemoteBoxes(harbourId: HarbourId, boxes: ColdBox[]): Promise<RemoteResult> {
+  return withDeadline(resetRemoteBoxesImpl(harbourId, boxes), () => PENDING)
+}
+
+/**
+ * Publishing has no `pending` to report, so the deadline reports the thing
+ * that IS true and actionable: the boxes did not land, press it again.
+ * Publish is idempotent by design — every write yields to what is already
+ * there — so a second press after a queued first one is safe.
+ */
+export function seedHarbour(
+  harbourId: HarbourId,
+  boxes: ColdBox[],
+  boats: Boat[],
+  ledger: LedgerEntry[],
+): Promise<{ failed: number; boxesOk: boolean; historyLost: number }> {
+  return withDeadline(seedHarbourImpl(harbourId, boxes, boats, ledger), () => ({
+    failed: 0,
+    boxesOk: false,
+    historyLost: 0,
+  }))
+}
+
+/**
+ * Registration walks up to fifty candidate hull numbers, each a round trip,
+ * so it is the longest-running call in the app and the one most able to hang
+ * behind a button a new skipper is staring at. `'pending'` is distinct from
+ * `null`: null means the harbour refused us, pending means we stopped
+ * waiting and a boat may yet appear.
+ */
+export function claimBoat(harbourId: HarbourId, boat: Boat): Promise<string | 'pending' | null> {
+  return withDeadline(claimBoatImpl(harbourId, boat), () => 'pending' as const)
+}
+
+export function claimForThisDevice(
+  harbourId: HarbourId,
+  boatId: string,
+): Promise<'mine' | 'taken' | 'unbound'> {
+  // Times out as `unbound`, which is this function's existing degraded
+  // answer: the boat is not bound to this device, the harbour behaves as it
+  // did before binding existed, and nobody is locked out by a slow socket.
+  return withDeadline(claimForThisDeviceImpl(harbourId, boatId), () => 'unbound' as const)
 }

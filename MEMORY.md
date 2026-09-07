@@ -27,7 +27,7 @@ the slot, and an overstay flag — all on free hosting with no paid services.
 
 ## 2. Current state
 
-**All green:** 85 tests · `tsc` clean · `oxlint` zero warnings · build clean.
+**All green:** 99 tests · `tsc` clean · `oxlint` zero warnings · build clean.
 
 **First paint, measured, all of it:**
 
@@ -988,7 +988,7 @@ runs and the check is in the shell, where a skip emits a `::warning`.
 
 **Sonar, and what was refused.** Security findings closed properly rather
 than silenced: `npm ci --ignore-scripts` (verified in a clean-room install —
-tsc, 93 tests and the build all pass without lifecycle scripts),
+tsc, the whole suite and the build all pass without lifecycle scripts),
 `--no-install` on every `npx` so a gate cannot silently become a stranger's
 package, `firebase-tools` pinned exactly, and workflow permissions scoped per
 job so the build job cannot publish Pages. Not taken: `<img alt>` in place of
@@ -997,7 +997,46 @@ map and for inline SVG, and following it would cost accessibility rather than
 buy it.
 
 **Product.** Map pins now name the thing rather than the place — "Auction
-hall box", "Ice plant box", "Diesel box" — verified at 320 px in both
+box", "Ice plant box", "Diesel box" — verified at 320 px in both
 languages with no overflow and no collisions. The line under the chart is the
 ODbL tile credit and nothing else; the "free, no account needed" half was
 about our hosting bill, not about anything a skipper needs.
+
+---
+
+## 24. Fourteenth review — 6.0 and 6.0 → fixed
+
+Both sides moved up half a point for the first time in the same round, and
+both said the same thing about why: five of nine checked claims survived
+falsification with tests that bite under mutation. Both still said DO NOT
+SHIP, and both blockers were written by round 13's own fixes. Fourteen
+rounds out of fourteen.
+
+**The blocker was a sentence introduced while tidying.** Extracting the
+safety card's decision into `seaAdvice` collapsed `moderate` into `calm`, so
+the card said **"Conditions are calm"** at a 2.0 m swell while the strip four
+lines above it was amber and said "come in careful". 1-2 m is the ordinary
+state of that coast, not an edge case — and the test written to stop this
+card drifting was asserting the drift. `safetyModerate` is its own sentence
+now, and the test says so.
+
+| Defect | Why it mattered |
+| --- | --- |
+| **The swell freshness budget was spent by the fix that made it honest.** `MARINE_STALE_MS` was calibrated when `fetchedAt` was `Date.now()`; once it became Open-Meteo's own instant, two lags moved underneath it — the API buckets `current.time` to 15 minutes (`interval: 900` on the wire) and the poll runs every 10 | 15 + 10 consumed the entire 25-minute gate, so roughly once a cycle a phone on full bars, having missed nothing, watched the strip fall to "Nothing current" and the landing-safety card say it could not tell you about the sea. Forty minutes now, derived in the comment rather than chosen |
+| **A false "No signal", in red, on a phone with full bars.** `useConnectivity` asks "when did a request last succeed"; it was still fed `marine.reading.fetchedAt`, which had become the instant the SEA was measured | Local-only builds — the zero-setup demo path — dropped past `STALE_MS` before the next poll could land. In local mode there is nothing to be behind at all: the box figures ARE this phone's own. That banner no longer speaks for the weather poll |
+| **`pending` punched a hole in the audit trail** — `withDeadline` resolves with no `freed`, so the force-release row was never written while the release itself went on to succeed | A crate taken back over a skipper's head, billed in the ledger, with nothing in the integrity trail saying an admin touched it — three lines above the comment describing that exact defect. The row is written now, marked "outcome not confirmed". `setBoatStatus` also stopped rolling the roster back on `pending`, which was acting on "nothing was saved" |
+| **Four remote entry points had no deadline**, under a comment claiming the list was complete: `resetRemoteBoxes`, `seedHarbour`, `claimBoat`, `claimForThisDevice`. And **Reset demo had no `requireLink()`** | Tap Reset demo with the socket down and nothing happened — no toast, no spinner, no reason — for the rest of the session. Registration walks up to fifty candidate hull numbers, each a round trip, behind a button a new skipper is staring at. All wrapped, and `hangAll` in the tests now hangs `set` and `update` too, so the next omission is a red test rather than a code review |
+| **Escape stopped closing a fallback dialog one second after it opened.** Every caller passed an inline `onClose` into an effect keyed on it, and `App` re-renders at 1 Hz — so the effect tore down, removed the key listener, and the re-run early-returned without re-adding it | On the old Android WebViews the fallback exists for. `useModal` takes no reactive dependencies and reads `onClose` through a ref |
+| **206 `Intl.DateTimeFormat` constructions per second in `#admin`**, measured — one per audit row per tick — and 17/s on the dock screen. Round 13 hoisted the formatter `monthKey` used and declared the class closed; five call sites were still building one per call | Every Approve and Force-release queued behind it. All seven formatters are module constants now; re-measured in the live page at **0 per second** on both screens |
+| **The audit log had no cap.** The ledger has had one since AGENTS.md §6 was written | At ~50 admin actions a day it reaches the localStorage quota inside a year, and when it does NOTHING persists any more — boxes, roster and ledger included. Capped at 2 000, ids continue from the tip rather than restarting at A1, and `verifyAudit` anchors to the first surviving row instead of `genesis` so a trimmed log does not read as tampering |
+| **`claimable(?? 0)` — round 13's own fix — made the client disagree with the deployed rules.** Clause 3 requires `data.hasChild('reservedAt')` before anyone may clear a `reserved` slot | So a malformed hold rendered as a free crate, the server refused the claim, and the rejection escaped the loop as `refused`: one bad slot would have made the WHOLE box unbookable. Stranding one crate is the smaller failure and it is the one the server already chose. `expiredHold` mirrors the rule now, and the test that asserted the opposite says why it was wrong |
+| The `role="img"` chart was itself a tab stop — Leaflet gives the container `tabindex="0"`. Rounds 11, 12 and 13 each removed one focusable *child* | Verified in the live DOM: zero focusable elements inside the chart |
+| The Coast Guard and harbour-office labels truncated at 320 px in Telugu — 21 px and 25 px cut — under a comment saying they were short enough not to | On the one screen that exists for a boat in trouble. They wrap now; re-measured at zero |
+| A map label covered 25 x 23 px of a 56 px booking pin, at every harbour, in both languages | Labels now sit above the northern pins and below the southern one, split by the pin's own latitude so surveyed coordinates cannot break it. Re-measured: zero label-on-pin and zero label-on-label overlap at 320 px in both languages |
+| The species picker was `<li>`s inside a `role="radiogroup"` with six tab stops and dead arrow keys; `ChoiceSheet`'s dialog had no accessible name | |
+| The legend hard-coded its own copy of the marks and taught the mixed glyph for a status the grid draws with six | Drawn by `crateMark` now, and the README says plainly that the stored chip is an example rather than an exact mark |
+
+**Still open and deliberately untouched:** the 223 kB ledger feed, the 265 kB
+of webfonts, the demo/live toggle. The seeded harbour ageing into
+all-overstay belongs to the demo toggle and is recorded there, not patched
+here.

@@ -83,7 +83,16 @@ export default function App() {
   // the box figures, not the wave height, that send a boat to a full box.
   // While the socket is live the figures are current by definition; once it
   // drops, they are only as fresh as the last thing it told us.
-  let reachedAt = marine.reading?.fetchedAt ?? null
+  // In local-only mode there is nothing to be behind: the box figures ARE
+  // this phone's own, and no network exists that could make them stale. The
+  // weather poll was standing in for reachability here, and it stopped being
+  // able to: `fetchedAt` is now the instant the SEA was measured, which
+  // Open-Meteo buckets to a quarter of an hour, so a phone that had missed
+  // nothing dropped past `STALE_MS` before the next poll landed and got
+  // "No signal" in red over a working link and correct figures. The swell
+  // strip carries its own age and its own offline line; it does not need
+  // this banner to speak for it.
+  let reachedAt: number | null = now
   if (syncEnabled) reachedAt = syncLive ? now : syncedAt
   const reach = useConnectivity(reachedAt, now, syncEnabled ? SYNC_STALE_MS : STALE_MS)
 

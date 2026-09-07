@@ -96,10 +96,17 @@ export function SeaMap({
       // And no zoom control, for the same two reasons plus a third. Its
       // `<a href="#">` buttons were the other pair of silent tab stops in
       // here, and at 320 px they sit on top of the north-west box's own
-      // label — the pin that says "Auction hall box · 1" was half covered by
+      // label — the pin that says "Auction box · 1" was half covered by
       // a minus sign. Pinch is the gesture that zooms a chart on a phone
       // anyway, and this view is deliberately framed rather than explored.
       zoomControl: false,
+      // And the container itself is not a tab stop. Leaflet gives it
+      // `tabindex="0"` for arrow-key panning, which put a fourth focusable
+      // thing inside this `role="img"` subtree after the markers and both
+      // controls had been dealt with — three rounds each fixed one layer of
+      // this and none looked at the container. Panning is deliberately not
+      // available here anyway: the three boxes are framed for you.
+      keyboard: false,
       dragging: !touch,
       scrollWheelZoom: !touch,
       touchZoom: true,
@@ -171,6 +178,17 @@ export function SeaMap({
         })
     }
 
+    // Labels above the northern pins and below the southern one.
+    //
+    // All three sat above their pins, and at 320 px the middle box's label
+    // then lay across the top-left corner of the pin north-east of it —
+    // 25 × 23 px of a 56 px tap target, at every harbour, in both languages.
+    // Splitting them by the pin's own latitude moves the labels apart
+    // without moving the pins, and it stays right if a harbour's surveyed
+    // coordinates change, which a hard-coded direction per box would not.
+    const mid =
+      boxes.reduce((sum, m) => sum + harbour.boxes[m.id].lat, 0) / Math.max(1, boxes.length)
+
     for (const marker of boxes) {
       const site = harbour.boxes[marker.id]
       const pin = L.marker([site.lat, site.lon], {
@@ -182,11 +200,12 @@ export function SeaMap({
         keyboard: false,
         title: marker.label,
       }).addTo(group)
+      const below = site.lat < mid
       pin.bindTooltip(`${marker.label} · ${marker.full ? '0' : marker.free}`, {
         permanent: true,
-        direction: 'top',
+        direction: below ? 'bottom' : 'top',
         className: 'sea-box',
-        offset: [0, -30],
+        offset: [0, below ? 30 : -30],
       })
       // Every pin answers a tap, including a full one. The map is the
       // primary way in and the screen above it says to tap a box; a pin that

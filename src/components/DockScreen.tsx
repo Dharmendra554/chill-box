@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import { useNow } from '../hooks/useClock'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { BOX_SHORT, type StringKey } from '../i18n/dictionary'
@@ -9,7 +9,7 @@ import type { WaveBand } from '../lib/marine'
 import { distanceToBox, formatEta, formatKm, navigateTo } from '../lib/nav'
 import { formatClock, formatCountdown, formatElapsed, formatGap, HOUR_MS } from '../lib/time'
 import { cx } from '../lib/ui'
-import { openModal } from '../lib/dialog'
+import { useModal } from '../lib/dialog'
 import {
   activeBoxId,
   boatState,
@@ -35,12 +35,7 @@ import { CompassRose } from './CompassRose'
 import { ConfirmButton } from './ConfirmButton'
 import { SafetyCard } from './SafetyCard'
 import { CompassIcon, CrateIcon, TideClockIcon } from '../icons/marine'
-// Aliased to PascalCase because it is used as a JSX tag here, and a
-// lower/upper-snake tag is parsed as an intrinsic element, not a component.
-import { SPECIES_ICON } from '../icons/species'
-
-const MixedCatchIcon = SPECIES_ICON.mixed
-
+import { crateMark } from '../icons/crateMark'
 // Leaflet is ~44 kB gzipped. It loads alongside the page rather than
 // blocking the booking flow behind it on a 2G tether.
 const SeaMap = lazy(() => import('./SeaMap').then((m) => ({ default: m.SeaMap })))
@@ -342,11 +337,21 @@ function Legend() {
   // which the grid never draws: it draws the catch's own icon. A legend that
   // teaches a mark the grid does not use is worse than no legend, because
   // the skipper then looks for something that is not there.
+  // Drawn by `crateMark`, the same function the grid and the harbour rows
+  // call, so the legend cannot drift from them again — it has twice: first a
+  // generic crate glyph the grid never drew, then this chip hard-coding its
+  // own copy of the marks.
+  //
+  // The stored chip shows the MIXED catch, and that is a genuine limit
+  // rather than a claim: a stored crate carries whichever of the six species
+  // icons it was booked with, and one chip cannot show six. What it teaches
+  // truthfully is "a stored crate carries its catch"; the icon beside it is
+  // an example of one. The other three marks are exact.
   const items = [
     ['legendFree', 'bg-free-wash text-ink border-dashed', <span key="d">·</span>],
-    ['legendHold', 'bg-hold text-hold-ink', <TideClockIcon key="h" size={13} />],
-    ['legendFull', 'bg-full text-full-ink', <MixedCatchIcon key="f" size={13} />],
-    ['legendLate', 'bg-late text-late-ink', <span key="l">!</span>],
+    ['legendHold', 'bg-hold text-hold-ink', crateMark('reserved', null, 13)],
+    ['legendFull', 'bg-full text-full-ink', crateMark('occupied', 'mixed', 13)],
+    ['legendLate', 'bg-late text-late-ink', crateMark('overstay', null, 13)],
   ] as const
 
   return (
@@ -396,7 +401,7 @@ function BookingConfirmed({
   // make him certain the slot is his, so he does not hedge by taking a
   // second one somewhere else. A screen-reader user was never told it had
   // appeared at all.
-  useEffect(() => openModal(ref.current, onClose), [onClose])
+  useModal(ref, onClose)
 
   return (
     <dialog
